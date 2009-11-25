@@ -29,6 +29,7 @@ AC_DEFUN([FIND_UNIMRCP], [
 	uni_version="`pkg-config --modversion $unimrcp_config`"
     fi
 
+    AC_DEFINE_UNQUOTED(UNIMRCP_DIR_LOCATION,"$unimrcp_dir")
     AC_MSG_RESULT([$uni_version])
 
     AC_SUBST(UNIMRCP_INCLUDES)
