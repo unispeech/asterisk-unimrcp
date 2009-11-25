@@ -7,9 +7,9 @@ AC_INIT([asterisk-unimrcp],[0.1.0])
 
 AC_CONFIG_AUX_DIR([build])
 AC_CONFIG_MACRO_DIR([build/acmacros])
-AC_PREFIX_DEFAULT(/usr/lib/asterisk/module)
+AC_PREFIX_DEFAULT(/usr/lib/asterisk/modules)
 
-plugindir='${prefix}'
+moddir='${prefix}'
 
 AM_INIT_AUTOMAKE(foreign)
 
@@ -25,7 +25,9 @@ m4_undefine([AC_PROG_F77])
 m4_defun([AC_PROG_F77],[])
 AC_PROG_LIBTOOL
 
-AC_SUBST(plugindir)
+AC_SUBST(moddir)
+
+FIND_UNIMRCP
 
 
 AC_DEFUN([AX_COMPILER_VENDOR],
