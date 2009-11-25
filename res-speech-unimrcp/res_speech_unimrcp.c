@@ -199,12 +199,33 @@ static apt_bool_t on_message_receive(mrcp_application_t *application, mrcp_sessi
 	return TRUE;
 }
 
+/** \brief Received ready event */
+static apt_bool_t on_application_ready(mrcp_application_t *application, mrcp_sig_status_code_e status)
+{
+	return TRUE;
+}
+
+/** \brief Received unexpected session/channel termination event */
+static apt_bool_t on_terminate_event(mrcp_application_t *application, mrcp_session_t *session, mrcp_channel_t *channel)
+{
+	return TRUE;
+}
+
+/** \brief Received response to resource discovery request */
+static apt_bool_t on_resource_discover(mrcp_application_t *application, mrcp_session_t *session, mrcp_session_descriptor_t *descriptor, mrcp_sig_status_code_e status)
+{
+	return TRUE;
+}
+
 static const mrcp_app_message_dispatcher_t uni_dispatcher = {
 	on_session_update,
 	on_session_terminate,
 	on_channel_add,
 	on_channel_remove,
-	on_message_receive
+	on_message_receive,
+	on_application_ready,
+	on_terminate_event,
+	on_resource_discover
 };
 
 /** \brief UniMRCP message handler */
