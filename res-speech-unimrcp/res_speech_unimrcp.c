@@ -106,6 +106,8 @@ static int uni_recog_create(struct ast_speech *speech, int format)
 	uni_speech_t *uni_speech;
 	mrcp_session_t *session;
 	apr_pool_t *pool;
+	const mpf_codec_descriptor_t *descriptor;
+
 	ast_log(LOG_NOTICE, "Create session\n");
 	/* Create session instance */
 	session = mrcp_application_session_create(uni_engine.application,UNI_PROFILE_NAME,speech);
@@ -131,8 +133,6 @@ static int uni_recog_create(struct ast_speech *speech, int format)
 	uni_speech->speech_base = speech;
 	speech->data = uni_speech;
 
-	/* Create media buffer */
-	uni_speech->media_buffer = mpf_frame_buffer_create(160,20,pool);
 	/* Create cond wait object and mutex */
 	apr_thread_mutex_create(&uni_speech->mutex,APR_THREAD_MUTEX_DEFAULT,pool);
 	apr_thread_cond_create(&uni_speech->wait_object,pool);
@@ -158,6 +158,24 @@ static int uni_recog_create(struct ast_speech *speech, int format)
 		uni_recog_cleanup(uni_speech);
 		return -1;
 	}
+
+	descriptor = mrcp_application_source_descriptor_get(uni_speech->channel);
+	if(descriptor) {
+		mpf_frame_buffer_t *media_buffer;
+		apr_size_t frame_size = mpf_codec_linear_frame_size_calculate(descriptor->sampling_rate,descriptor->channel_count);
+		/* Create media buffer */
+		ast_log(LOG_DEBUG, "Create media buffer frame_size:%d\n",frame_size);
+		media_buffer = mpf_frame_buffer_create(frame_size,20,pool);
+		uni_speech->media_buffer = media_buffer;
+	}
+	
+	if(!uni_speech->media_buffer) {
+		ast_log(LOG_WARNING, "Failed to create media buffer\n");
+		uni_recog_sm_request_send(uni_speech,MRCP_SIG_COMMAND_SESSION_TERMINATE);
+		uni_recog_cleanup(uni_speech);
+		return -1;
+	}
+
 	return 0;
 }
 
@@ -329,6 +347,7 @@ static int uni_recog_write(struct ast_speech *speech, void *data, int len)
 	ast_log(LOG_DEBUG, "Write audio len:%d\n",len);
 #endif
 	frame.type = MEDIA_FRAME_TYPE_AUDIO;
+	frame.marker = MPF_MARKER_NONE;
 	frame.codec_frame.buffer = data;
 	frame.codec_frame.size = len;
 
@@ -362,7 +381,7 @@ static int uni_recog_start(struct ast_speech *speech)
 		return -1;
 	}
 	
-	/* Get/Allocate generic header */
+	/* Get/allocate generic header */
 	generic_header = mrcp_generic_header_prepare(mrcp_message);
 	if(generic_header) {
 		/* Set generic header fields */
@@ -386,6 +405,9 @@ static int uni_recog_start(struct ast_speech *speech)
 		ast_log(LOG_WARNING, "Received failure response\n");
 		return -1;
 	}
+	
+	/* Reset media buffer */
+	mpf_frame_buffer_restart(uni_speech->media_buffer);
 	
 	ast_speech_change_state(speech, AST_SPEECH_STATE_READY);
 	return 0;
@@ -569,12 +591,6 @@ static apt_bool_t on_message_receive(mrcp_application_t *application, mrcp_sessi
 	return TRUE;
 }
 
-/** \brief Received ready event */
-static apt_bool_t on_application_ready(mrcp_application_t *application, mrcp_sig_status_code_e status)
-{
-	return TRUE;
-}
-
 /** \brief Received unexpected session/channel termination event */
 static apt_bool_t on_terminate_event(mrcp_application_t *application, mrcp_session_t *session, mrcp_channel_t *channel)
 {
@@ -593,7 +609,6 @@ static const mrcp_app_message_dispatcher_t uni_dispatcher = {
 	on_channel_add,
 	on_channel_remove,
 	on_message_receive,
-	on_application_ready,
 	on_terminate_event,
 	on_resource_discover
 };
@@ -612,8 +627,10 @@ static apt_bool_t uni_recog_stream_read(mpf_audio_stream_t *stream, mpf_frame_t 
 {
 	uni_speech_t *uni_speech = stream->obj;
 
-	mpf_frame_buffer_read(uni_speech->media_buffer,frame);
-#if 0	
+	if(uni_speech->media_buffer) {
+		mpf_frame_buffer_read(uni_speech->media_buffer,frame);
+	}
+#if 1	
 	ast_log(LOG_DEBUG, "Read audio type:%d len:%d\n",frame->type,frame->codec_frame.size);
 #endif
 	return TRUE;
@@ -778,7 +795,6 @@ static apt_bool_t uni_engine_load()
 	apr_pool_t *pool;
 	apt_dir_layout_t *dir_layout;
 
-	
 	/* APR global initialization */
 	if(apr_initialize() != APR_SUCCESS) {
 		ast_log(LOG_ERROR, "Failed to initialize APR\n");
@@ -818,7 +834,6 @@ static apt_bool_t uni_engine_load()
 							"ASTMRCP");
 		}
 	}
-
 
 	if(!uni_engine.client || !uni_engine.application) {
 		ast_log(LOG_ERROR, "Failed to initialize client stack\n");
@@ -869,6 +884,5 @@ static int unload_module(void)
 	uni_engine_unload();
 	return 0;
 }
-
 
 AST_MODULE_INFO_STANDARD(ASTERISK_GPL_KEY, "UniMRCP Speech Engine");
