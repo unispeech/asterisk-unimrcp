@@ -94,11 +94,19 @@ struct uni_engine_t {
 
 static struct uni_engine_t uni_engine;
 
-static apt_bool_t uni_recog_channel_create(uni_speech_t *uni_speech);
+static apt_bool_t uni_recog_channel_create(uni_speech_t *uni_speech, int format);
 static apt_bool_t uni_recog_sm_request_send(uni_speech_t *uni_speech, mrcp_sig_command_e sm_request);
 static apt_bool_t uni_recog_mrcp_request_send(uni_speech_t *uni_speech, mrcp_message_t *message);
 static void uni_recog_cleanup(uni_speech_t *uni_speech);
 
+static const char* uni_speech_id_get(uni_speech_t *uni_speech)
+{
+	const apt_str_t *id = mrcp_application_session_id_get(uni_speech->session);
+	if(id && id->buf) {
+		return id->buf;
+	}
+	return "none";
+}
 
 /** \brief Set up the speech structure within the engine */
 static int uni_recog_create(struct ast_speech *speech, int format)
@@ -108,7 +116,6 @@ static int uni_recog_create(struct ast_speech *speech, int format)
 	apr_pool_t *pool;
 	const mpf_codec_descriptor_t *descriptor;
 
-	ast_log(LOG_NOTICE, "Create session\n");
 	/* Create session instance */
 	session = mrcp_application_session_create(uni_engine.application,UNI_PROFILE_NAME,speech);
 	if(!session) {
@@ -138,7 +145,7 @@ static int uni_recog_create(struct ast_speech *speech, int format)
 	apr_thread_cond_create(&uni_speech->wait_object,pool);
 
 	/* Create recognition channel instance */
-	if(uni_recog_channel_create(uni_speech) != TRUE) {
+	if(uni_recog_channel_create(uni_speech,format) != TRUE) {
 		ast_log(LOG_ERROR, "Failed to create channel\n");
 		uni_recog_cleanup(uni_speech);
 		return -1;
@@ -176,6 +183,7 @@ static int uni_recog_create(struct ast_speech *speech, int format)
 		return -1;
 	}
 
+	ast_log(LOG_NOTICE, "Created speech instance '%s'\n",uni_speech_id_get(uni_speech));
 	return 0;
 }
 
@@ -183,7 +191,7 @@ static int uni_recog_create(struct ast_speech *speech, int format)
 static int uni_recog_destroy(struct ast_speech *speech)
 {
 	uni_speech_t *uni_speech = speech->data;
-	ast_log(LOG_NOTICE, "Destroy session\n");
+	ast_log(LOG_NOTICE, "Destroy speech instance '%s'\n",uni_speech_id_get(uni_speech));
 
 	/* Terminate session first */
 	uni_recog_sm_request_send(uni_speech,MRCP_SIG_COMMAND_SESSION_TERMINATE);
@@ -220,7 +228,7 @@ static int uni_recog_load_grammar(struct ast_speech *speech, char *grammar_name,
 	uni_speech_t *uni_speech = speech->data;
 	mrcp_message_t *mrcp_message;
 
-	ast_log(LOG_NOTICE, "Load grammar\n");
+	ast_log(LOG_NOTICE, "Load grammar '%s'\n",uni_speech_id_get(uni_speech));
 	mrcp_message = mrcp_application_message_create(
 								uni_speech->session,
 								uni_speech->channel,
@@ -284,7 +292,7 @@ static int uni_recog_unload_grammar(struct ast_speech *speech, char *grammar_nam
 	mrcp_message_t *mrcp_message;
 	mrcp_generic_header_t *generic_header;
 
-	ast_log(LOG_NOTICE, "Unload grammar\n");
+	ast_log(LOG_NOTICE, "Unload grammar '%s'\n",uni_speech_id_get(uni_speech));
 	mrcp_message = mrcp_application_message_create(
 								uni_speech->session,
 								uni_speech->channel,
@@ -322,7 +330,7 @@ static int uni_recog_activate_grammar(struct ast_speech *speech, char *grammar_n
 	uni_speech_t *uni_speech = speech->data;
 	apr_pool_t *pool = mrcp_application_session_pool_get(uni_speech->session);
 
-	ast_log(LOG_NOTICE, "Activate grammar\n");
+	ast_log(LOG_NOTICE, "Activate grammar '%s'\n",uni_speech_id_get(uni_speech));
 	uni_speech->active_grammar_name = apr_pstrdup(pool,grammar_name);
 	return 0;
 }
@@ -332,7 +340,7 @@ static int uni_recog_deactivate_grammar(struct ast_speech *speech, char *grammar
 {
 	uni_speech_t *uni_speech = speech->data;
 
-	ast_log(LOG_NOTICE, "Deactivate grammar\n");
+	ast_log(LOG_NOTICE, "Deactivate grammar '%s'\n",uni_speech_id_get(uni_speech));
 	uni_speech->active_grammar_name = NULL;
 	return 0;
 }
@@ -344,7 +352,7 @@ static int uni_recog_write(struct ast_speech *speech, void *data, int len)
 	mpf_frame_t frame;
 
 #if 0
-	ast_log(LOG_DEBUG, "Write audio len:%d\n",len);
+	ast_log(LOG_DEBUG, "Write audio '%s' len:%d\n",uni_speech_id_get(uni_speech),len);
 #endif
 	frame.type = MEDIA_FRAME_TYPE_AUDIO;
 	frame.marker = MPF_MARKER_NONE;
@@ -360,7 +368,8 @@ static int uni_recog_write(struct ast_speech *speech, void *data, int len)
 /** \brief Signal DTMF was received */
 static int uni_recog_dtmf(struct ast_speech *speech, const char *dtmf)
 {
-	ast_log(LOG_NOTICE, "Signal DTMF\n");
+	uni_speech_t *uni_speech = speech->data;
+	ast_log(LOG_NOTICE, "Signal DTMF '%s'\n",uni_speech_id_get(uni_speech));
 	return 0;
 }
 
@@ -370,8 +379,9 @@ static int uni_recog_start(struct ast_speech *speech)
 	uni_speech_t *uni_speech = speech->data;
 	mrcp_message_t *mrcp_message;
 	mrcp_generic_header_t *generic_header;
+	mrcp_recog_header_t *recog_header;
 
-	ast_log(LOG_NOTICE, "Start audio\n");
+	ast_log(LOG_NOTICE, "Start audio '%s'\n",uni_speech_id_get(uni_speech));
 	mrcp_message = mrcp_application_message_create(
 								uni_speech->session,
 								uni_speech->channel,
@@ -384,12 +394,35 @@ static int uni_recog_start(struct ast_speech *speech)
 	/* Get/allocate generic header */
 	generic_header = mrcp_generic_header_prepare(mrcp_message);
 	if(generic_header) {
+		const char *content;
 		/* Set generic header fields */
 		apt_string_assign(&generic_header->content_type,"text/uri-list",mrcp_message->pool);
 		mrcp_generic_header_property_add(mrcp_message,GENERIC_HEADER_CONTENT_TYPE);
+
+		/* Set message body */
+		content = apr_pstrcat(mrcp_message->pool,"session:",uni_speech->active_grammar_name,NULL);
+		apt_string_set(&mrcp_message->body,content);
 	}
-	mrcp_message->body.buf = apr_pstrcat(mrcp_message->pool,"session:",uni_speech->active_grammar_name,NULL);
-	mrcp_message->body.length = strlen(mrcp_message->body.buf);
+
+	/* Get/allocate recognizer header */
+	recog_header = (mrcp_recog_header_t*) mrcp_resource_header_prepare(mrcp_message);
+	if(recog_header)
+	{
+		/* set recognizer header fields */
+		if(mrcp_message->start_line.version == MRCP_VERSION_2)
+		{
+			recog_header->cancel_if_queue = FALSE;
+			mrcp_resource_header_property_add(mrcp_message,RECOGNIZER_HEADER_CANCEL_IF_QUEUE);
+		}
+		recog_header->no_input_timeout = 5000;
+		mrcp_resource_header_property_add(mrcp_message,RECOGNIZER_HEADER_NO_INPUT_TIMEOUT);
+		recog_header->recognition_timeout = 10000;
+		mrcp_resource_header_property_add(mrcp_message,RECOGNIZER_HEADER_RECOGNITION_TIMEOUT);
+		recog_header->start_input_timers = TRUE;
+		mrcp_resource_header_property_add(mrcp_message,RECOGNIZER_HEADER_START_INPUT_TIMERS);
+		recog_header->confidence_threshold = 0.87f;
+		mrcp_resource_header_property_add(mrcp_message,RECOGNIZER_HEADER_CONFIDENCE_THRESHOLD);
+	}
 
 	/* Reset last event (if any) */
 	uni_speech->mrcp_event = NULL;
@@ -416,14 +449,16 @@ static int uni_recog_start(struct ast_speech *speech)
 /** \brief Change an engine specific setting */
 static int uni_recog_change(struct ast_speech *speech, char *name, const char *value)
 {
-	ast_log(LOG_NOTICE, "Change setting\n");
+	uni_speech_t *uni_speech = speech->data;
+	ast_log(LOG_NOTICE, "Change setting '%s'\n",uni_speech_id_get(uni_speech));
 	return 0;
 }
 
 /** \brief Change the type of results we want back */
 static int uni_recog_change_results_type(struct ast_speech *speech,enum ast_speech_results_type results_type)
 {
-	ast_log(LOG_NOTICE, "Change result type\n");
+	uni_speech_t *uni_speech = speech->data;
+	ast_log(LOG_NOTICE, "Change result type '%s'\n",uni_speech_id_get(uni_speech));
 	return -1;
 }
 
@@ -437,8 +472,8 @@ struct ast_speech_result* uni_recog_get(struct ast_speech *speech)
 
 	uni_speech_t *uni_speech = speech->data;
 	apr_pool_t *pool = mrcp_application_session_pool_get(uni_speech->session);
-	ast_log(LOG_NOTICE, "Get result\n");
 
+	ast_log(LOG_NOTICE, "Get result '%s'\n",uni_speech_id_get(uni_speech));
 	if(!uni_speech->mrcp_event) {
 		ast_log(LOG_WARNING, "No RECOGNITION-COMPLETE message received\n");
 		return NULL;
@@ -481,13 +516,15 @@ struct ast_speech_result* uni_recog_get(struct ast_speech *speech)
 			speech->results->text = NULL;
 			speech->results->score = 0;
 			if(input->first_cdata.first) {
-				ast_log(LOG_NOTICE, "Interpreted input: %s\n",input->first_cdata.first->text);
 				speech->results->text = strdup(input->first_cdata.first->text);
 			}
 			confidence = nlsml_input_attrib_get(input,"confidence",TRUE);
 			if(confidence) {
 				speech->results->score = atoi(confidence);
 			}
+			ast_log(LOG_NOTICE, "Interpreted input:%s score:%d\n",
+				speech->results->text ? speech->results->text : "none",
+				speech->results->score);
 			ast_set_flag(speech,AST_SPEECH_HAVE_RESULTS);
 		}
 	}
@@ -505,7 +542,7 @@ static apt_bool_t uni_recog_sm_response_signal(uni_speech_t *uni_speech, mrcp_si
 		apr_thread_cond_signal(uni_speech->wait_object);
 	}
 	else {
-		ast_log(LOG_NOTICE, "Received unexpected response :%d, while waiting for :%d\n",
+		ast_log(LOG_WARNING, "Received unexpected response :%d, while waiting for :%d\n",
 			request, uni_speech->sm_request);
 	}
 
@@ -523,7 +560,7 @@ static apt_bool_t uni_recog_mrcp_response_signal(uni_speech_t *uni_speech, mrcp_
 		apr_thread_cond_signal(uni_speech->wait_object);
 	}
 	else {
-		ast_log(LOG_NOTICE, "Received unexpected MRCP response\n");
+		ast_log(LOG_WARNING, "Received unexpected MRCP response\n");
 	}
 
 	apr_thread_mutex_unlock(uni_speech->mutex);
@@ -555,7 +592,7 @@ static apt_bool_t on_channel_add(mrcp_application_t *application, mrcp_session_t
 {
 	uni_speech_t *uni_speech = mrcp_application_channel_object_get(channel);
 
-	ast_log(LOG_NOTICE, "On channel add\n");
+	ast_log(LOG_DEBUG, "On channel add\n");
 	return uni_recog_sm_response_signal(uni_speech,MRCP_SIG_COMMAND_CHANNEL_ADD,status);
 }
 
@@ -564,7 +601,7 @@ static apt_bool_t on_channel_remove(mrcp_application_t *application, mrcp_sessio
 {
 	uni_speech_t *uni_speech = mrcp_application_channel_object_get(channel);
 
-	ast_log(LOG_NOTICE, "On channel remove\n");
+	ast_log(LOG_DEBUG, "On channel remove\n");
 	return uni_recog_sm_response_signal(uni_speech,MRCP_SIG_COMMAND_CHANNEL_REMOVE,status);
 }
 
@@ -573,7 +610,7 @@ static apt_bool_t on_message_receive(mrcp_application_t *application, mrcp_sessi
 {
 	uni_speech_t *uni_speech = mrcp_application_channel_object_get(channel);
 
-	ast_log(LOG_NOTICE, "On message receive\n");
+	ast_log(LOG_DEBUG, "On message receive\n");
 	if(message->start_line.message_type == MRCP_MESSAGE_TYPE_RESPONSE) {
 		return uni_recog_mrcp_response_signal(uni_speech,message);
 	}
@@ -629,10 +666,13 @@ static apt_bool_t uni_recog_stream_read(mpf_audio_stream_t *stream, mpf_frame_t 
 
 	if(uni_speech->media_buffer) {
 		mpf_frame_buffer_read(uni_speech->media_buffer,frame);
-	}
-#if 1	
-	ast_log(LOG_DEBUG, "Read audio type:%d len:%d\n",frame->type,frame->codec_frame.size);
+#if 0
+		ast_log(LOG_DEBUG, "Read audio '%s' type:%d len:%d\n",
+			uni_speech_id_get(uni_speech),
+			frame->type,
+			frame->codec_frame.size);
 #endif
+	}
 	return TRUE;
 }
 
@@ -648,7 +688,7 @@ static const mpf_audio_stream_vtable_t audio_stream_vtable = {
 };
 
 /** \brief Create recognition channel */
-static apt_bool_t uni_recog_channel_create(uni_speech_t *uni_speech)
+static apt_bool_t uni_recog_channel_create(uni_speech_t *uni_speech, int format)
 {
 	mrcp_channel_t *channel;
 	mpf_termination_t *termination;
@@ -660,7 +700,7 @@ static apt_bool_t uni_recog_channel_create(uni_speech_t *uni_speech)
 	/* add codec capabilities (Linear PCM) */
 	mpf_codec_capabilities_add(
 			&capabilities->codecs,
-			MPF_SAMPLE_RATE_8000 | MPF_SAMPLE_RATE_16000,
+			MPF_SAMPLE_RATE_8000,
 			"LPCM");
 
 	/* create media termination */
@@ -689,7 +729,7 @@ static apt_bool_t uni_recog_channel_create(uni_speech_t *uni_speech)
 static apt_bool_t uni_recog_sm_request_send(uni_speech_t *uni_speech, mrcp_sig_command_e sm_request)
 {
 	apt_bool_t res = FALSE;
-	ast_log(LOG_NOTICE, "Send session request type:%d\n",sm_request);
+	ast_log(LOG_DEBUG, "Send session request type:%d\n",sm_request);
 	apr_thread_mutex_lock(uni_speech->mutex);
 	uni_speech->is_sm_request = TRUE;
 	uni_speech->sm_request = sm_request;
@@ -736,7 +776,7 @@ static apt_bool_t uni_recog_mrcp_request_send(uni_speech_t *uni_speech, mrcp_mes
 	uni_speech->mrcp_request = message;
 
 	/* Send MRCP request */
-	ast_log(LOG_NOTICE, "Send MRCP request\n");
+	ast_log(LOG_DEBUG, "Send MRCP request\n");
 	res = mrcp_application_message_send(uni_speech->session,uni_speech->channel,message);
 
 	if(res == TRUE) {
