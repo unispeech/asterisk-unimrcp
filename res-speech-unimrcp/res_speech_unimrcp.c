@@ -1,5 +1,5 @@
 /* 
- * Asterisk UniMRCP Speech Module
+ * The implementation of Asterisk's Speech API via UniMRCP
  *
  * Copyright (C) 2009, Arsen Chaloyan  <achaloyan@gmail.com>
  *
@@ -511,6 +511,7 @@ struct ast_speech_result* uni_recog_get(struct ast_speech *speech)
 		nlsml_interpret_results_get(interpret,&instance,&input);
 		if(input) {
 			const char *confidence;
+			const char *grammar;
 			speech->results = ast_calloc(sizeof(struct ast_speech_result), 1);
 			speech->results->text = NULL;
 			speech->results->score = 0;
@@ -526,9 +527,18 @@ struct ast_speech_result* uni_recog_get(struct ast_speech *speech)
 					speech->results->score = atoi(confidence);
 				}
 			}
-			ast_log(LOG_NOTICE, "Interpreted input:%s score:%d\n",
+			grammar = nlsml_input_attrib_get(input,"grammar",TRUE);
+			if(grammar) {
+				grammar = strchr(grammar,':');
+				if(grammar && *grammar != '\0') {
+					grammar++;
+					speech->results->grammar = strdup(grammar);
+				}
+			}
+			ast_log(LOG_NOTICE, "Interpreted input:%s score:%d grammar:%s\n",
 				speech->results->text ? speech->results->text : "none",
-				speech->results->score);
+				speech->results->score,
+				speech->results->grammar ? speech->results->grammar : "none");
 			ast_set_flag(speech,AST_SPEECH_HAVE_RESULTS);
 		}
 	}
