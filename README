@@ -1,0 +1,33 @@
+INTRODUCTION
+============
+This is a connector bridge for Asterisk and UniMRCP.
+Currently it contains the implementation of Asterisk's Speech API
+via UniMRCP.
+
+
+INSTALLATION
+============
+
+- Prerequisites
+Both Asterisk (>=1.6.x) and UniMRCP (>0.8.0, at least r1306) must be installed first.
+http://www.asterisk.org/
+http://www.unimrcp.org/
+
+- Procedure
+Now, when all the prerequisites are in place, 
+the connector bridge can be installed next as follows
+$ ./configure
+$ make
+$ make install
+
+As a result res_speech_unimrcp.so will be installed in /usr/lib/asterisk/modules directory and will be loaded with Asterisk.
+No you can reuse your existing applications, which are based on Asterisk's Speech API or start implementing new once.
+A sample Asterisk's dialplan application can be found in conf subdir
+
+
+DOCUMENTATION
+=============
+http://www.voip-info.org/wiki/view/Asterisk+Generic+Speech+API
+
+http://code.google.com/p/unimrcp/wiki/InstallationGuide
+http://code.google.com/p/unimrcp/wiki/ConfigurationGuide
