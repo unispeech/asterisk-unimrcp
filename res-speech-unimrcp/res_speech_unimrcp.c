@@ -406,22 +406,19 @@ static int uni_recog_start(struct ast_speech *speech)
 
 	/* Get/allocate recognizer header */
 	recog_header = (mrcp_recog_header_t*) mrcp_resource_header_prepare(mrcp_message);
-	if(recog_header)
-	{
+	if(recog_header) {
 		/* set recognizer header fields */
-		if(mrcp_message->start_line.version == MRCP_VERSION_2)
-		{
+		if(mrcp_message->start_line.version == MRCP_VERSION_2) {
 			recog_header->cancel_if_queue = FALSE;
 			mrcp_resource_header_property_add(mrcp_message,RECOGNIZER_HEADER_CANCEL_IF_QUEUE);
 		}
-		recog_header->no_input_timeout = 5000;
+		/* set timeouts (should be configurable) */
+		recog_header->no_input_timeout = 15000;
 		mrcp_resource_header_property_add(mrcp_message,RECOGNIZER_HEADER_NO_INPUT_TIMEOUT);
-		recog_header->recognition_timeout = 10000;
+		recog_header->recognition_timeout = 15000;
 		mrcp_resource_header_property_add(mrcp_message,RECOGNIZER_HEADER_RECOGNITION_TIMEOUT);
 		recog_header->start_input_timers = TRUE;
 		mrcp_resource_header_property_add(mrcp_message,RECOGNIZER_HEADER_START_INPUT_TIMERS);
-		recog_header->confidence_threshold = 0.87f;
-		mrcp_resource_header_property_add(mrcp_message,RECOGNIZER_HEADER_CONFIDENCE_THRESHOLD);
 	}
 
 	/* Reset last event (if any) */
@@ -487,7 +484,9 @@ struct ast_speech_result* uni_recog_get(struct ast_speech *speech)
 	}
 
 	if(recog_header->completion_cause != RECOGNIZER_COMPLETION_CAUSE_SUCCESS) {
-		ast_log(LOG_WARNING, "Received non-successful Completion-Cause:%d\n",recog_header->completion_cause);
+		ast_log(LOG_WARNING, "Unsuccessful completion cause:%d reason:%s\n",
+		    recog_header->completion_cause,
+		    recog_header->completion_reason.buf ? recog_header->completion_reason.buf : "none");
 		return NULL;
 	}
 
@@ -520,7 +519,12 @@ struct ast_speech_result* uni_recog_get(struct ast_speech *speech)
 			}
 			confidence = nlsml_input_attrib_get(input,"confidence",TRUE);
 			if(confidence) {
-				speech->results->score = atoi(confidence);
+				if(uni_speech->mrcp_event->start_line.version == MRCP_VERSION_2) {
+					speech->results->score = (int)(atof(confidence) * 100);
+				}
+				else {
+					speech->results->score = atoi(confidence);
+				}
 			}
 			ast_log(LOG_NOTICE, "Interpreted input:%s score:%d\n",
 				speech->results->text ? speech->results->text : "none",
