@@ -34,6 +34,10 @@ To unload the module use
 $ cd res-speech-unimrcp
 $ make unload
 
+
+CONFIGURATION
+=============
+
 Now you may start developing or just continue using speech applications via 
 Asterisk's dialplan, AGI and everything else based on Asterisk's Generic Speech API.
 
@@ -48,6 +52,12 @@ http://code.google.com/p/unimrcp/wiki/InteroperabilityGuide
 See the Configuration Guide on how to configure UniMRCP client.
 http://code.google.com/p/unimrcp/wiki/ConfigurationGuide
 
+
+REPOSITORY
+==========
+
+To checkout a working copy of the module from svn use
+$ svn checkout http://unimrcp.googlecode.com/svn/solutions/asterisk-unimrcp
 
 
 REFERENCES
