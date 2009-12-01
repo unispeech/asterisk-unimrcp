@@ -833,6 +833,10 @@ static apt_bool_t uni_engine_unload()
 		mrcp_client_destroy(uni_engine.client);
 		uni_engine.client = NULL;
 	}
+
+	/* Destroy singleton logger */
+	apt_log_instance_destroy();
+
 	if(uni_engine.pool) {
 		apr_pool_destroy(uni_engine.pool);
 		uni_engine.pool = NULL;
@@ -869,9 +873,9 @@ static apt_bool_t uni_engine_load()
 	uni_engine.pool = pool;
 
 	dir_layout = apt_default_dir_layout_create(UNIMRCP_DIR_LOCATION,pool);
-	/* create singleton logger */
+	/* Create singleton logger */
 	apt_log_instance_create(APT_LOG_OUTPUT_CONSOLE | APT_LOG_OUTPUT_FILE, APT_PRIO_INFO, pool);
-	/* open the log file */
+	/* Open the log file */
 	apt_log_file_open(dir_layout->log_dir_path,"unimrcpclient",MAX_LOG_FILE_SIZE,MAX_LOG_FILE_COUNT,pool);
 
 
