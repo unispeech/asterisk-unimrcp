@@ -60,6 +60,12 @@ To checkout a working copy of the module from svn use
 $ svn checkout http://unimrcp.googlecode.com/svn/solutions/asterisk-unimrcp
 
 
+APP_UNIMRCP
+===========
+
+See http://code.google.com/p/unimrcp/wiki/asteriskUniMRCP for installation and configuration instructions.
+
+
 REFERENCES
 ==========
 
