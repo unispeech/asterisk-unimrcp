@@ -2607,7 +2607,7 @@ static const char *grammar_type_to_mime(grammar_type_t type, profile_t *profile)
 	}
 }
 
-
+#if 0
 /* Check if recognition is complete. */
 static int recog_channel_check_results(speech_channel_t *schannel)
 {
@@ -2685,6 +2685,7 @@ static int recog_channel_start_input_timers(speech_channel_t *schannel)
 
 	return status;
 }
+#endif
 
 /* Flag that input has started. */
 static int recog_channel_set_start_of_input(speech_channel_t *schannel)
@@ -3930,11 +3931,6 @@ static int app_synth_exec(struct ast_channel *chan, void *data)
 	struct ast_frame *f;
 	struct ast_frame fr;
 	struct timeval next;
-	struct myframe {
-		struct ast_frame f;
-		unsigned char offset[AST_FRIENDLY_OFFSET];
-		unsigned char frdata[DEFAULT_FRAMESIZE*4];
-	} myf;
 	int ms;
 	apr_size_t len;
 	int rres = 0;
