@@ -7,9 +7,6 @@ AC_INIT([asterisk-unimrcp],[0.1.0])
 
 AC_CONFIG_AUX_DIR([build])
 AC_CONFIG_MACRO_DIR([build/acmacros])
-AC_PREFIX_DEFAULT(/usr/lib/asterisk/modules)
-
-moddir='${prefix}'
 
 AM_INIT_AUTOMAKE(foreign)
 
@@ -28,7 +25,25 @@ AC_PROG_LIBTOOL
 AC_SUBST(moddir)
 
 FIND_UNIMRCP
+FIND_ASTERISK
 
+if test "${asterisk_dir}" = ""; then
+  asterisk_dir="/usr"
+  if test "${asterisk_conf_dir}" = ""; then
+    asterisk_conf_dir="/etc/asterisk"
+  fi
+else
+  if test "${asterisk_conf_dir}" = ""; then
+    asterisk_conf_dir="${asterisk_dir}/etc/asterisk"
+  fi
+fi
+
+if test "x$prefix" = "xNONE"; then
+echo "Prefix empty, so using Asterisk directory"
+prefix="${asterisk_dir}/lib/asterisk/modules"
+fi
+
+moddir='${prefix}'
 
 AC_DEFUN([AX_COMPILER_VENDOR],
 [
@@ -67,6 +82,13 @@ AM_CONDITIONAL(ISMAC, [test `uname -s` = Darwin])
 AC_CONFIG_FILES([
   Makefile
   res-speech-unimrcp/Makefile
+  app-unimrcp/Makefile
 ])
 
 AC_OUTPUT
+
+dnl Report configuration.
+echo
+echo "Modules install path.............. ${prefix}"
+echo "Configuration file install path... ${asterisk_conf_dir}"
+

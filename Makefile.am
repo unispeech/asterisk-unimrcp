@@ -14,4 +14,4 @@ MAINTAINERCLEANFILES 	= Makefile.in aclocal.m4 configure $(AUX_DIST)
 
 ACLOCAL			= aclocal -I $(macrodir)
 
-SUBDIRS                 = res-speech-unimrcp
+SUBDIRS                 = res-speech-unimrcp app-unimrcp
