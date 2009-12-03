@@ -22,10 +22,28 @@ AC_DEFUN([FIND_ASTERISK], [
 	asterisk_version=$($asterisk_dir/sbin/asterisk -V | cut -d' ' -f2)
     fi
 
-    ASTERISKVER=$(echo $asterisk_version | grep -o -E "(^1\.4)|(^1\.6\.[0-9])|(^SVN)" | sed -e 's/\.//g' | sed -e 's/SVN/162/g')
-
-    AC_DEFINE_UNQUOTED(ASTERISK$ASTERISKVER)
     AC_MSG_RESULT([$asterisk_version])
+
+    case $asterisk_version in
+        1.4*)
+	        AC_DEFINE_UNQUOTED(ASTERISK14)
+                ;;
+        1.6.0.*)
+	        AC_DEFINE_UNQUOTED(ASTERISK160)
+                ;;
+        1.6.1.*)
+	        AC_DEFINE_UNQUOTED(ASTERISK161)
+                ;;
+        1.6.2.*)
+	        AC_DEFINE_UNQUOTED(ASTERISK162)
+                ;;
+        SVN*)
+	        AC_DEFINE_UNQUOTED(ASTERISK162)
+                ;;
+        *)
+	        AC_DEFINE_UNQUOTED(ASTERISK162)
+                ;;
+    esac
 
     AC_SUBST(ASTERISK_INCLUDES)
 ])

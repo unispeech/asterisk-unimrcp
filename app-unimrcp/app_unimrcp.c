@@ -52,6 +52,14 @@
 	<depend>apr</depend>
  ***/
 
+#define AST_MODULE "app_unimrcp"
+
+#undef PACKAGE_BUGREPORT
+#undef PACKAGE_NAME
+#undef PACKAGE_STRING
+#undef PACKAGE_TARNAME
+#undef PACKAGE_VERSION
+
 #include "asterisk.h"
 
 ASTERISK_FILE_VERSION(__FILE__, "$Revision: 200656 $")
