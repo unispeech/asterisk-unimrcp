@@ -71,6 +71,7 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 200656 $")
 #include "asterisk/pbx.h"
 #include "asterisk/module.h"
 #include "asterisk/lock.h"
+#include "asterisk/file.h"
 #include "asterisk/app.h"
 
 /*** DOCUMENTATION
@@ -85,11 +86,16 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 200656 $")
 		<description>
 		<para>MRCP synthesis application.
 		Supports version 1 and 2 of MRCP, using UniMRCP. The options can be one or
-		more of the following: i=interrupt keys or <literal>any</literal> for any
-		DTMF key, p=profile to use, f=filename to save audio to, l=language to use
-		in the synthesis header, v=voice name, g=gender and a=voice age. If the
-		audio file name is empty or the parameter not given, no audio will be
-		stored to disk.</para>
+		more of the following: i=interrupt keys or <literal>any</literal> for any DTMF
+		key, p=profile to use, f=filename to save audio to, l=language to use in the
+		synthesis header (en-US/en-GB/etc.), v=voice name, g=gender (male/female),
+		a=voice age (1-19 digits), pv=prosody volume
+		(silent/x-soft/soft/medium/load/x-loud/default), pr=prosody rate
+		(x-slow/slow/medium/fast/x-fast/default), ll=load lexicon (true/false),
+		vv=voice variant (1-19 digits). If the audio file name is empty or the
+		parameter not given, no audio will be stored to disk. If the interrupt keys
+		are set, then kill-on-bargein will be enabled, otherwise if it is empty or not
+		given, then kill-on-bargein will be disabled.</para>
 		</description>
 	</application>
 	<application name="MRCPRecog" language="en_US">
@@ -102,15 +108,25 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 200656 $")
 		</syntax>
 		<description>
 		<para>MRCP recognition application.
-		Supports version 1 and 2 of MRCP, using UniMRCP.</para>
-		<para>
-		First parameter is grammar / text of speech. Second paramater contains more options:
-		p=profile, i=interrupt key, t=auto speech timeout, f=filename of prompt to play,
-		b=bargein value 1(true)  or 0(false)
-		</para>
+		Supports version 1 and 2 of MRCP, using UniMRCP. First parameter is grammar /
+		text of speech. Second paramater contains more options: p=profile, i=interrupt
+		key, t=auto speech timeout, f=filename of prompt to play, b=bargein value (no
+		barge-in=0, ASR engine barge-in=1, Asterisk barge-in=2, Asterisk and ASR engine
+		barge-in=3), ct=confidence threshold (0.0 - 1.0), sl=sensitivity level (0.0 -
+		1.0), sva=speed vs accuracy (0.0 - 1.0), nb=n-best list length (1 - 19 digits),
+		nit=no input timeout in millisieconds (1 - 19 digits), sit=start input timers
+		(true/false), sct=speech complete timeout (1 - 19 digits), sint=speech
+		incomplete timeout (1 - 19 digits), dit=dtmf interdigit timeout in (1 - 19
+		digits), dtt=dtmf terminate timout (1 - 19 digits), dttc=dtmf terminate
+		characters, sw=save waveform (true/false), nac=new audio channel (true/false),
+		sl=speech language (en-US/en-GB/etc.), rm=recognition mode, hmaxd=hotword max
+		duration (1 - 19 digits), hmind=hotword min, duration (1 - 19 digits),
+		cdb=clear dtmf buffer (true/false), enm=early no match (true/false), iwu=input
+		waveform URI, mt=media type.</para>
 		</description>
 	</application>
  ***/
+
 /* --- MRCP GENERIC --- */
 
 /* UniMRCP includes. */
@@ -131,9 +147,6 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 200656 $")
 #include "mrcp_synth_resource.h"
 #include "mrcp_recog_header.h"
 #include "mrcp_recog_resource.h"
-/* Copy from the unimrcp build directory build/uni_version.h to installed location.
- * UniMRCP doesn't install this by default.
- */
 #include "uni_version.h"
 #if UNI_VERSION_AT_LEAST(0,8,0)
 #include "mrcp_resource_loader.h"
@@ -146,30 +159,43 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 200656 $")
 #include "mrcp_sofiasip_client_agent.h"
 #include "mrcp_unirtsp_client_agent.h"
 #include "mrcp_client_connection.h"
-#include "asterisk/file.h"
 
 /* The name of the applications. */
 static char *app_synth = "MRCPSynth";
 static char *app_recog = "MRCPRecog";
 
-#ifndef ASTERISK162 
-static char *recogsynopsis = "MRCP recognition application.";
-
-static char *recogdescrip =
-"First parameter is grammar / text of speech.\n"
-" Second paramater contains more options:\n"
-"p=profile, i=interrupt key, t=auto speech \n"
-"timeout, f=filename of prompt to play,\n"
-"b=bargein value 1(true)  or 0(false)\n";
-
+#if !defined(ASTERISKSVN) && !defined(ASTERISK162)
 static char *synthsynopsis = "MRCP synthesis application.";
 static char *synthdescrip =
 "Supports version 1 and 2 of MRCP, using UniMRCP. The options can be one or\n"
-"more of the following: i=interrupt keys or <literal>any</literal> for any\n"
-"DTMF key, p=profile to use, f=filename to save audio to, l=language to use\n"
-"in the synthesis header, v=voice name, g=gender and a=voice age. If the\n"
-"audio file name is empty or the parameter not given, no audio will be\n"
-"stored to disk\n";
+"more of the following: i=interrupt keys or <literal>any</literal> for any DTMF\n"
+"key, p=profile to use, f=filename to save audio to, l=language to use in the\n"
+"synthesis header (en-US/en-GB/etc.), v=voice name, g=gender (male/female),\n"
+"a=voice age (1-19 digits), pv=prosody volume\n"
+"(silent/x-soft/soft/medium/load/x-loud/default), pr=prosody rate\n"
+"(x-slow/slow/medium/fast/x-fast/default), ll=load lexicon (true/false),\n"
+"vv=voice variant (1-19 digits). If the audio file name is empty or the\n"
+"parameter not given, no audio will be stored to disk. If the interrupt keys\n"
+"are set, then kill-on-bargein will be enabled, otherwise if it is empty or not\n"
+"given, then kill-on-bargein will be disabled.\n";
+
+static char *recogsynopsis = "MRCP recognition application.";
+static char *recogdescrip =
+"Supports version 1 and 2 of MRCP, using UniMRCP. First parameter is grammar /\n"
+"text of speech. Second paramater contains more options: p=profile, i=interrupt\n"
+"key, t=auto speech timeout, f=filename of prompt to play, b=bargein value (no\n"
+"barge-in=0, ASR engine barge-in=1, Asterisk barge-in=2, Asterisk and ASR engine\n"
+"barge-in=3), ct=confidence threshold (0.0 - 1.0), sl=sensitivity level (0.0 -\n"
+"1.0), sva=speed vs accuracy (0.0 - 1.0), nb=n-best list length (1 - 19 digits),\n"
+"nit=no input timeout in millisieconds (1 - 19 digits), sit=start input timers\n"
+"(true/false), sct=speech complete timeout (1 - 19 digits), sint=speech\n"
+"incomplete timeout (1 - 19 digits), dit=dtmf interdigit timeout in (1 - 19\n"
+"digits), dtt=dtmf terminate timout (1 - 19 digits), dttc=dtmf terminate\n"
+"characters, sw=save waveform (true/false), nac=new audio channel (true/false),\n"
+"sl=speech language (en-US/en-GB/etc.), rm=recognition mode, hmaxd=hotword max\n"
+"duration (1 - 19 digits), hmind=hotword min, duration (1 - 19 digits),\n"
+"cdb=clear dtmf buffer (true/false), enm=early no match (true/false), iwu=input\n"
+"waveform URI, mt=media type.\n";
 #endif
 
 /* The configuration file to read. */
@@ -225,10 +251,8 @@ static char *synthdescrip =
 
 int apr_initialized = 0;
 
-#ifndef ASTERISK162
-	#ifndef format_t
-	typedef int64_t format_t;
-	#endif
+#ifndef ASTERISKSVN
+typedef int64_t format_t;
 #endif
 
 /* MRCP application. */
@@ -577,7 +601,6 @@ static int globals_init(void)
 
 
 /* --- GENERIC FUNCTIONS --- */
-
 static void trimstr(char* input) {
 	unsigned long int i;
 	unsigned long int j;
@@ -955,7 +978,7 @@ static int audio_queue_write(audio_queue_t *queue, void *data, apr_size_t *data_
 				apr_thread_cond_signal(queue->cond);
 		}
 	} else {
-		ast_log(LOG_DEBUG, "(%s) audio queue overflow!\n", queue->name);
+		ast_log(LOG_WARNING, "(%s) audio queue overflow!\n", queue->name);
 		*data_len = 0;
 		status = -1;
 	}
@@ -1475,6 +1498,60 @@ static void speech_channel_set_state(speech_channel_t *schannel, speech_channel_
 	}
 }
 
+/* Send BARGE-IN-OCCURED. */
+static int speech_channel_bargeinoccured(speech_channel_t *schannel){
+	int status = 0;
+	
+	if (schannel == NULL)
+		return -1;
+
+	if (schannel->mutex != NULL)
+		apr_thread_mutex_lock(schannel->mutex);
+
+	if (schannel->state == SPEECH_CHANNEL_PROCESSING) {
+		mrcp_method_id method;
+		mrcp_message_t *mrcp_message;
+
+		method = SYNTHESIZER_BARGE_IN_OCCURRED;
+		ast_log(LOG_DEBUG, "(%s) Sending barge-in on %s\n", schannel->name, speech_channel_type_to_string(schannel->type));
+
+		/* Send STOP to MRCP server. */
+		mrcp_message = mrcp_application_message_create(schannel->unimrcp_session, schannel->unimrcp_channel, method);
+
+		if (mrcp_message == NULL) {
+			ast_log(LOG_ERROR, "(%s) Failed to create BARGE_IN_OCCURRED message\n", schannel->name);
+			status = -1;
+		} else {
+			if (!mrcp_application_message_send(schannel->unimrcp_session, schannel->unimrcp_channel, mrcp_message))
+				ast_log(LOG_WARNING, "(%s) [speech_channel_bargeinoccured] Failed to send BARGE_IN_OCCURRED message\n", schannel->name);
+			else if (schannel->cond != NULL) {
+				while (schannel->state == SPEECH_CHANNEL_PROCESSING) {
+					if (apr_thread_cond_timedwait(schannel->cond, schannel->mutex, SPEECH_CHANNEL_TIMEOUT_USEC) == APR_TIMEUP) {
+						break;
+					}
+				}
+			}
+
+			if (schannel->state == SPEECH_CHANNEL_PROCESSING) {
+				ast_log(LOG_ERROR, "(%s) Timed out waiting for session to close.  Continuing\n", schannel->name);
+				schannel->state = SPEECH_CHANNEL_ERROR;
+				status = -1;
+			} else if (schannel->state == SPEECH_CHANNEL_ERROR) {
+				ast_log(LOG_ERROR, "(%s) Channel error\n", schannel->name);
+				schannel->state = SPEECH_CHANNEL_ERROR;
+				status = -1;
+			} else {
+				ast_log(LOG_DEBUG, "(%s) %s barge-in sent\n", schannel->name, speech_channel_type_to_string(schannel->type));
+			}
+		}
+	}
+
+	if (schannel->mutex != NULL)
+		apr_thread_mutex_unlock(schannel->mutex);
+
+	return status;
+}
+
 static int speech_channel_create(speech_channel_t **schannel, const char *name, speech_channel_type_t type, my_mrcp_application_t *app, const char *codec, apr_uint16_t rate, struct ast_channel *chan)
 {
 	apr_pool_t *pool = NULL;
@@ -1508,12 +1585,12 @@ static int speech_channel_create(speech_channel_t **schannel, const char *name, 
 		}
 
 		if ((codec == NULL) || (strlen(codec) == 0)) {
-			ast_log(LOG_WARNING, "No codec specified, assuming \"L16\"\n");
+			ast_log(LOG_WARNING, "(%s) No codec specified, assuming \"L16\"\n", schan->name);
 			schan->codec = "L16";
 		} else
 			schan->codec = apr_pstrdup(pool, codec);
 		if ((schan->codec == NULL) || (strlen(schan->codec) == 0)) {
-			ast_log(LOG_WARNING, "Unable to allocate codec for channel, using \"L16\"\n");
+			ast_log(LOG_WARNING, "(%s) Unable to allocate codec for channel, using \"L16\"\n", schan->name);
 			schan->codec = "L16";
 		}
 
@@ -1540,16 +1617,16 @@ static int speech_channel_create(speech_channel_t **schannel, const char *name, 
 		}
 
 		if (schan->params == NULL) {
-			ast_log(LOG_ERROR, "Unable to allocate hash for channel parameters\n");
+			ast_log(LOG_ERROR, "(%s) Unable to allocate hash for channel parameters\n",schan->name);
 			status = -1;
 		} else if ((apr_thread_mutex_create(&schan->mutex, APR_THREAD_MUTEX_UNNESTED, pool) != APR_SUCCESS) || (schan->mutex == NULL)) {
-			ast_log(LOG_ERROR, "Unable to create channel mutex\n");
+			ast_log(LOG_ERROR, "(%s) Unable to create channel mutex\n", schan->name);
 			status = -1;
 		} else if ((apr_thread_cond_create(&schan->cond, pool) != APR_SUCCESS) || (schan->cond == NULL)) {
-			ast_log(LOG_ERROR, "Unable to create channel condition variable\n");
+			ast_log(LOG_ERROR, "(%s) Unable to create channel condition variable\n",schan->name);
 			status = -1;
 		} else if ((audio_queue_create(&schan->audio_queue, name) != 0) || (schan->audio_queue == NULL)) {
-			ast_log(LOG_ERROR, "Unable to create audio queue for channel\n");
+			ast_log(LOG_ERROR, "(%s) Unable to create audio queue for channel\n",schan->name);
 			status = -1;
 		} else {
 			ast_log(LOG_DEBUG, "Created speech channel: Name=%s, Type=%s, Codec=%s, Rate=%u\n", schan->name, speech_channel_type_to_string(schan->type), schan->codec, schan->rate);
@@ -1561,19 +1638,19 @@ static int speech_channel_create(speech_channel_t **schannel, const char *name, 
 		if (schan != NULL) {
 			if (schan->audio_queue != NULL) {
 				if (audio_queue_destroy(schan->audio_queue) != 0)
-					ast_log(LOG_WARNING, "Unable to destroy channel audio queue\n");
+					ast_log(LOG_WARNING, "(%s) Unable to destroy channel audio queue\n", schan->name);
 			}
 
 			if (schan->cond != NULL) {
 				if (apr_thread_cond_destroy(schan->cond) != APR_SUCCESS)
-					ast_log(LOG_WARNING, "Unable to destroy channel condition variable\n");
+					ast_log(LOG_WARNING, "(%s) Unable to destroy channel condition variable\n", schan->name);
 
 				schan->cond = NULL;
 			}
 
 			if (schan->mutex != NULL) {
 				if (apr_thread_mutex_destroy(schan->mutex) != APR_SUCCESS)
-					ast_log(LOG_WARNING, "Unable to destroy channel mutex variable\n");
+					ast_log(LOG_WARNING, "(%s) Unable to destroy channel mutex variable\n", schan->name);
 			}
 
 			schan->name = NULL;
@@ -1701,8 +1778,12 @@ static int speech_channel_destroy(speech_channel_t *schannel)
 		/* Destroy the channel and session if not already done. */
 		if (schannel->state != SPEECH_CHANNEL_CLOSED) {
 			if ((schannel->unimrcp_session != NULL) && (schannel->unimrcp_channel != NULL)) {
-				if (!mrcp_application_channel_remove(schannel->unimrcp_session, schannel->unimrcp_channel))
-					ast_log(LOG_WARNING, "Unable to remove channel from application\n");
+				if (!mrcp_application_session_terminate(schannel->unimrcp_session))
+					ast_log(LOG_WARNING, "(%s) %s unable to terminate application session\n", schannel->name, speech_channel_type_to_string(schannel->type));
+
+				/* if (!mrcp_application_channel_remove(schannel->unimrcp_session, schannel->unimrcp_channel))
+					ast_log(LOG_WARNING, "(%s) Unable to remove channel from application\n", schannel->name);
+				 */
 			}
 
 			if (schannel->cond != NULL)
@@ -1718,9 +1799,9 @@ static int speech_channel_destroy(speech_channel_t *schannel)
 
 		if (schannel->audio_queue != NULL) {
 			if (audio_queue_destroy(schannel->audio_queue) != 0)
-				ast_log(LOG_WARNING, "Unable to destroy channel audio queue\n");
+				ast_log(LOG_WARNING, "(%s) Unable to destroy channel audio queue\n",schannel->name);
 			else
-				ast_log(LOG_NOTICE, "Audio queue destroyed\n");
+				ast_log(LOG_NOTICE, "(%s) Audio queue destroyed\n", schannel->name);
 		}
 
 		if (schannel->params != NULL)
@@ -1728,12 +1809,12 @@ static int speech_channel_destroy(speech_channel_t *schannel)
 
 		if (schannel->cond != NULL) {
 			if (apr_thread_cond_destroy(schannel->cond) != APR_SUCCESS)
-				ast_log(LOG_WARNING, "Unable to destroy channel condition variable\n");
+				ast_log(LOG_WARNING, "(%s) Unable to destroy channel condition variable\n", schannel->name);
 		}
 
 		if (schannel->mutex != NULL) {
 			if (apr_thread_mutex_destroy(schannel->mutex) != APR_SUCCESS)
-				ast_log(LOG_WARNING, "Unable to destroy channel condition variable\n");
+				ast_log(LOG_WARNING, "(%s) Unable to destroy channel condition variable\n", schannel->name);
 		}
 
 		if (schannel->pool != NULL)
@@ -1964,6 +2045,9 @@ static int speech_channel_read(speech_channel_t *schannel, void *data, apr_size_
 
 		if (schannel->mutex != NULL)
 			apr_thread_mutex_unlock(schannel->mutex);
+	} else {
+		ast_log(LOG_ERROR, "Speech channel structure pointer is NULL\n");
+		return -1;
 	}
 
 	return status;
@@ -1996,6 +2080,9 @@ static int speech_channel_write(speech_channel_t *schannel, void *data, apr_size
 
 		if (schannel->mutex != NULL)
 			apr_thread_mutex_unlock(schannel->mutex);
+	} else {
+		ast_log(LOG_ERROR, "Speech channel structure pointer is NULL\n");
+		return -1;
 	}
 
 	return res;
@@ -2123,7 +2210,7 @@ static apt_bool_t synth_message_handler(const mrcp_app_message_t *app_message)
 	if (app_message != NULL)
 		return mrcp_application_message_dispatch(&globals.synth.dispatcher, app_message);
 	else {
-		ast_log(LOG_ERROR, "(unknown) channel error!\n");
+		ast_log(LOG_ERROR, "(unknown) app_message error!\n");
 		return TRUE;
 	}
 }
@@ -2161,6 +2248,17 @@ static apt_bool_t synth_on_message_receive(mrcp_application_t *application, mrcp
 				} else {
 					/* Received unexpected request state. */
 					ast_log(LOG_DEBUG, "(%s) unexpected STOP response, request_state = %d\n", schannel->name, message->start_line.request_state);
+					speech_channel_set_state(schannel, SPEECH_CHANNEL_ERROR);
+				}
+			} else if(message->start_line.method_id == SYNTHESIZER_BARGE_IN_OCCURRED) {
+				/* Received response to the BARGE_IN_OCCURRED request. */
+				if (message->start_line.request_state == MRCP_REQUEST_STATE_COMPLETE) {
+					/* Got COMPLETE. */
+					ast_log(LOG_DEBUG, "(%s) COMPLETE\n", schannel->name);
+					speech_channel_set_state(schannel, SPEECH_CHANNEL_READY);
+				} else {
+					/* Received unexpected request state. */
+					ast_log(LOG_DEBUG, "(%s) unexpected BARGE_IN_OCCURRED response, request_state = %d\n", schannel->name, message->start_line.request_state);
 					speech_channel_set_state(schannel, SPEECH_CHANNEL_ERROR);
 				}
 			} else {
@@ -2406,6 +2504,11 @@ static int synth_channel_set_header(speech_channel_t *schannel, int id, char *va
 			apt_string_assign(&synth_hdr->speech_language, val, msg->pool);
 			mrcp_resource_header_property_add(msg, SYNTHESIZER_HEADER_SPEECH_LANGUAGE);
 			break;
+		
+		case SYNTHESIZER_HEADER_LOAD_LEXICON:
+			synth_hdr->load_lexicon = (strcasecmp("true", val) == 0);
+			mrcp_resource_header_property_add(msg, SYNTHESIZER_HEADER_LOAD_LEXICON);
+			break;
 
 		/* Unsupported by this module. */
 		case SYNTHESIZER_HEADER_JUMP_SIZE:
@@ -2419,13 +2522,12 @@ static int synth_channel_set_header(speech_channel_t *schannel, int id, char *va
 		case SYNTHESIZER_HEADER_FAILED_URI_CAUSE:
 		case SYNTHESIZER_HEADER_SPEAK_RESTART:
 		case SYNTHESIZER_HEADER_SPEAK_LENGTH:
-		case SYNTHESIZER_HEADER_LOAD_LEXICON:
 		case SYNTHESIZER_HEADER_LEXICON_SEARCH_ORDER:
 		default:
-			ast_log(LOG_ERROR, "(%s) unsupported SYNTHESIZER_HEADER type\n", schannel->name);
+			ast_log(LOG_ERROR, "(%s) unsupported SYNTHESIZER_HEADER type (unsupported in this module)\n", schannel->name);
 			break;
 	}
-
+	
 	return 0;
 }
 
@@ -2507,7 +2609,6 @@ static int synth_channel_speak(speech_channel_t *schannel, const char *text)
 
 			if (schannel->mutex != NULL)
 				apr_thread_mutex_unlock(schannel->mutex);
-
 			return -1;
 		}
 
@@ -2545,6 +2646,8 @@ static int synth_channel_speak(speech_channel_t *schannel, const char *text)
 		audio_queue_clear(schannel->audio_queue);
 
 		if (!mrcp_application_message_send(schannel->unimrcp_session, schannel->unimrcp_channel, mrcp_message)) {
+			ast_log(LOG_ERROR,"(%s) Failed to send SPEAK message", schannel->name);
+
 			if (schannel->mutex != NULL)
 				apr_thread_mutex_unlock(schannel->mutex);
 
@@ -3001,7 +3104,7 @@ static int recog_channel_set_header(speech_channel_t *schannel, int id, char *va
 		/* Unknown. */
 		case RECOGNIZER_HEADER_VER_BUFFER_UTTERANCE:
 		default:
-			ast_log(LOG_WARNING, "(%s) unsupported RECOGNIZER header\n", schannel->name);
+			ast_log(LOG_WARNING, "(%s) unsupported RECOGNIZER header( in this module )\n", schannel->name);
 			break;
 	}
 
@@ -3058,7 +3161,7 @@ static int recog_channel_set_params(speech_channel_t *schannel, mrcp_message_t *
 			mrcp_generic_header_property_add(msg, GENERIC_HEADER_VENDOR_SPECIFIC_PARAMS);
 		}
 	} else
-		ast_log(LOG_ERROR, "(unknown) channel error!\n");
+		ast_log(LOG_ERROR, "(unknown) [recog_channel_set_params] channel error!\n");
 
 	return 0;
 }
@@ -3571,39 +3674,39 @@ static int recog_load(apr_pool_t *pool)
 	globals.recog.param_id_map = apr_hash_make(pool);
 
 	if (globals.recog.param_id_map != NULL) {
-		apr_hash_set(globals.recog.param_id_map, apr_pstrdup(pool, "Confidence-Threshold"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_CONFIDENCE_THRESHOLD, pool));
-		apr_hash_set(globals.recog.param_id_map, apr_pstrdup(pool, "Sensitivity-Level"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_SENSITIVITY_LEVEL, pool));
-		apr_hash_set(globals.recog.param_id_map, apr_pstrdup(pool, "Speed-Vs-Accuracy"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_SPEED_VS_ACCURACY, pool));
-		apr_hash_set(globals.recog.param_id_map, apr_pstrdup(pool, "N-Best-List-Length"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_N_BEST_LIST_LENGTH, pool));
-		apr_hash_set(globals.recog.param_id_map, apr_pstrdup(pool, "No-Input-Timeout"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_NO_INPUT_TIMEOUT, pool));
-		apr_hash_set(globals.recog.param_id_map, apr_pstrdup(pool, "Recognition-Timeout"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_RECOGNITION_TIMEOUT, pool));
-		apr_hash_set(globals.recog.param_id_map, apr_pstrdup(pool, "Waveform-Url"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_WAVEFORM_URI, pool));
-		apr_hash_set(globals.recog.param_id_map, apr_pstrdup(pool, "Completion-Cause"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_COMPLETION_CAUSE, pool));
-		apr_hash_set(globals.recog.param_id_map, apr_pstrdup(pool, "Recognizer-Context-Block"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_RECOGNIZER_CONTEXT_BLOCK, pool));
-		apr_hash_set(globals.recog.param_id_map, apr_pstrdup(pool, "Start-Input-Timers"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_START_INPUT_TIMERS, pool));
-		apr_hash_set(globals.recog.param_id_map, apr_pstrdup(pool, "Speech-Complete-Timeout"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_SPEECH_COMPLETE_TIMEOUT, pool));
-		apr_hash_set(globals.recog.param_id_map, apr_pstrdup(pool, "Speech-Incomplete-Timeout"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_SPEECH_INCOMPLETE_TIMEOUT, pool));
-		apr_hash_set(globals.recog.param_id_map, apr_pstrdup(pool, "DTMF-Interdigit-Timeout"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_DTMF_INTERDIGIT_TIMEOUT, pool));
-		apr_hash_set(globals.recog.param_id_map, apr_pstrdup(pool, "DTMF-Term-Timeout"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_DTMF_TERM_TIMEOUT, pool));
-		apr_hash_set(globals.recog.param_id_map, apr_pstrdup(pool, "DTMF-Term-Char"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_DTMF_TERM_CHAR, pool));
-		apr_hash_set(globals.recog.param_id_map, apr_pstrdup(pool, "Failed-Uri"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_FAILED_URI, pool));
-		apr_hash_set(globals.recog.param_id_map, apr_pstrdup(pool, "Failed-Uri-Cause"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_FAILED_URI_CAUSE, pool));
-		apr_hash_set(globals.recog.param_id_map, apr_pstrdup(pool, "Save-Waveform"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_SAVE_WAVEFORM, pool));
-		apr_hash_set(globals.recog.param_id_map, apr_pstrdup(pool, "New-Audio-Channel"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_NEW_AUDIO_CHANNEL, pool));
-		apr_hash_set(globals.recog.param_id_map, apr_pstrdup(pool, "Speech-Language"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_SPEECH_LANGUAGE, pool));
-		apr_hash_set(globals.recog.param_id_map, apr_pstrdup(pool, "Input-Type"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_INPUT_TYPE, pool));
-		apr_hash_set(globals.recog.param_id_map, apr_pstrdup(pool, "Input-Waveform-Uri"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_INPUT_WAVEFORM_URI, pool));
-		apr_hash_set(globals.recog.param_id_map, apr_pstrdup(pool, "Completion-Reason"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_COMPLETION_REASON, pool));
-		apr_hash_set(globals.recog.param_id_map, apr_pstrdup(pool, "Media-Type"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_MEDIA_TYPE, pool));
-		apr_hash_set(globals.recog.param_id_map, apr_pstrdup(pool, "Ver-Buffer-Utterance"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_VER_BUFFER_UTTERANCE, pool));
-		apr_hash_set(globals.recog.param_id_map, apr_pstrdup(pool, "Recognition-Mode"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_RECOGNITION_MODE, pool));
-		apr_hash_set(globals.recog.param_id_map, apr_pstrdup(pool, "Cancel-If-Queue"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_CANCEL_IF_QUEUE, pool));
-		apr_hash_set(globals.recog.param_id_map, apr_pstrdup(pool, "Hotword-Max-Duration"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_HOTWORD_MAX_DURATION, pool));
-		apr_hash_set(globals.recog.param_id_map, apr_pstrdup(pool, "Hotword-Min-Duration"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_HOTWORD_MIN_DURATION, pool));
-		apr_hash_set(globals.recog.param_id_map, apr_pstrdup(pool, "Interpret-Text"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_INTERPRET_TEXT, pool));
-		apr_hash_set(globals.recog.param_id_map, apr_pstrdup(pool, "DTMF-Buffer-Time"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_DTMF_BUFFER_TIME, pool));
-		apr_hash_set(globals.recog.param_id_map, apr_pstrdup(pool, "Clear-DTMF-Buffer"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_CLEAR_DTMF_BUFFER, pool));
-		apr_hash_set(globals.recog.param_id_map, apr_pstrdup(pool, "Early-No-Match"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_EARLY_NO_MATCH, pool));
+		apr_hash_set(globals.recog.param_id_map, apr_pstrdup(pool, "confidence-threshold"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_CONFIDENCE_THRESHOLD, pool));
+		apr_hash_set(globals.recog.param_id_map, apr_pstrdup(pool, "sensitivity-level"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_SENSITIVITY_LEVEL, pool));
+		apr_hash_set(globals.recog.param_id_map, apr_pstrdup(pool, "speed-vs-accuracy"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_SPEED_VS_ACCURACY, pool));
+		apr_hash_set(globals.recog.param_id_map, apr_pstrdup(pool, "n-best-list-length"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_N_BEST_LIST_LENGTH, pool));
+		apr_hash_set(globals.recog.param_id_map, apr_pstrdup(pool, "no-input-timeout"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_NO_INPUT_TIMEOUT, pool));
+		apr_hash_set(globals.recog.param_id_map, apr_pstrdup(pool, "recognition-timeout"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_RECOGNITION_TIMEOUT, pool));
+		apr_hash_set(globals.recog.param_id_map, apr_pstrdup(pool, "waveform-url"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_WAVEFORM_URI, pool));
+		apr_hash_set(globals.recog.param_id_map, apr_pstrdup(pool, "completion-cause"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_COMPLETION_CAUSE, pool));
+		apr_hash_set(globals.recog.param_id_map, apr_pstrdup(pool, "recognizer-context-block"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_RECOGNIZER_CONTEXT_BLOCK, pool));
+		apr_hash_set(globals.recog.param_id_map, apr_pstrdup(pool, "start-input-timers"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_START_INPUT_TIMERS, pool));
+		apr_hash_set(globals.recog.param_id_map, apr_pstrdup(pool, "speech-complete-timeout"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_SPEECH_COMPLETE_TIMEOUT, pool));
+		apr_hash_set(globals.recog.param_id_map, apr_pstrdup(pool, "speech-incomplete-timeout"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_SPEECH_INCOMPLETE_TIMEOUT, pool));
+		apr_hash_set(globals.recog.param_id_map, apr_pstrdup(pool, "dtmf-interdigit-timeout"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_DTMF_INTERDIGIT_TIMEOUT, pool));
+		apr_hash_set(globals.recog.param_id_map, apr_pstrdup(pool, "dtmf-term-timeout"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_DTMF_TERM_TIMEOUT, pool));
+		apr_hash_set(globals.recog.param_id_map, apr_pstrdup(pool, "dtmf-term-char"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_DTMF_TERM_CHAR, pool));
+		apr_hash_set(globals.recog.param_id_map, apr_pstrdup(pool, "failed-uri"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_FAILED_URI, pool));
+		apr_hash_set(globals.recog.param_id_map, apr_pstrdup(pool, "failed-uri-cause"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_FAILED_URI_CAUSE, pool));
+		apr_hash_set(globals.recog.param_id_map, apr_pstrdup(pool, "save-waveform"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_SAVE_WAVEFORM, pool));
+		apr_hash_set(globals.recog.param_id_map, apr_pstrdup(pool, "new-audio-channel"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_NEW_AUDIO_CHANNEL, pool));
+		apr_hash_set(globals.recog.param_id_map, apr_pstrdup(pool, "speech-language"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_SPEECH_LANGUAGE, pool));
+		apr_hash_set(globals.recog.param_id_map, apr_pstrdup(pool, "input-type"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_INPUT_TYPE, pool));
+		apr_hash_set(globals.recog.param_id_map, apr_pstrdup(pool, "input-waveform-uri"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_INPUT_WAVEFORM_URI, pool));
+		apr_hash_set(globals.recog.param_id_map, apr_pstrdup(pool, "completion-reason"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_COMPLETION_REASON, pool));
+		apr_hash_set(globals.recog.param_id_map, apr_pstrdup(pool, "media-type"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_MEDIA_TYPE, pool));
+		apr_hash_set(globals.recog.param_id_map, apr_pstrdup(pool, "ver-buffer-utterance"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_VER_BUFFER_UTTERANCE, pool));
+		apr_hash_set(globals.recog.param_id_map, apr_pstrdup(pool, "recognition-mode"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_RECOGNITION_MODE, pool));
+		apr_hash_set(globals.recog.param_id_map, apr_pstrdup(pool, "cancel-if-queue"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_CANCEL_IF_QUEUE, pool));
+		apr_hash_set(globals.recog.param_id_map, apr_pstrdup(pool, "hotword-max-duration"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_HOTWORD_MAX_DURATION, pool));
+		apr_hash_set(globals.recog.param_id_map, apr_pstrdup(pool, "hotword-min-duration"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_HOTWORD_MIN_DURATION, pool));
+		apr_hash_set(globals.recog.param_id_map, apr_pstrdup(pool, "interpret-text"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_INTERPRET_TEXT, pool));
+		apr_hash_set(globals.recog.param_id_map, apr_pstrdup(pool, "dtmf-buffer-time"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_DTMF_BUFFER_TIME, pool));
+		apr_hash_set(globals.recog.param_id_map, apr_pstrdup(pool, "clear-dtmf-buffer"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_CLEAR_DTMF_BUFFER, pool));
+		apr_hash_set(globals.recog.param_id_map, apr_pstrdup(pool, "early-no-match"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_EARLY_NO_MATCH, pool));
 	}
 
 	return 0;
@@ -3644,7 +3747,7 @@ static int load_config(void)
 		ast_log(LOG_WARNING, "No such configuration file %s\n", MRCP_CONFIG);
 		return -1;
 	}
-	#if defined(ASTERISK162)
+	#if defined(ASTERISKSVN) || defined(ASTERISK162)
 	else if (cfg == CONFIG_STATUS_FILEINVALID) {
 		ast_log(LOG_ERROR, "Config file " MRCP_CONFIG " is in an invalid format, aborting\n");
 		return -1;
@@ -3749,11 +3852,14 @@ static apt_bool_t unimrcp_log(const char *file, int line, const char *id, apt_lo
 
 	switch(priority) {
 		case APT_PRIO_EMERGENCY:
-			/* Pass through. */
+			ast_log(LOG_WARNING, "%s\n", log_message);
+			break;
 		case APT_PRIO_ALERT:
-			/* Pass through. */
+			ast_log(LOG_WARNING, "%s\n", log_message);
+			break;
 		case APT_PRIO_CRITICAL:
-			/* Pass through. */
+			 ast_log(LOG_WARNING, "%s\n", log_message);
+			break;
 		case APT_PRIO_ERROR:
 			ast_log(LOG_ERROR, "%s\n", log_message);
 			break;
@@ -3761,12 +3867,14 @@ static apt_bool_t unimrcp_log(const char *file, int line, const char *id, apt_lo
 			ast_log(LOG_WARNING, "%s\n", log_message);
 			break;
 		case APT_PRIO_NOTICE:
-			/* Pass through. */
-		case APT_PRIO_INFO:
 			ast_log(LOG_NOTICE, "%s\n", log_message);
 			break;
+		case APT_PRIO_INFO:
+			ast_log(LOG_DEBUG, "%s\n", log_message);
+			break;
 		case APT_PRIO_DEBUG:
-			/* Pass through. */
+			ast_log(LOG_DEBUG, "%s\n", log_message);
+			break;
 		default:
 			ast_log(LOG_DEBUG, "%s\n", log_message);
 			break;
@@ -3820,7 +3928,7 @@ static const char* codec_to_str(format_t codec) {
 		case AST_FORMAT_G726: return "L16";
 		/*! G.722 */
 		case AST_FORMAT_G722: return "L16";
-		#ifdef ASTERISK162
+		#if defined(ASTERISKSVN) || defined(ASTERISK162)
 		/*! G.722.1 (also known as Siren7, 32kbps assumed) */
 		case AST_FORMAT_SIREN7: return "L16";
 		/*! G.722.1 Annex C (also known as Siren14, 48kbps assumed) */
@@ -3862,7 +3970,7 @@ static int codec_to_bytes_per_sample(format_t codec) {
 		case AST_FORMAT_G726: return 2;
 		/*! G.722 */
 		case AST_FORMAT_G722: return 2;
-		#ifdef ASTERISK162
+		#if defined(ASTERISKSVN) || defined(ASTERISK162)
 		/*! G.722.1 (also known as Siren7, 32kbps assumed) */
 		case AST_FORMAT_SIREN7: return 2;
 		/*! G.722.1 Annex C (also known as Siren14, 48kbps assumed) */
@@ -3904,7 +4012,7 @@ static format_t codec_to_format(format_t codec) {
 		case AST_FORMAT_G726: return AST_FORMAT_SLINEAR;
 		/*! G.722 */
 		case AST_FORMAT_G722: return AST_FORMAT_SLINEAR;
-		#ifdef ASTERISK162
+		#if defined(ASTERISKSVN) || defined(ASTERISK162)
 		/*! G.722.1 (also known as Siren7, 32kbps assumed) */
 		case AST_FORMAT_SIREN7: return AST_FORMAT_SLINEAR;
 		/*! G.722.1 Annex C (also known as Siren14, 48kbps assumed) */
@@ -3918,7 +4026,7 @@ static format_t codec_to_format(format_t codec) {
 	}
 }
 
-#ifdef ASTERISK162
+#if defined(ASTERISKSVN)
 static int app_synth_exec(struct ast_channel *chan, const char *data)
 #else
 static int app_synth_exec(struct ast_channel *chan, void *data)
@@ -3931,6 +4039,7 @@ static int app_synth_exec(struct ast_channel *chan, void *data)
 	struct ast_frame *f;
 	struct ast_frame fr;
 	struct timeval next;
+	int dobreak = 1;
 	int ms;
 	apr_size_t len;
 	int rres = 0;
@@ -3941,9 +4050,10 @@ static int app_synth_exec(struct ast_channel *chan, void *data)
 	char name[200] = { 0 };
 	FILE* fp = NULL;
 	char buffer[framesize];
-
+	int dtmfkey = -1;
 	int res = 0;
 	char *parse;
+
 	AST_DECLARE_APP_ARGS(args,
 		AST_APP_ARG(text);
 		AST_APP_ARG(options);
@@ -3960,12 +4070,16 @@ static int app_synth_exec(struct ast_channel *chan, void *data)
 	AST_STANDARD_APP_ARGS(args, parse);
 
 	char option_profile[256] = { 0 };
-	char option_interrupt[256] = { 0 };
-	char option_filename[256] = { 0 };
-	char option_language[256] = { 0 };
-	char option_voicename[256] = { 0 };
-	char option_voicegender[256] = { 0 };
-	char option_voiceage[256] = { 0 };
+	char option_prate[32]= { 0 };
+	char option_pvolume[32]= { 0 };
+	char option_interrupt[64] = { 0 };
+	char option_filename[384] = { 0 };
+	char option_language[16] = { 0 }; 
+	char option_loadlexicon[16] = { 0 }; 
+	char option_voicename[128] = { 0 };
+	char option_voicegender[16] = { 0 }; 
+	char option_voiceage[32] = { 0 }; 
+	char option_voicevariant[128] = { 0 }; 
 
 	if (!ast_strlen_zero(args.options)) {
 		char tempstr[1024];
@@ -4023,16 +4137,28 @@ static int app_synth_exec(struct ast_channel *chan, void *data)
 				} else if (strcasecmp(key, "l") == 0) {
 					strncpy(option_language, value, sizeof(option_language) - 1);
 					option_language[sizeof(option_language) - 1] = '\0';
+				} else if (strcasecmp(key, "ll") == 0) {
+					strncpy(option_loadlexicon, value, sizeof(option_loadlexicon) - 1);
+					option_loadlexicon[sizeof(option_loadlexicon) - 1] = '\0';
+				} else if (strcasecmp(key, "pv") == 0) {
+					strncpy(option_pvolume, value, sizeof(option_pvolume) - 1);
+					option_pvolume[sizeof(option_pvolume) - 1] = '\0';
+				} else if (strcasecmp(key, "pr") == 0) {
+					strncpy(option_prate, value, sizeof(option_prate) - 1);
+					option_prate[sizeof(option_prate) - 1] = '\0';
 				} else if (strcasecmp(key, "v") == 0) {
 					strncpy(option_voicename, value, sizeof(option_voicename) - 1);
 					option_voicename[sizeof(option_voicename) - 1] = '\0';
+				} else if (strcasecmp(key, "vv") == 0) {
+					strncpy(option_voicevariant, value, sizeof(option_voicevariant) - 1);
+					option_voicevariant[sizeof(option_voicevariant) - 1] = '\0';
 				} else if (strcasecmp(key, "g") == 0) {
 					strncpy(option_voicegender, value, sizeof(option_voicegender) - 1);
 					option_voicegender[sizeof(option_voicegender) - 1] = '\0';
 				} else if (strcasecmp(key, "a") == 0) {
 					strncpy(option_voiceage, value, sizeof(option_voiceage) - 1);
 					option_voiceage[sizeof(option_voiceage) - 1] = '\0';
-				}
+				}	
 			}
 
 			if (token != NULL) {
@@ -4041,7 +4167,7 @@ static int app_synth_exec(struct ast_channel *chan, void *data)
 			}
 		} while (token != NULL);
 	}
-
+	
 	if (!ast_strlen_zero(option_profile)) {
 		ast_log(LOG_NOTICE, "Profile to use: %s\n", option_profile);
 	}
@@ -4054,6 +4180,15 @@ static int app_synth_exec(struct ast_channel *chan, void *data)
 	if (!ast_strlen_zero(option_language)) {
 		ast_log(LOG_NOTICE, "Language to use: %s\n", option_language);
 	}
+	if (!ast_strlen_zero(option_loadlexicon)) {
+		ast_log(LOG_NOTICE, "Load-Lexicon: %s\n", option_loadlexicon);
+	}
+	if (!ast_strlen_zero(option_voicename)) {
+		ast_log(LOG_NOTICE, "Prosody volume use: %s\n", option_pvolume);
+	}
+	if (!ast_strlen_zero(option_voicename)) {
+		ast_log(LOG_NOTICE, "Prosody rate use: %s\n", option_prate);
+	}
 	if (!ast_strlen_zero(option_voicename)) {
 		ast_log(LOG_NOTICE, "Voice name to use: %s\n", option_voicename);
 	}
@@ -4062,6 +4197,9 @@ static int app_synth_exec(struct ast_channel *chan, void *data)
 	}
 	if (!ast_strlen_zero(option_voiceage)) {
 		ast_log(LOG_NOTICE, "Voice age to use: %s\n", option_voiceage);
+	}
+	if (!ast_strlen_zero(option_voicevariant)) {
+		ast_log(LOG_NOTICE, "Voice variant to use: %s\n", option_voicevariant);
 	}
 
 	if (option_interrupt != NULL) {
@@ -4121,6 +4259,18 @@ static int app_synth_exec(struct ast_channel *chan, void *data)
 		speech_channel_set_param(schannel, "voice-gender", option_voicegender);
 	if (!ast_strlen_zero(option_voiceage))
 		speech_channel_set_param(schannel, "voice-age", option_voiceage);
+	if (!ast_strlen_zero(option_voicevariant))
+		speech_channel_set_param(schannel, "voice-variant", option_voicevariant);
+	if (!ast_strlen_zero(option_loadlexicon))
+		speech_channel_set_param(schannel, "load-lexicon", option_loadlexicon);
+	if (dtmf_enable)
+		speech_channel_set_param(schannel, "kill-on-barge-in", "true");
+	else
+		speech_channel_set_param(schannel, "kill-on-barge-in", "false");
+	if (!ast_strlen_zero(option_pvolume))
+		speech_channel_set_param(schannel, "prosody-volume", option_pvolume);
+	if (!ast_strlen_zero(option_prate))
+		speech_channel_set_param(schannel, "prosody-rate", option_prate);
 
 	int owriteformat = chan->writeformat;
 	/* if (ast_set_write_format(chan, AST_FORMAT_SLINEAR) < 0) { */
@@ -4152,7 +4302,7 @@ static int app_synth_exec(struct ast_channel *chan, void *data)
 					memset(&fr, 0, sizeof(fr));
 					fr.frametype = AST_FRAME_VOICE;
 					/* fr.subclass.codec = AST_FORMAT_SLINEAR; */
-					#ifdef ASTERISK162
+					#if defined(ASTERISKSVN)
 					fr.subclass.codec = codec_to_format(chan->rawwriteformat);
 					#else
 					fr.subclass = codec_to_format(chan->rawwriteformat);
@@ -4160,7 +4310,7 @@ static int app_synth_exec(struct ast_channel *chan, void *data)
 					fr.datalen = len;
 					/* fr.samples = len / 2; */
 					fr.samples = len / codec_to_bytes_per_sample(chan->rawwriteformat);
-					#if defined(ASTERISK162) || defined(ASTERISK161) 
+					#if defined(ASTERISKSVN) || defined(ASTERISK162) || defined(ASTERISK161) 
 					fr.data.ptr = buffer;
 					#else
 					fr.data = buffer;
@@ -4193,28 +4343,36 @@ static int app_synth_exec(struct ast_channel *chan, void *data)
 					break;
 				} else if (ms) {
 					f = ast_read(chan);
+
 					if (!f) {
 						ast_log(LOG_DEBUG, "Null frame == hangup() detected\n");
 						res = -1;
 						break;
 					} else if ((dtmf_enable) && (f->frametype == AST_FRAME_DTMF)) {
-						#ifdef ASTERISK162
-						ast_log(LOG_DEBUG, "User pressed a key (%d)\n", f->subclass.integer);
-						if (option_interrupt && strchr(option_interrupt, f->subclass.integer)) {
-							res = f->subclass.integer;
-							ast_frfree(f);
-							break;
-						}
+						dobreak = 1;
+						#if defined(ASTERISKSVN)
+						dtmfkey = f->subclass.integer;
 						#else
-						ast_log(LOG_DEBUG, "User pressed a key (%d)\n", f->subclass);
-                                                if (option_interrupt && strchr(option_interrupt, f->subclass)) {
-                                                        res = f->subclass;
-                                                        ast_frfree(f);
-                                                        break;
-                                                }		
+						dtmfkey =  f->subclass;
 						#endif
 
+						ast_log(LOG_DEBUG, "User pressed a key (%d)\n", dtmfkey);
+						if (option_interrupt && strchr(option_interrupt, dtmfkey)) {
+							res = dtmfkey;
+							dobreak = 0;
+						}
+
+						ast_log(LOG_DEBUG, "(%s) sending BARGE-IN-OCCURED\n", schannel->name);
+
+						if (speech_channel_bargeinoccured(schannel) != 0) {
+							ast_log(LOG_ERROR, "(%s) Failed to send BARGE-IN-OCCURED\n", schannel->name);
+							dobreak = 0;
+						}
+					
 						ast_frfree(f);
+
+						if (dobreak == 0)
+							break;
 					} else /* Ignore other frametypes. */
 						ast_frfree(f);
 				}
@@ -4235,7 +4393,7 @@ done:
 	return res;
 }
 
-#ifdef ASTERISK162
+#if defined(ASTERISKSVN)
 static int app_recog_exec(struct ast_channel *chan, const char *data)
 #else
 static int app_recog_exec(struct ast_channel *chan, void *data)
@@ -4269,12 +4427,31 @@ static int app_recog_exec(struct ast_channel *chan, void *data)
 	parse = ast_strdupa(data);
 
 	AST_STANDARD_APP_ARGS(args, parse);
-
+	char option_confidencethresh[64] = { 0 };
+	char option_senselevel[64] = { 0 };
 	char option_profile[256] = { 0 };
-	char option_interrupt[256] = { 0 };
-	char option_filename[256] = { 0 };
-	char option_timeout[256] = { 0 };
-	char option_bargein[256] = { 0 };
+	char option_interrupt[64] = { 0 };
+	char option_filename[384] = { 0 };
+	char option_timeout[64] = { 0 };
+	char option_bargein[32] = { 0 };
+	char option_inputwaveuri[384] = { 0 };
+	char option_earlynomatch[16] = { 0 };
+	char option_cleardtmfbuf[16] = { 0 };
+	char option_hotwordmin[64] = { 0 };
+	char option_hotwordmax[64] = { 0 };
+	char option_recogmode[128] = { 0 };
+	char option_newaudioc[16] = { 0 };
+	char option_savewave[16] = { 0 };
+	char option_dtmftermc[16] = { 0 };
+	char option_dtmftermt[64] = { 0 };
+	char option_dtmfdigitt[64] = { 0 };
+	char option_speechit[64] = { 0 };
+	char option_speechct[64] = { 0 };
+	char option_startinputt[16] = { 0 };
+	char option_noinputt[64] = { 0 };
+	char option_nbest[64] = { 0 };
+	char option_speedvsa[64] = { 0 };
+	char option_mediatype[64] = { 0 };
 
 	if (!ast_strlen_zero(args.options)) {
 		char tempstr[1024];
@@ -4319,8 +4496,67 @@ static int app_recog_exec(struct ast_channel *chan, void *data)
 
 				key = tempstr3;
 				value = tempstr4;
-
-				if (strcasecmp(key, "p") == 0) {
+				if (strcasecmp(key, "ct") == 0) {
+					strncpy(option_confidencethresh, value, sizeof(option_confidencethresh) - 1);
+					option_confidencethresh[sizeof(option_confidencethresh) - 1] = '\0';
+				} else if (strcasecmp(key, "sva") == 0) {
+					strncpy(option_speedvsa, value, sizeof(option_speedvsa) - 1);
+					option_speedvsa[sizeof(option_speedvsa) - 1] = '\0';
+				} else if (strcasecmp(key, "nb") == 0) {
+					strncpy(option_nbest, value, sizeof(option_nbest) - 1);
+					option_nbest[sizeof(option_nbest) - 1] = '\0';
+				} else if (strcasecmp(key, "nit") == 0) {
+					strncpy(option_noinputt, value, sizeof(option_noinputt) - 1);
+					option_noinputt[sizeof(option_noinputt) - 1] = '\0';
+				} else if (strcasecmp(key, "sit") == 0) {
+					strncpy(option_startinputt, value, sizeof(option_startinputt) - 1);
+					option_startinputt[sizeof(option_startinputt) - 1] = '\0';
+				} else if (strcasecmp(key, "sct") == 0) {
+					strncpy(option_speechct, value, sizeof(option_speechct) - 1);
+					option_speechct[sizeof(option_speechct) - 1] = '\0';
+				} else if (strcasecmp(key, "sint") == 0) {
+					strncpy(option_speechit, value, sizeof(option_speechit) - 1);
+					option_speechit[sizeof(option_speechit) - 1] = '\0';
+				} else if (strcasecmp(key, "dit") == 0) {
+					strncpy(option_dtmfdigitt, value, sizeof(option_dtmfdigitt) - 1);
+					option_dtmfdigitt[sizeof(option_dtmfdigitt) - 1] = '\0';
+				} else if (strcasecmp(key, "dtt") == 0) {
+					strncpy(option_dtmftermt, value, sizeof(option_dtmftermt) - 1);
+					option_dtmftermt[sizeof(option_dtmftermt) - 1] = '\0';
+				} else if (strcasecmp(key, "dttc") == 0) {
+					strncpy(option_dtmftermc, value, sizeof(option_dtmftermc) - 1);
+					option_dtmftermc[sizeof(option_dtmftermc) - 1] = '\0';
+				} else if (strcasecmp(key, "sw") == 0) {
+					strncpy(option_savewave, value, sizeof(option_savewave) - 1);
+					option_savewave[sizeof(option_savewave) - 1] = '\0';
+				} else if (strcasecmp(key, "nac") == 0) {
+					strncpy(option_newaudioc, value, sizeof(option_newaudioc) - 1);
+					option_newaudioc[sizeof(option_newaudioc) - 1] = '\0';
+				} else if (strcasecmp(key, "rm") == 0) {
+					strncpy(option_recogmode, value, sizeof(option_recogmode) - 1);
+					option_recogmode[sizeof(option_recogmode) - 1] = '\0';
+				} else if (strcasecmp(key, "hmaxd") == 0) {
+					strncpy(option_hotwordmax, value, sizeof(option_hotwordmax) - 1);
+					option_hotwordmax[sizeof(option_hotwordmax) - 1] = '\0';
+				} else if (strcasecmp(key, "hmind") == 0) {
+					strncpy(option_hotwordmin, value, sizeof(option_hotwordmin) - 1);
+					option_hotwordmin[sizeof(option_hotwordmin) - 1] = '\0';
+				} else if (strcasecmp(key, "cdb") == 0) {
+					strncpy(option_cleardtmfbuf, value, sizeof(option_cleardtmfbuf) - 1);
+					option_cleardtmfbuf[sizeof(option_cleardtmfbuf) - 1] = '\0';
+				} else if (strcasecmp(key, "enm") == 0) {
+					strncpy(option_earlynomatch, value, sizeof(option_earlynomatch) - 1);
+					option_earlynomatch[sizeof(option_earlynomatch) - 1] = '\0';
+				} else if (strcasecmp(key, "iwu") == 0) {
+					strncpy(option_inputwaveuri, value, sizeof(option_inputwaveuri) - 1);
+					option_inputwaveuri[sizeof(option_inputwaveuri) - 1] = '\0';
+				} else if (strcasecmp(key, "sl") == 0) {
+					strncpy(option_senselevel, value, sizeof(option_senselevel) - 1);
+					option_senselevel[sizeof(option_senselevel) - 1] = '\0';
+				} else if (strcasecmp(key, "mt") == 0) {
+					strncpy(option_mediatype, value, sizeof(option_mediatype) - 1);
+					option_mediatype[sizeof(option_mediatype) - 1] = '\0';
+				} else if (strcasecmp(key, "p") == 0) {
 					strncpy(option_profile, value, sizeof(option_profile) - 1);
 					option_profile[sizeof(option_profile) - 1] = '\0';
 				} else if (strcasecmp(key, "i") == 0) {
@@ -4345,6 +4581,13 @@ static int app_recog_exec(struct ast_channel *chan, void *data)
 		} while (token != NULL);
 	}
 
+	int bargein = 1;
+	if (!ast_strlen_zero(option_bargein)) {
+		bargein = atoi(option_bargein);
+		if (bargein < 0)
+			bargein = 1;
+	}
+
 	if (!ast_strlen_zero(option_profile)) {
 		ast_log(LOG_NOTICE, "Profile to use: %s\n", option_profile);
 	}
@@ -4360,7 +4603,67 @@ static int app_recog_exec(struct ast_channel *chan, void *data)
 	if (!ast_strlen_zero(option_bargein)) {
 		ast_log(LOG_NOTICE, "Barge-in: %s\n", option_bargein);
 	}
-
+	if (!ast_strlen_zero(option_confidencethresh)) {
+		ast_log(LOG_NOTICE, "Confidence-Threshold: %s\n", option_confidencethresh);
+	}
+	if (!ast_strlen_zero(option_senselevel)) {
+		ast_log(LOG_NOTICE, "Sensitivity-level: %s\n", option_senselevel);
+	}
+	if (!ast_strlen_zero(option_inputwaveuri)) {
+		ast_log(LOG_NOTICE, "Input wave uri: %s\n", option_inputwaveuri);
+	}
+	if (!ast_strlen_zero(option_earlynomatch)) {
+		ast_log(LOG_NOTICE, "Early-no-match: %s\n", option_earlynomatch);
+	}
+	if (!ast_strlen_zero(option_cleardtmfbuf)) {
+		ast_log(LOG_NOTICE, "Clear dtmf buffer: %s\n", option_cleardtmfbuf);
+	}
+	if (!ast_strlen_zero(option_hotwordmin)) {
+		ast_log(LOG_NOTICE, "Hotword min delay: %s\n", option_hotwordmin);
+	}
+	if (!ast_strlen_zero(option_hotwordmax)) {
+		ast_log(LOG_NOTICE, "Hotword max delay: %s\n", option_hotwordmax);
+	}
+	if (!ast_strlen_zero(option_recogmode)) {
+		ast_log(LOG_NOTICE, "Recognition Mode: %s\n", option_recogmode);
+	}
+	if (!ast_strlen_zero(option_newaudioc)) {
+		ast_log(LOG_NOTICE, "New-audio-channel: %s\n", option_newaudioc);
+	}
+	if (!ast_strlen_zero(option_savewave)) {
+		ast_log(LOG_NOTICE, "Save waveform: %s\n", option_savewave);
+	}
+	if (!ast_strlen_zero(option_dtmftermc)) {
+		ast_log(LOG_NOTICE, "dtmf term char: %s\n", option_dtmftermc);
+	}
+	if (!ast_strlen_zero(option_dtmftermt)) {
+		ast_log(LOG_NOTICE, "Dtmf terminate timeout: %s\n", option_dtmftermt);
+	}
+	if (!ast_strlen_zero(option_dtmfdigitt)) {
+		ast_log(LOG_NOTICE, "dtmf digit terminate timeout: %s\n", option_dtmfdigitt);
+	}
+	if (!ast_strlen_zero(option_speechit)) {
+		ast_log(LOG_NOTICE, "Speech incomlete timeout : %s\n", option_speechit);
+	}
+	if (!ast_strlen_zero(option_speechct)) {
+		ast_log(LOG_NOTICE, "Speech complete timeout: %s\n", option_speechct);
+	}
+	if (!ast_strlen_zero(option_startinputt)) {
+		ast_log(LOG_NOTICE, "Start-input timeout: %s\n", option_startinputt);
+	}
+	if (!ast_strlen_zero(option_noinputt)) {
+		ast_log(LOG_NOTICE, "no-input timeout: %s\n", option_noinputt);
+	}
+	if (!ast_strlen_zero(option_nbest)) {
+		ast_log(LOG_NOTICE, "nbest list length: %s\n", option_nbest);
+	}
+	if (!ast_strlen_zero(option_speedvsa)) {
+		ast_log(LOG_NOTICE, "speed vs accuracy: %s\n", option_speedvsa);
+	}
+	if (!ast_strlen_zero(option_mediatype)) {
+		ast_log(LOG_NOTICE, "Media Type: %s\n", option_mediatype);
+	}
+	
 	if (option_interrupt != NULL) {
 		dtmf_enable = 1;
 
@@ -4408,8 +4711,48 @@ static int app_recog_exec(struct ast_channel *chan, void *data)
 	}
 
 	if (!ast_strlen_zero(option_timeout))
-		speech_channel_set_param(schannel, "Recognition-Timeout", option_timeout);
-
+		speech_channel_set_param(schannel, "recognition-timeout", option_timeout);
+	if (!ast_strlen_zero(option_confidencethresh))
+		speech_channel_set_param(schannel, "confidence-threshold", option_confidencethresh);
+	if (!ast_strlen_zero(option_inputwaveuri))
+		speech_channel_set_param(schannel, "input-wave-uri", option_inputwaveuri);
+	if (!ast_strlen_zero(option_earlynomatch))
+		speech_channel_set_param(schannel, "earlynomatch",option_earlynomatch);
+	if (!ast_strlen_zero(option_cleardtmfbuf))
+		speech_channel_set_param(schannel, "clear-dtmf-buffer", option_cleardtmfbuf);
+	if (!ast_strlen_zero(option_hotwordmin))
+		speech_channel_set_param(schannel, "hotword-min-duration", option_hotwordmin);
+	if (!ast_strlen_zero(option_hotwordmax))
+		speech_channel_set_param(schannel, "hotword-max-duration", option_hotwordmax);
+	if (!ast_strlen_zero(option_recogmode))
+		speech_channel_set_param(schannel, "recognition-mode", option_recogmode);
+	if (!ast_strlen_zero(option_newaudioc))
+		speech_channel_set_param(schannel, "new-audio-channel", option_newaudioc);
+	if (!ast_strlen_zero(option_savewave))
+		speech_channel_set_param(schannel, "save-waveform", option_savewave);
+	if (!ast_strlen_zero(option_dtmftermc))
+		speech_channel_set_param(schannel, "dtmf-term-char", option_dtmftermc);
+	if (!ast_strlen_zero(option_dtmftermt))
+		speech_channel_set_param(schannel, "dtmf-term-timeout", option_dtmftermt);
+	if (!ast_strlen_zero(option_dtmfdigitt))
+		speech_channel_set_param(schannel, "dtmf-interdigit-timeout", option_dtmfdigitt);
+	if (!ast_strlen_zero(option_speechit))
+		speech_channel_set_param(schannel, "speech-incomplete-timeout", option_speechit);
+	if (!ast_strlen_zero(option_speechct))
+		speech_channel_set_param(schannel, "speech-complete-timeout", option_speechct);
+	if (!ast_strlen_zero(option_startinputt))
+		speech_channel_set_param(schannel, "start-input-timers", option_startinputt);
+	if (!ast_strlen_zero(option_noinputt))
+		speech_channel_set_param(schannel, "no-input-timeout", option_noinputt);
+	if (!ast_strlen_zero(option_nbest))
+		speech_channel_set_param(schannel, "n-best-list-length", option_nbest);
+	if (!ast_strlen_zero(option_speedvsa))
+		speech_channel_set_param(schannel, "speed-vs-accuracy", option_speedvsa);
+	if (!ast_strlen_zero(option_mediatype))
+		speech_channel_set_param(schannel, "media-type", option_mediatype);
+	if (!ast_strlen_zero(option_senselevel))
+		speech_channel_set_param(schannel, "sensitivity-level", option_senselevel);
+		
 	int ireadformat = chan->readformat;
 	/* if (ast_set_read_format(chan, AST_FORMAT_SLINEAR) < 0) { */
 	if (ast_set_read_format(chan, codec_to_format(chan->rawreadformat)) < 0) {
@@ -4430,15 +4773,8 @@ static int app_recog_exec(struct ast_channel *chan, void *data)
 
 	ast_log(LOG_NOTICE, "Recognizing\n");
 
-	int bargein = 1;
+
 	int resf = -1;
-
-	if (!ast_strlen_zero(option_bargein)) {
-		bargein = atoi(option_bargein);
-
-		if (bargein < 0)
-			bargein = 1;
-	}
 
 	ast_stopstream(chan);
 	if (!ast_strlen_zero(option_filename)) {
@@ -4461,7 +4797,7 @@ static int app_recog_exec(struct ast_channel *chan, void *data)
 			}
 			if (f->frametype == AST_FRAME_VOICE) {
 				len = f->datalen;
-				#if defined(ASTERISK162) || defined(ASTERISK161)
+				#if defined(ASTERISKSVN) || defined(ASTERISK162) || defined(ASTERISK161)
 				rres = speech_channel_write(schannel, (void *)(f->data.ptr), &len);
 				#else
 				rres = speech_channel_write(schannel, (void *)(f->data), &len);	
@@ -4469,7 +4805,9 @@ static int app_recog_exec(struct ast_channel *chan, void *data)
 				if (rres != 0)
 					break;
 			} else if (f->frametype == AST_FRAME_VIDEO) {
+				/* Ignore. */
 			} else if (f->frametype == AST_FRAME_DTMF) {
+				/* Do not handle DTMF, assume it is handled in-band by the ASR engine. */
 			}
 
 			ast_frfree(f);
@@ -4677,7 +5015,7 @@ static int load_module(void)
 		return AST_MODULE_LOAD_DECLINE;
 	}
 
-	#if defined(ASTERISK162)
+	#if defined(ASTERISKSVN) || defined(ASTERISK162)
 	/* Register the applications. */
 	res = ast_register_application_xml(app_synth, app_synth_exec);
 	res |= ast_register_application_xml(app_recog, app_recog_exec);
@@ -4697,33 +5035,26 @@ AST_MODULE_INFO(ASTERISK_GPL_KEY, AST_MODFLAG_DEFAULT, "MRCP suite of applicatio
 
 /* TO DO:
  *
- *  1. Barge-in support from Asterisk (used when MRCP server doesn't support it), ASR & TTS
- *  2. Compile support on older Asterisk versions (not just SVN trunk)
- *  3. Neaten logging statements and correct log levels, less output
- *  4. Support for more TTS and ASR parameters from dialplan
- *  5. Better use of stack space - rather use dynamic heap allocation if possible, e.g. for strings
- *  6. Support for other codecs, fallback to LPCM if MRCP server doesn't support codec
- *  7. Better handling of errors
- *  8. Reloading of app_mrcp.so - memory leak?
- *  9. Install guide, configuration guide, users guide, doxygen documentation, application console help, etc.
- * 10. SNMP functionality.
- * 11. Additional console functions to e.g. display status, etc.
- * 12. DTMF detection from Asterisk (used when MRCP server doesn't support it), ASR & TTS
- * 13. Fetching of grammar, SSML, etc. as URI - support for http, https, ftp, file, odbc, etc. using CURL - flag to indicate if MRCP server should fetch or if we should and then inline the result
- * 14. Caching of prompts for TTS, functions in console to manage cache, config for settings, etc. - cache to memory, file system or database
- * 15. Caching for prompts, grammar, SSML, etc. - TTS cache, SSML cache, etc.
- * 16. Example applications
- * 17. Packaging into a libmrcp library with callbacks for Asterisk specific features
- * 18. Load tests, look at robustness, load, unexpected things such as killing server in request, etc.
- * 19. Packaged unimrcpserver with Flite, Festival, Sphinx, HTK, PocketSphinx, RealSpeak modules
- * 20. Resources/applications for Speaker Verification, Speaker Recognition, Speech Recording
+ * ( ) 1. Barge-in support from Asterisk (used when MRCP server doesn't support it) for ASR
+ * ( ) 2. Support for other codecs, fallback to LPCM if MRCP server doesn't support codec
+ * ( ) 3. Better handling of errors
+ * ( ) 4. Documentation
+ *        ( ) install guide ( ), configuration guide ( ), user guide ( ), doxygen documentation ( ), application console+help ( ), etc.
+ * ( ) 5. Fetching of grammar, SSML, etc. as URI - support for http, https, ftp, file, odbc, etc. using CURL - flag to indicate if MRCP server should fetch or if we should and then inline the result
+ * ( ) 6. Caching of prompts for TTS, functions in console to manage cache, config for settings, etc. - cache to memory, file system or database
+ * ( ) 7. Caching of grammar, SSML, etc. - TTS cache, SSML cache, etc.
+ * ( ) 8. Example applications
+ * ( ) 9. Packaging into a libmrcp library with callbacks for Asterisk specific features
+ * ( ) 10. Load tests, look at robustness, load, unexpected things such as killing server in request, etc.
+ * ( ) 11. Packaged unimrcpserver with Flite, Festival, Sphinx, HTK, PocketSphinx, RealSpeak modules
+ * ( ) 12. Resources/applications for Speaker Verification, Speaker Recognition, Speech Recording
  */
 
 /* For Emacs:
  * Local Variables:
  * mode:c
  * indent-tabs-mode:t
- * tab-width:4
+ * tab-width:5
  * c-basic-offset:4
  * End:
  * For VIM:
