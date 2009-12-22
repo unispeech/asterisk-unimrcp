@@ -114,15 +114,15 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 200656 $")
 		barge-in=0, ASR engine barge-in=1, Asterisk barge-in=2, Asterisk and ASR engine
 		barge-in=3), ct=confidence threshold (0.0 - 1.0), sl=sensitivity level (0.0 -
 		1.0), sva=speed vs accuracy (0.0 - 1.0), nb=n-best list length (1 - 19 digits),
-		nit=no input timeout in millisieconds (1 - 19 digits), sit=start input timers
-		(true/false), sct=speech complete timeout (1 - 19 digits), sint=speech
-		incomplete timeout (1 - 19 digits), dit=dtmf interdigit timeout in (1 - 19
-		digits), dtt=dtmf terminate timout (1 - 19 digits), dttc=dtmf terminate
-		characters, sw=save waveform (true/false), nac=new audio channel (true/false),
-		sl=speech language (en-US/en-GB/etc.), rm=recognition mode, hmaxd=hotword max
-		duration (1 - 19 digits), hmind=hotword min, duration (1 - 19 digits),
-		cdb=clear dtmf buffer (true/false), enm=early no match (true/false), iwu=input
-		waveform URI, mt=media type.</para>
+		nit=no input timeout (1 - 19 digits), sit=start input timers (true/false),
+		sct=speech complete timeout (1 - 19 digits), sint=speech incomplete timeout
+		(1 - 19 digits), dit=dtmf interdigit timeout (1 - 19 digits), dtt=dtmf
+		terminate timout (1 - 19 digits), dttc=dtmf terminate characters, sw=save
+		waveform (true/false), nac=new audio channel (true/false), sl=speech language
+		(en-US/en-GB/etc.), rm=recognition mode, hmaxd=hotword max duration (1 - 19
+		digits), hmind=hotword min duration (1 - 19 digits), cdb=clear dtmf buffer
+		(true/false), enm=early no match (true/false), iwu=input waveform URI,
+		mt=media type.</para>
 		</description>
 	</application>
  ***/
@@ -187,15 +187,15 @@ static char *recogdescrip =
 "barge-in=0, ASR engine barge-in=1, Asterisk barge-in=2, Asterisk and ASR engine\n"
 "barge-in=3), ct=confidence threshold (0.0 - 1.0), sl=sensitivity level (0.0 -\n"
 "1.0), sva=speed vs accuracy (0.0 - 1.0), nb=n-best list length (1 - 19 digits),\n"
-"nit=no input timeout in millisieconds (1 - 19 digits), sit=start input timers\n"
-"(true/false), sct=speech complete timeout (1 - 19 digits), sint=speech\n"
-"incomplete timeout (1 - 19 digits), dit=dtmf interdigit timeout in (1 - 19\n"
-"digits), dtt=dtmf terminate timout (1 - 19 digits), dttc=dtmf terminate\n"
-"characters, sw=save waveform (true/false), nac=new audio channel (true/false),\n"
-"sl=speech language (en-US/en-GB/etc.), rm=recognition mode, hmaxd=hotword max\n"
-"duration (1 - 19 digits), hmind=hotword min, duration (1 - 19 digits),\n"
-"cdb=clear dtmf buffer (true/false), enm=early no match (true/false), iwu=input\n"
-"waveform URI, mt=media type.\n";
+"nit=no input timeout (1 - 19 digits), sit=start input timers (true/false),\n"
+"sct=speech complete timeout (1 - 19 digits), sint=speech incomplete timeout\n"
+"(1 - 19 digits), dit=dtmf interdigit timeout (1 - 19 digits), dtt=dtmf\n"
+"terminate timout (1 - 19 digits), dttc=dtmf terminate characters, sw=save\n"
+"waveform (true/false), nac=new audio channel (true/false), sl=speech language\n"
+"(en-US/en-GB/etc.), rm=recognition mode, hmaxd=hotword max duration (1 - 19\n"
+"digits), hmind=hotword min duration (1 - 19 digits), cdb=clear dtmf buffer\n"
+"(true/false), enm=early no match (true/false), iwu=input waveform URI,\n"
+"mt=media type.\n";
 #endif
 
 /* The configuration file to read. */
