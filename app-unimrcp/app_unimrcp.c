@@ -1118,6 +1118,8 @@ static int process_mrcpv1_config(rtsp_client_config_t *config, const char *param
 		config->max_connection_count = atol(val);
 	else if (strcasecmp(param, "force-destination") == 0)
 		config->force_destination = atoi(val);
+	else if ((strcasecmp(param, "speechsynth") == 0) || (strcasecmp(param, "speechrecog") == 0))
+		apr_table_set(config->resource_map, param, val);
 	else
 		mine = 0;
 
