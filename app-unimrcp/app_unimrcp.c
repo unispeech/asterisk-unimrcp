@@ -111,18 +111,17 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 200656 $")
 		Supports version 1 and 2 of MRCP, using UniMRCP. First parameter is grammar /
 		text of speech. Second paramater contains more options: p=profile, i=interrupt
 		key, t=auto speech timeout, f=filename of prompt to play, b=bargein value (no
-		barge-in=0, ASR engine barge-in=1, Asterisk barge-in=2, Asterisk and ASR engine
-		barge-in=3), ct=confidence threshold (0.0 - 1.0), sl=sensitivity level (0.0 -
-		1.0), sva=speed vs accuracy (0.0 - 1.0), nb=n-best list length (1 - 19 digits),
-		nit=no input timeout (1 - 19 digits), sit=start input timers (true/false),
-		sct=speech complete timeout (1 - 19 digits), sint=speech incomplete timeout
-		(1 - 19 digits), dit=dtmf interdigit timeout (1 - 19 digits), dtt=dtmf
-		terminate timout (1 - 19 digits), dttc=dtmf terminate characters, sw=save
-		waveform (true/false), nac=new audio channel (true/false), sl=speech language
-		(en-US/en-GB/etc.), rm=recognition mode, hmaxd=hotword max duration (1 - 19
-		digits), hmind=hotword min duration (1 - 19 digits), cdb=clear dtmf buffer
-		(true/false), enm=early no match (true/false), iwu=input waveform URI,
-		mt=media type.</para>
+		barge-in=0, ASR engine barge-in=1, Asterisk barge-in=2, ct=confidence
+		threshold (0.0 - 1.0), sl=sensitivity level (0.0 - 1.0), sva=speed vs accuracy
+		(0.0 - 1.0), nb=n-best list length (1 - 19 digits), nit=no input timeout (1 -
+		19 digits), sit=start input timers (true/false), sct=speech complete timeout
+		(1 - 19 digits), sint=speech incomplete timeout (1 - 19 digits), dit=DTMF
+		interdigit timeout (1 - 19 digits), dtt=DTMF terminate timout (1 - 19 digits),
+		dttc=DTMF terminate characters, sw=save waveform (true/false), nac=new audio
+		channel (true/false), sl=speech language (en-US/en-GB/etc.), rm=recognition
+		mode, hmaxd=hotword max duration (1 - 19 digits), hmind=hotword min duration
+		(1 - 19 digits), cdb=clear DTMF buffer (true/false), enm=early no match
+		(true/false), iwu=input waveform URI, mt=media type.</para>
 		</description>
 	</application>
  ***/
@@ -184,18 +183,17 @@ static char *recogdescrip =
 "Supports version 1 and 2 of MRCP, using UniMRCP. First parameter is grammar /\n"
 "text of speech. Second paramater contains more options: p=profile, i=interrupt\n"
 "key, t=auto speech timeout, f=filename of prompt to play, b=bargein value (no\n"
-"barge-in=0, ASR engine barge-in=1, Asterisk barge-in=2, Asterisk and ASR engine\n"
-"barge-in=3), ct=confidence threshold (0.0 - 1.0), sl=sensitivity level (0.0 -\n"
-"1.0), sva=speed vs accuracy (0.0 - 1.0), nb=n-best list length (1 - 19 digits),\n"
-"nit=no input timeout (1 - 19 digits), sit=start input timers (true/false),\n"
-"sct=speech complete timeout (1 - 19 digits), sint=speech incomplete timeout\n"
-"(1 - 19 digits), dit=dtmf interdigit timeout (1 - 19 digits), dtt=dtmf\n"
-"terminate timout (1 - 19 digits), dttc=dtmf terminate characters, sw=save\n"
-"waveform (true/false), nac=new audio channel (true/false), sl=speech language\n"
-"(en-US/en-GB/etc.), rm=recognition mode, hmaxd=hotword max duration (1 - 19\n"
-"digits), hmind=hotword min duration (1 - 19 digits), cdb=clear dtmf buffer\n"
-"(true/false), enm=early no match (true/false), iwu=input waveform URI,\n"
-"mt=media type.\n";
+"barge-in=0, ASR engine barge-in=1, Asterisk barge-in=2, ct=confidence\n"
+"threshold (0.0 - 1.0), sl=sensitivity level (0.0 - 1.0), sva=speed vs accuracy\n"
+"(0.0 - 1.0), nb=n-best list length (1 - 19 digits), nit=no input timeout (1 -\n"
+"19 digits), sit=start input timers (true/false), sct=speech complete timeout\n"
+"(1 - 19 digits), sint=speech incomplete timeout (1 - 19 digits), dit=DTMF\n"
+"interdigit timeout (1 - 19 digits), dtt=DTMF terminate timout (1 - 19 digits),\n"
+"dttc=DTMF terminate characters, sw=save waveform (true/false), nac=new audio\n"
+"channel (true/false), sl=speech language (en-US/en-GB/etc.), rm=recognition\n"
+"mode, hmaxd=hotword max duration (1 - 19 digits), hmind=hotword min duration\n"
+"(1 - 19 digits), cdb=clear DTMF buffer (true/false), enm=early no match\n"
+"(true/false), iwu=input waveform URI, mt=media type.\n";
 #endif
 
 /* The configuration file to read. */
@@ -1120,8 +1118,6 @@ static int process_mrcpv1_config(rtsp_client_config_t *config, const char *param
 		config->max_connection_count = atol(val);
 	else if (strcasecmp(param, "force-destination") == 0)
 		config->force_destination = atoi(val);
-	else if ((strcasecmp(param, "speechsynth") == 0) || (strcasecmp(param, "speechrecog") == 0))
-		apr_table_set(config->resource_map, param, val);
 	else
 		mine = 0;
 
@@ -1258,6 +1254,11 @@ static mrcp_client_t *mod_unimrcp_client_create(apr_pool_t *mod_pool)
 
 	/* Set up the media engine that will be shared with all profiles. */
 	if ((media_engine = mpf_engine_create(pool)) != NULL) {
+		unsigned long realtime_rate = 1;
+
+		if (!mpf_engine_scheduler_rate_set(media_engine, realtime_rate))
+			ast_log(LOG_WARNING, "Unable to set scheduler rate for MRCP client media engine\n");
+
 		if (!mrcp_client_media_engine_register(client, media_engine, "MediaEngine"))
 			ast_log(LOG_WARNING, "Unable to register MRCP client media engine\n");
 	}
@@ -2376,13 +2377,6 @@ static void synth_shutdown(void)
 	/* Clear parameter ID map. */
 	if (globals.synth.param_id_map != NULL)
 		apr_hash_clear(globals.synth.param_id_map);
-
-	/* Destroy application. */
-	if (!mrcp_application_destroy(globals.synth.app))
-		ast_log(LOG_WARNING, "Unable to destroy synthesizer MRCP application\n");
-
-	globals.synth.app = NULL;
-	globals.synth.param_id_map = NULL;
 }
 
 /* Set parameter in a synthesizer MRCP header. */
@@ -3718,13 +3712,6 @@ static void recog_shutdown(void)
 	/* Clear parameter ID map. */
 	if (globals.recog.param_id_map != NULL)
 		apr_hash_clear(globals.recog.param_id_map);
-
-	/* Destroy application. */
-	if (!mrcp_application_destroy(globals.recog.app))
-		ast_log(LOG_WARNING, "Unable to destroy recognizer MRCP application\n");
-
-	globals.recog.app = NULL;
-	globals.recog.param_id_map = NULL;
 }
 
 
@@ -4887,6 +4874,8 @@ static int unload_module(void)
 			ast_log(LOG_WARNING, "Unable to destroy MRCP client stack\n");
 		else
 			ast_log(LOG_DEBUG, "MRCP client stack destroyed\n");
+
+		globals.mrcp_client = NULL;
 	}
 
 	if (!apt_log_instance_destroy())
@@ -4958,14 +4947,11 @@ static int load_module(void)
 	/* Create the synthesizer interface. */
 	if (synth_load(globals.pool) != 0) {
 		ast_log(LOG_ERROR, "Failed to create TTS interface\n");
-		if (!mrcp_client_shutdown(globals.mrcp_client))
-			ast_log(LOG_WARNING, "Unable to shutdown MRCP client stack processing\n");
-		else
-			ast_log(LOG_DEBUG, "MRCP client stack processing shutdown\n");
 		if (!mrcp_client_destroy(globals.mrcp_client))
 			ast_log(LOG_WARNING, "Unable to destroy MRCP client stack\n");
 		else
 			ast_log(LOG_DEBUG, "MRCP client stack destroyed\n");
+		globals.mrcp_client = NULL;
 		if (!apt_log_instance_destroy())
 			ast_log(LOG_WARNING, "Unable to destroy UniMRCP logger instance\n");
 		globals_destroy();
@@ -4978,14 +4964,11 @@ static int load_module(void)
 	if (recog_load(globals.pool) != 0) {
 		synth_shutdown();
 		ast_log(LOG_ERROR, "Failed to create ASR interface\n");
-		if (!mrcp_client_shutdown(globals.mrcp_client))
-			ast_log(LOG_WARNING, "Unable to shutdown MRCP client stack processing\n");
-		else
-			ast_log(LOG_DEBUG, "MRCP client stack processing shutdown\n");
 		if (!mrcp_client_destroy(globals.mrcp_client))
 			ast_log(LOG_WARNING, "Unable to destroy MRCP client stack\n");
 		else
 			ast_log(LOG_DEBUG, "MRCP client stack destroyed\n");
+		globals.mrcp_client = NULL;
 		if (!apt_log_instance_destroy())
 			ast_log(LOG_WARNING, "Unable to destroy UniMRCP logger instance\n");
 		globals_destroy();
@@ -4999,14 +4982,11 @@ static int load_module(void)
 		synth_shutdown();
 		recog_shutdown();
 		ast_log(LOG_ERROR, "Failed to start MRCP client stack processing\n");
-		if (!mrcp_client_shutdown(globals.mrcp_client))
-			ast_log(LOG_WARNING, "Unable to shutdown MRCP client stack processing\n");
-		else
-			ast_log(LOG_DEBUG, "MRCP client stack processing shutdown\n");
 		if (!mrcp_client_destroy(globals.mrcp_client))
 			ast_log(LOG_WARNING, "Unable to destroy MRCP client stack\n");
 		else
 			ast_log(LOG_DEBUG, "MRCP client stack destroyed\n");
+		globals.mrcp_client = NULL;
 		if (!apt_log_instance_destroy())
 			ast_log(LOG_WARNING, "Unable to destroy UniMRCP logger instance\n");
 		globals_destroy();
