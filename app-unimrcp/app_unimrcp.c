@@ -154,6 +154,7 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 200656 $")
 #endif
 #include "mpf_engine.h"
 #include "mpf_codec_manager.h"
+#include "mpf_dtmf_generator.h"
 #include "mpf_rtp_termination_factory.h"
 #include "mrcp_sofiasip_client_agent.h"
 #include "mrcp_unirtsp_client_agent.h"
@@ -221,6 +222,8 @@ static char *recogdescrip =
  */
 #define DEFAULT_FRAMESIZE						320
 
+#define DSP_FRAME_ARRAY_SIZE					1024
+
 /* Default audio buffer size:
  *
  * 8000 samples/sec * 2 bytes/sample (16-bit) * 1 second = 16000 bytes
@@ -244,6 +247,7 @@ static char *recogdescrip =
 #define BUILTIN_ID								"builtin:"
 #define SESSION_ID								"session:"
 #define HTTP_ID									"http://"
+#define HTTPS_ID								"https://"
 #define FILE_ID									"file://"
 #define INLINE_ID								"inline:"
 
@@ -386,6 +390,10 @@ struct speech_channel_t {
 	mrcp_session_t *unimrcp_session;
 	/* UniMRCP channel. */
 	mrcp_channel_t *unimrcp_channel;
+	/* UniMRCP stream object. */
+	mpf_audio_stream_t *stream;
+	/* UniMRCP DTMF digit generator. */
+	mpf_dtmf_generator_t *dtmf_generator;
 	/* Memory pool. */
 	apr_pool_t *pool;
 	/* Synchronizes channel state/ */
@@ -1502,7 +1510,7 @@ static void speech_channel_set_state(speech_channel_t *schannel, speech_channel_
 }
 
 /* Send BARGE-IN-OCCURED. */
-static int speech_channel_bargeinoccured(speech_channel_t *schannel){
+static int speech_channel_bargeinoccured(speech_channel_t *schannel) {
 	int status = 0;
 	
 	if (schannel == NULL)
@@ -1602,6 +1610,8 @@ static int speech_channel_create(speech_channel_t **schannel, const char *name, 
 		schan->application = app;
 		schan->unimrcp_session = NULL;
 		schan->unimrcp_channel = NULL;
+		schan->stream = NULL;
+		schan->dtmf_generator = NULL;
 		schan->pool = pool;
 		schan->mutex = NULL;
 		schan->cond = NULL;
@@ -1661,6 +1671,8 @@ static int speech_channel_create(speech_channel_t **schannel, const char *name, 
 			schan->application = NULL;
 			schan->unimrcp_session = NULL;
 			schan->unimrcp_channel = NULL;
+			schan->stream = NULL;
+			schan->dtmf_generator = NULL;
 			schan->pool = NULL;
 			schan->mutex = NULL;
 			schan->cond = NULL;
@@ -1797,6 +1809,12 @@ static int speech_channel_destroy(speech_channel_t *schannel)
 			ast_log(LOG_ERROR, "(%s) Failed to destroy channel.  Continuing\n", schannel->name);
 		}
 
+		if (schannel->dtmf_generator != NULL) {
+			ast_log(LOG_NOTICE, "(%s) DTMF generator destroyed\n", schannel->name);
+                        mpf_dtmf_generator_destroy(schannel->dtmf_generator);
+                        schannel->dtmf_generator = NULL;
+                }
+
 		if (schannel->mutex != NULL)
 			apr_thread_mutex_unlock(schannel->mutex);
 
@@ -1828,6 +1846,8 @@ static int speech_channel_destroy(speech_channel_t *schannel)
 		schannel->application = NULL;
 		schannel->unimrcp_session = NULL;
 		schannel->unimrcp_channel = NULL;
+		schannel->stream = NULL;
+		schannel->dtmf_generator = NULL;
 		schannel->pool = NULL;
 		schannel->mutex = NULL;
 		schannel->cond = NULL;
@@ -2108,6 +2128,12 @@ static apt_bool_t speech_on_session_terminate(mrcp_application_t *application, m
 	ast_log(LOG_DEBUG, "speech_on_session_terminate\n");
 
 	if (schannel != NULL) {
+		if (schannel->dtmf_generator != NULL) {
+			ast_log(LOG_NOTICE, "(%s) DTMF generator destroyed\n", schannel->name);
+                        mpf_dtmf_generator_destroy(schannel->dtmf_generator);
+                        schannel->dtmf_generator = NULL;
+                }
+
 		ast_log(LOG_DEBUG, "(%s) Destroying MRCP session\n", schannel->name);
 
 		if (!mrcp_application_session_destroy(session))
@@ -2134,6 +2160,16 @@ static apt_bool_t speech_on_channel_add(mrcp_application_t *application, mrcp_se
 
 	if ((schannel != NULL) && (application != NULL) && (session != NULL) && (channel != NULL)) {
 		if ((session != NULL) && (status == MRCP_SIG_STATUS_CODE_SUCCESS)) {
+			if (schannel->stream != NULL)
+				
+				schannel->dtmf_generator = mpf_dtmf_generator_create(schannel->stream, schannel->pool);
+				/* schannel->dtmf_generator = mpf_dtmf_generator_create_ex(schannel->stream, MPF_DTMF_GENERATOR_OUTBAND, 70, 50, schannel->pool); */
+
+				if (schannel->dtmf_generator != NULL)
+					ast_log(LOG_NOTICE, "(%s) DTMF generator created\n", schannel->name);
+				else
+					ast_log(LOG_NOTICE, "(%s) Unable to create DTMF generator\n", schannel->name);
+
 #if UNI_VERSION_AT_LEAST(0,8,0)
 			char codec_name[60] = { 0 };
 			const mpf_codec_descriptor_t *descriptor;
@@ -2253,7 +2289,7 @@ static apt_bool_t synth_on_message_receive(mrcp_application_t *application, mrcp
 					ast_log(LOG_DEBUG, "(%s) unexpected STOP response, request_state = %d\n", schannel->name, message->start_line.request_state);
 					speech_channel_set_state(schannel, SPEECH_CHANNEL_ERROR);
 				}
-			} else if(message->start_line.method_id == SYNTHESIZER_BARGE_IN_OCCURRED) {
+			} else if (message->start_line.method_id == SYNTHESIZER_BARGE_IN_OCCURRED) {
 				/* Received response to the BARGE_IN_OCCURRED request. */
 				if (message->start_line.request_state == MRCP_REQUEST_STATE_COMPLETE) {
 					/* Got COMPLETE. */
@@ -2706,7 +2742,6 @@ static const char *grammar_type_to_mime(grammar_type_t type, profile_t *profile)
 	}
 }
 
-#if 0
 /* Check if recognition is complete. */
 static int recog_channel_check_results(speech_channel_t *schannel)
 {
@@ -2738,7 +2773,7 @@ static int recog_channel_check_results(speech_channel_t *schannel)
 
 	return status;
 }
-
+#if 0
 /* Start recognizer's input timers. */
 static int recog_channel_start_input_timers(speech_channel_t *schannel)
 {   
@@ -3577,11 +3612,22 @@ static apt_bool_t recog_on_message_receive(mrcp_application_t *application, mrcp
 						recog_channel_set_results(schannel, result);
 					}
 				} else {
-					char completion_cause[32];
+					char completion_cause[512];
+					char waveform_uri[256];
 					apr_snprintf(completion_cause, sizeof(completion_cause) - 1, "Completion-Cause: %03d", recog_hdr->completion_cause);
 					completion_cause[sizeof(completion_cause) - 1] = '\0';
-					ast_log(LOG_DEBUG, "(%s) No result\n", schannel->name);
+					apr_snprintf(waveform_uri, sizeof(waveform_uri) - 1, "Waveform-URI: %s", recog_hdr->waveform_uri);
+					waveform_uri[sizeof(waveform_uri) - 1] = '\0';
+					if (recog_hdr->waveform_uri.length > 0) {
+						#if defined(ASTERISK162) || defined(ASTERISKSVN)
+						strncat(completion_cause,",", 1);
+						#else
+						strncat(completion_cause,"|", 1);
+						#endif
+						strncat(completion_cause, waveform_uri, strlen(waveform_uri) );
+					}
 					recog_channel_set_results(schannel, completion_cause);
+					ast_log(LOG_DEBUG, "(%s) No result\n", schannel->name);
 				}
 				speech_channel_set_state(schannel, SPEECH_CHANNEL_READY);
 			} else if (message->start_line.method_id == RECOGNIZER_START_OF_INPUT) {
@@ -3605,6 +3651,25 @@ static apt_bool_t recog_on_message_receive(mrcp_application_t *application, mrcp
 	return TRUE;
 }
 
+/* UniMRCP callback requesting stream to be opened. */
+static apt_bool_t recog_stream_open(mpf_audio_stream_t* stream, mpf_codec_t *codec)
+{
+        speech_channel_t* schannel;
+
+
+	if (stream != NULL)
+		schannel = (speech_channel_t*)stream->obj;
+	else
+		schannel = NULL;
+
+        schannel->stream = stream;
+
+	if ((schannel == NULL) || (stream == NULL))
+		ast_log(LOG_ERROR, "(unknown) channel error opening stream!\n");
+
+        return TRUE;
+}
+
 /* UniMRCP callback requesting next frame for speech recognition. */
 static apt_bool_t recog_stream_read(mpf_audio_stream_t *stream, mpf_frame_t *frame)
 {
@@ -3616,6 +3681,14 @@ static apt_bool_t recog_stream_read(mpf_audio_stream_t *stream, mpf_frame_t *fra
 		schannel = NULL;
 
 	if ((schannel != NULL) && (stream != NULL) && (frame != NULL)) {
+		if (schannel->dtmf_generator != NULL) {
+			if (mpf_dtmf_generator_sending(schannel->dtmf_generator)) {
+				ast_log(LOG_NOTICE, "(%s) DTMF frame written\n", schannel->name);
+	                        mpf_dtmf_generator_put_frame(schannel->dtmf_generator, frame);
+				return TRUE;
+	                }
+	        }
+
 		apr_size_t to_read = frame->codec_frame.size;
 
 		/* Grab the data. Pad it if there isn't enough. */
@@ -3651,7 +3724,7 @@ static int recog_load(apr_pool_t *pool)
 	globals.recog.dispatcher.on_channel_remove = speech_on_channel_remove;
 	globals.recog.dispatcher.on_message_receive = recog_on_message_receive;
 	globals.recog.audio_stream_vtable.destroy = NULL;
-	globals.recog.audio_stream_vtable.open_rx = NULL;
+	globals.recog.audio_stream_vtable.open_rx = recog_stream_open;
 	globals.recog.audio_stream_vtable.close_rx = NULL;
 	globals.recog.audio_stream_vtable.read_frame = recog_stream_read;
 	globals.recog.audio_stream_vtable.open_tx = NULL;
@@ -4191,7 +4264,7 @@ static int app_synth_exec(struct ast_channel *chan, void *data)
 		ast_log(LOG_NOTICE, "Voice variant to use: %s\n", option_voicevariant);
 	}
 
-	if (option_interrupt != NULL) {
+	if (strlen(option_interrupt) > 0) {
 		dtmf_enable = 1;
 
 		if (strcasecmp(option_interrupt, "any") == 0) {
@@ -4262,6 +4335,7 @@ static int app_synth_exec(struct ast_channel *chan, void *data)
 		speech_channel_set_param(schannel, "prosody-rate", option_prate);
 
 	int owriteformat = chan->writeformat;
+
 	/* if (ast_set_write_format(chan, AST_FORMAT_SLINEAR) < 0) { */
 	if (ast_set_write_format(chan, codec_to_format(chan->rawwriteformat)) < 0) {
 		ast_log(LOG_WARNING, "Unable to set write format to signed linear\n");
@@ -4399,9 +4473,9 @@ static int app_recog_exec(struct ast_channel *chan, void *data)
 	apr_uint32_t speech_channel_number = get_next_speech_channel_number();
 	char name[200] = { 0 };
 	int waitres = 0;
-
 	int res = 0;
 	char *parse;
+
 	AST_DECLARE_APP_ARGS(args,
 		AST_APP_ARG(grammar);
 		AST_APP_ARG(options);
@@ -4441,6 +4515,16 @@ static int app_recog_exec(struct ast_channel *chan, void *data)
 	char option_nbest[64] = { 0 };
 	char option_speedvsa[64] = { 0 };
 	char option_mediatype[64] = { 0 };
+	char *tmp;
+	int speech = 0;
+	struct timeval start = { 0, 0 };
+	struct timeval detection_start = { 0, 0 };
+	int min = 100;
+	int max = -1;
+	int continue_analysis = 1;
+	int x;
+	int origrformat = 0;
+	struct ast_dsp *dsp = NULL;
 
 	if (!ast_strlen_zero(args.options)) {
 		char tempstr[1024];
@@ -4562,7 +4646,6 @@ static int app_recog_exec(struct ast_channel *chan, void *data)
 					option_bargein[sizeof(option_bargein) - 1] = '\0';
 				}
 			}
-
 			if (token != NULL) {
 				strncpy(tempstr, token + 1, sizeof(tempstr) - 1);
 				tempstr[sizeof(tempstr) - 1] = '\0';
@@ -4573,7 +4656,7 @@ static int app_recog_exec(struct ast_channel *chan, void *data)
 	int bargein = 1;
 	if (!ast_strlen_zero(option_bargein)) {
 		bargein = atoi(option_bargein);
-		if (bargein < 0)
+		if ((bargein < 0) || (bargein > 2))
 			bargein = 1;
 	}
 
@@ -4593,19 +4676,19 @@ static int app_recog_exec(struct ast_channel *chan, void *data)
 		ast_log(LOG_NOTICE, "Barge-in: %s\n", option_bargein);
 	}
 	if (!ast_strlen_zero(option_confidencethresh)) {
-		ast_log(LOG_NOTICE, "Confidence-Threshold: %s\n", option_confidencethresh);
+		ast_log(LOG_NOTICE, "Confidence threshold: %s\n", option_confidencethresh);
 	}
 	if (!ast_strlen_zero(option_senselevel)) {
 		ast_log(LOG_NOTICE, "Sensitivity-level: %s\n", option_senselevel);
 	}
 	if (!ast_strlen_zero(option_inputwaveuri)) {
-		ast_log(LOG_NOTICE, "Input wave uri: %s\n", option_inputwaveuri);
+		ast_log(LOG_NOTICE, "Input wave URI: %s\n", option_inputwaveuri);
 	}
 	if (!ast_strlen_zero(option_earlynomatch)) {
 		ast_log(LOG_NOTICE, "Early-no-match: %s\n", option_earlynomatch);
 	}
 	if (!ast_strlen_zero(option_cleardtmfbuf)) {
-		ast_log(LOG_NOTICE, "Clear dtmf buffer: %s\n", option_cleardtmfbuf);
+		ast_log(LOG_NOTICE, "Clear DTMF buffer: %s\n", option_cleardtmfbuf);
 	}
 	if (!ast_strlen_zero(option_hotwordmin)) {
 		ast_log(LOG_NOTICE, "Hotword min delay: %s\n", option_hotwordmin);
@@ -4623,16 +4706,16 @@ static int app_recog_exec(struct ast_channel *chan, void *data)
 		ast_log(LOG_NOTICE, "Save waveform: %s\n", option_savewave);
 	}
 	if (!ast_strlen_zero(option_dtmftermc)) {
-		ast_log(LOG_NOTICE, "dtmf term char: %s\n", option_dtmftermc);
+		ast_log(LOG_NOTICE, "DTMF term char: %s\n", option_dtmftermc);
 	}
 	if (!ast_strlen_zero(option_dtmftermt)) {
-		ast_log(LOG_NOTICE, "Dtmf terminate timeout: %s\n", option_dtmftermt);
+		ast_log(LOG_NOTICE, "DTMF terminate timeout: %s\n", option_dtmftermt);
 	}
 	if (!ast_strlen_zero(option_dtmfdigitt)) {
-		ast_log(LOG_NOTICE, "dtmf digit terminate timeout: %s\n", option_dtmfdigitt);
+		ast_log(LOG_NOTICE, "DTMF digit terminate timeout: %s\n", option_dtmfdigitt);
 	}
 	if (!ast_strlen_zero(option_speechit)) {
-		ast_log(LOG_NOTICE, "Speech incomlete timeout : %s\n", option_speechit);
+		ast_log(LOG_NOTICE, "Speech incomplete timeout : %s\n", option_speechit);
 	}
 	if (!ast_strlen_zero(option_speechct)) {
 		ast_log(LOG_NOTICE, "Speech complete timeout: %s\n", option_speechct);
@@ -4641,26 +4724,26 @@ static int app_recog_exec(struct ast_channel *chan, void *data)
 		ast_log(LOG_NOTICE, "Start-input timeout: %s\n", option_startinputt);
 	}
 	if (!ast_strlen_zero(option_noinputt)) {
-		ast_log(LOG_NOTICE, "no-input timeout: %s\n", option_noinputt);
+		ast_log(LOG_NOTICE, "No-input timeout: %s\n", option_noinputt);
 	}
 	if (!ast_strlen_zero(option_nbest)) {
-		ast_log(LOG_NOTICE, "nbest list length: %s\n", option_nbest);
+		ast_log(LOG_NOTICE, "N-best list length: %s\n", option_nbest);
 	}
 	if (!ast_strlen_zero(option_speedvsa)) {
-		ast_log(LOG_NOTICE, "speed vs accuracy: %s\n", option_speedvsa);
+		ast_log(LOG_NOTICE, "Speed vs accuracy: %s\n", option_speedvsa);
 	}
 	if (!ast_strlen_zero(option_mediatype)) {
 		ast_log(LOG_NOTICE, "Media Type: %s\n", option_mediatype);
 	}
-	
-	if (option_interrupt != NULL) {
+
+	if (strlen(option_interrupt) > 0) {
 		dtmf_enable = 1;
 
 		if (strcasecmp(option_interrupt, "any") == 0) {
 			strncpy(option_interrupt, AST_DIGIT_ANY, sizeof(option_interrupt) - 1);
 			option_interrupt[sizeof(option_interrupt) - 1] = '\0';
 		} else if (strcasecmp(option_interrupt, "none") == 0)
-			dtmf_enable = 0;
+			dtmf_enable = 2;
 	}
 	ast_log(LOG_NOTICE, "DTMF enable: %d\n", dtmf_enable);
 
@@ -4751,8 +4834,15 @@ static int app_recog_exec(struct ast_channel *chan, void *data)
 		speech_channel_destroy(schannel);
 		goto done;
 	}
+	
+	grammar_type_t tmp_grammar;
+	if ((text_starts_with( args.grammar, HTTP_ID)) || (text_starts_with( args.grammar, HTTPS_ID)) || (text_starts_with( args.grammar, BUILTIN_ID))) {
+		tmp_grammar = GRAMMAR_TYPE_URI;
+	} else {
+		tmp_grammar = GRAMMAR_TYPE_SRGS_XML;
+	}
 
-	if (recog_channel_load_grammar(schannel, name, GRAMMAR_TYPE_SRGS_XML, args.grammar) != 0) {
+	if (recog_channel_load_grammar(schannel, name, tmp_grammar, args.grammar) != 0) {
 		ast_log(LOG_ERROR, "Unable to load grammar\n");
 		res = -1;
 		speech_channel_stop(schannel);
@@ -4760,16 +4850,32 @@ static int app_recog_exec(struct ast_channel *chan, void *data)
 		goto done;
 	}
 
-	ast_log(LOG_NOTICE, "Recognizing\n");
-
-
 	int resf = -1;
+	struct ast_filestream* fs;
+	off_t filelength = 0;
 
 	ast_stopstream(chan);
+
+	/* Open file, get file length, seek to begin, apply and play. */ 
 	if (!ast_strlen_zero(option_filename)) {
-		
-		if ((resf = ast_streamfile(chan, option_filename, chan->language)))
-			ast_log(LOG_WARNING, "ast_streamfile failed on %s for %s\n", chan->name, option_filename);
+		if ((fs = ast_openstream(chan, option_filename, chan->language)) == NULL) {
+			ast_log(LOG_WARNING, "ast_openstream failed on %s for %s\n", chan->name, option_filename);
+		} else {
+			if (ast_seekstream(fs, -1, SEEK_END) == -1) {
+				ast_log(LOG_WARNING, "ast_seekstream failed on %s for %s\n", chan->name, option_filename);
+			} else {
+				filelength = ast_tellstream(fs);
+				ast_log(LOG_NOTICE, "file length:%d\n", filelength);
+			}
+
+			if (ast_seekstream(fs, 0, SEEK_SET) == -1) {
+				ast_log(LOG_WARNING, "ast_seekstream failed on %s for %s\n", chan->name, option_filename);
+			} else if (ast_applystream(chan, fs) == -1) {
+				ast_log(LOG_WARNING, "ast_applystream failed on %s for %s\n", chan->name, option_filename);
+			} else if (ast_playstream(fs) == -1) {
+				ast_log(LOG_WARNING, "ast_playstream failed on %s for %s\n", chan->name, option_filename);
+			}
+		}
 
 		if (bargein == 0) {
 			if (!resf)
@@ -4777,56 +4883,297 @@ static int app_recog_exec(struct ast_channel *chan, void *data)
 		}
 	}
 
-	if (recog_channel_start(schannel, name) == 0) {
-		while ((waitres = ast_waitfor(chan, -1)) > -1) {
-			f = ast_read(chan);
-			if (!f) {
-				res = -1;
-				break;
-			}
-			if (f->frametype == AST_FRAME_VOICE) {
-				len = f->datalen;
-				#if defined(ASTERISKSVN) || defined(ASTERISK162) || defined(ASTERISK161)
-				rres = speech_channel_write(schannel, (void *)(f->data.ptr), &len);
-				#else
-				rres = speech_channel_write(schannel, (void *)(f->data), &len);	
-				#endif
-				if (rres != 0)
+	unsigned long int marka = 0;
+	unsigned long int markb = 0;
+
+	typedef struct _DSP_FRAME_DATA_T_ {
+		struct ast_frame* f;
+		int speech;
+	} dsp_frame_data_t;
+
+	dsp_frame_data_t **dsp_frame_data = NULL;
+	dsp_frame_data_t* myFrame;
+
+	unsigned long int dsp_frame_data_len = DSP_FRAME_ARRAY_SIZE;
+	unsigned long int dsp_frame_count = 0;
+	int dtmfkey = -1;
+
+	waitres = 0;
+
+	/* Speech detection start. */
+	if (bargein == 2) {	
+		struct ast_frame *f1;
+		dsp_frame_data = (dsp_frame_data_t**)malloc(sizeof(dsp_frame_data_t*) * DSP_FRAME_ARRAY_SIZE);
+
+		if (dsp_frame_data != NULL)
+			memset(dsp_frame_data,0,sizeof(dsp_frame_data_t*) * DSP_FRAME_ARRAY_SIZE);
+
+		int freeframe = 0;
+
+		if (dsp_frame_data == NULL) {
+			ast_log(LOG_ERROR, "Unable to allocate frame array\n");
+			res = -1;
+		} else if ((dsp = (struct ast_dsp*)ast_dsp_new()) == NULL) {
+			ast_log(LOG_ERROR, "Unable to allocate DSP!\n");
+			res = -1;
+		} else {
+			ast_log(LOG_DEBUG,"Entering speech START detection\n");
+			int ssdres = 1;	
+			/* Only start to transmit frames as soon as voice has been detected. */
+			detection_start = ast_tvnow();
+	
+			while (((waitres = ast_waitfor(chan, 100)) >= 0)) {
+				if (waitres == 0)
+					continue;
+
+				freeframe = 0; /* By default free frame. */
+				f1 = ast_read(chan);
+
+				if (!f1) {
+					ssdres = -1;
 					break;
-			} else if (f->frametype == AST_FRAME_VIDEO) {
-				/* Ignore. */
-			} else if (f->frametype == AST_FRAME_DTMF) {
-				/* Do not handle DTMF, assume it is handled in-band by the ASR engine. */
+				}
+	
+				/* Break if prompt has finished - don't care about analysis time which is in effect equal to prompt length. */
+				if ((filelength != 0) && ( ast_tellstream(fs) >= filelength)) {
+					ast_log(LOG_NOTICE, "prompt has finished playing, moving on.\n");
+					ast_frfree(f1);
+					break;
+				}
+	
+				if (f1->frametype == AST_FRAME_VOICE) {
+					myFrame = (dsp_frame_data_t*)malloc(sizeof(dsp_frame_data_t));
+
+					if (myFrame == NULL) {
+						ast_log(LOG_ERROR, "Failed to allocate a frame\n");
+						ast_frfree(f1);
+						break;
+					}
+
+					/* Store voice frame. */
+					if (dsp_frame_count + 1 > dsp_frame_data_len) {
+						dsp_frame_data_t** tmpData;
+						tmpData = (dsp_frame_data_t**)realloc(dsp_frame_data, sizeof(dsp_frame_data_t*) * (dsp_frame_count + 1));
+
+						if (tmpData != NULL) {
+							dsp_frame_data = tmpData;
+							dsp_frame_data_len++;
+						} else {
+							ast_log(LOG_ERROR, "Failure in storing frames, streaming directly\n");
+							ast_frfree(f1);
+							free(myFrame);
+							break; /* Break out of detection loop, so one can rather just stream. */
+						}
+					}
+
+					myFrame->f = f1;
+					myFrame->speech = 0;
+
+					dsp_frame_count++;
+					dsp_frame_data[dsp_frame_count - 1] = myFrame;
+					freeframe = 1; /* Do not free the frame, as it is stored */
+
+					/* Continue analysis. */	
+					int totalsilence;
+					ssdres = ast_dsp_silence(dsp, f1, &totalsilence);
+					int ms = 0;
+
+					if (ssdres) { /* Glitch detection or detection after a small word. */
+						if (speech) {
+							/* We've seen speech in a previous frame. */
+							/* We had heard some talking. */
+							ms = ast_tvdiff_ms(ast_tvnow(), start);
+
+							if (ms > min) {
+								ast_log(LOG_DEBUG, "Found qualified token of %d ms\n", ms);
+								markb = dsp_frame_count;
+								myFrame->speech = 1;
+								ast_stopstream(schannel->chan);
+								break;
+							} else {
+								markb =0; marka =0;
+								ast_log(LOG_DEBUG, "Found unqualified token of %d ms\n", ms);
+								speech = 0;
+							}
+						}
+
+						myFrame->speech = 0;
+					} else {
+						if (speech) {
+							ms = ast_tvdiff_ms(ast_tvnow(), start);
+						} else {
+							/* Heard some audio, mark the begining of the token. */
+							start = ast_tvnow();
+							ast_log(LOG_DEBUG, "Start of voice token!\n");
+							marka = dsp_frame_count;
+						}
+
+						speech = 1;
+						myFrame->speech = 1;
+
+						if (ms > min) {
+							ast_log(LOG_DEBUG, "Found qualified speech token of %d ms\n", ms);
+							markb = dsp_frame_count;
+							ast_stopstream(schannel->chan);
+							break;
+						}
+					}
+				} else if (f1->frametype == AST_FRAME_VIDEO) {
+					/* Ignore. */
+				} else if ((dtmf_enable != 0) && (f1->frametype == AST_FRAME_DTMF)) {
+					#if defined(ASTERISKSVN)
+					dtmfkey = f1->subclass.integer;
+					#else
+					dtmfkey =  f1->subclass;
+					#endif
+					ast_log(LOG_DEBUG, "ssd: User pressed DTMF key (%d)\n", dtmfkey);
+					break;
+				}
+
+				if (freeframe == 0)
+					ast_frfree(f1); 
+			}
+		}
+	}
+	/* End of speech detection. */
+
+	int i = 0;
+	if (((dtmf_enable == 1) && (dtmfkey != -1)) || (waitres < 0)) {
+		/* Skip as we have to return to specific dialplan extension, or a error occurred on the channel */
+	} else {
+		ast_log(LOG_NOTICE, "Recognizing\n");
+
+		if (recog_channel_start(schannel, name) == 0) {
+			if ((dtmfkey != -1) && (schannel->dtmf_generator != NULL)) {
+				char digits[2];
+
+				digits[0] = (char)dtmfkey;
+				digits[1] = '\0';
+
+				ast_log(LOG_NOTICE, "(%s) DTMF barge-in digit queued (%s)\n", schannel->name, digits);
+				mpf_dtmf_generator_enqueue(schannel->dtmf_generator, digits);
+				dtmfkey = -1;
+			}	
+
+			/* Playback buffer of frames captured during. */
+			int pres = 0;
+
+			if (dsp_frame_data != NULL) {
+				if ((bargein == 2) && (markb != 0)) {
+					for (i = marka; i < markb; ++i) {
+						if ((dsp_frame_data[i] != NULL) && (dsp_frame_data[i]->speech == 1)) {
+							myFrame = dsp_frame_data[i];
+							len = myFrame->f->datalen;
+							#if defined(ASTERISKSVN) || defined(ASTERISK162) || defined(ASTERISK161)
+							rres = speech_channel_write(schannel, (void *)(myFrame->f->data.ptr), &len);
+							#else
+							rres = speech_channel_write(schannel, (void *)(myFrame->f->data), &len);	
+							#endif
+						}
+
+						if (rres != 0)
+							break;
+					}
+
+					if (pres != 0)
+						ast_log(LOG_ERROR,"Could not transmit the playback (of SPEECH START DETECT)\n");
+				}
+
+				for (i = 0; i < dsp_frame_count; i++) {
+					myFrame = dsp_frame_data[i];
+					if (myFrame != NULL) {
+						ast_frfree(myFrame->f); 
+				free(dsp_frame_data[i]); 
+					}
+				}
+			free(dsp_frame_data);
 			}
 
-			ast_frfree(f);
+			/* Continue with recognition. */
+			while (((waitres = ast_waitfor(chan, 100)) >= 0)) {
+				if (waitres == 0)
+					continue;
+
+				f = ast_read(chan);
+
+				if (!f) {
+					res = -1;
+					break;
+				}
+
+				if (f->frametype == AST_FRAME_VOICE) {
+					len = f->datalen;
+					#if defined(ASTERISKSVN) || defined(ASTERISK162) || defined(ASTERISK161)
+					rres = speech_channel_write(schannel, (void *)(f->data.ptr), &len);
+					#else
+					rres = speech_channel_write(schannel, (void *)(f->data), &len);	
+					#endif
+					if (rres != 0)
+						break;
+				} else if (f->frametype == AST_FRAME_VIDEO) {
+					/* Ignore. */
+				} else if ((dtmf_enable != 0) && (f->frametype == AST_FRAME_DTMF)) {
+					#if defined(ASTERISKSVN)
+					dtmfkey = f->subclass.integer;
+					#else
+					dtmfkey =  f->subclass;
+					#endif
+
+					ast_log(LOG_DEBUG, "User pressed DTMF key (%d)\n", dtmfkey);
+					if (dtmf_enable == 2) { /* Send dtmf frame to ASR engine. */
+						if (schannel->dtmf_generator != NULL) {
+							char digits[2];
+
+							digits[0] = (char)dtmfkey;
+							digits[1] = '\0';
+
+							ast_log(LOG_NOTICE, "(%s) DTMF digit queued (%s)\n", schannel->name, digits);
+							mpf_dtmf_generator_enqueue(schannel->dtmf_generator, digits);
+							dtmfkey = -1;
+						}
+					} else if (dtmf_enable == 1) { /* Stop streaming and return DTMF value to the dialplan if within i chars. */
+						if (strchr(option_interrupt, dtmfkey) || (strcmp(option_interrupt,"any")))
+							break ; 
+
+						/* Continue if not an i-key. */
+					}
+				}
+
+				if (f != NULL)
+					ast_frfree(f);
+			}
+		} else {
+			ast_log(LOG_ERROR, "Unable to start recognition\n");
+			res = -1;
 		}
-	} else {
-		ast_log(LOG_ERROR, "Unable to start recognition\n");
-		res = -1;
-	}
-
-	if (!f) {
-		ast_log(LOG_NOTICE, "Got hangup\n");
-		res = -1;
-	} else {
-		if (bargein != 0) {
-			if (!resf)
-				res = ast_waitstream(chan, "");
+		if (!f) {
+			ast_log(LOG_NOTICE, "Got hangup\n");
+			res = -1;
+		} else {
+			if (bargein != 0) {
+				if (!resf)
+					res = ast_waitstream(chan, "");
+			}
 		}
+
+		char* result = NULL;
+
+		if (recog_channel_check_results(schannel) == 0) {
+			if (recog_channel_get_results(schannel, &result) == 0) {
+				ast_log(LOG_NOTICE, "Result=|%s|\n", result);
+			} else {
+				ast_log(LOG_ERROR, "Unable to retrieve result\n");
+			}
+		}
+
+		if (result != NULL)
+			pbx_builtin_setvar_helper(chan, "RECOG_RESULT", result);
+		else
+			pbx_builtin_setvar_helper(chan, "RECOG_RESULT", "");
 	}
 
-	char* result = NULL;
-	if (recog_channel_get_results(schannel, &result) == 0) {
-		ast_log(LOG_NOTICE, "Result=|%s|\n", result);
-	} else {
-		ast_log(LOG_ERROR, "Unable to retrieve result\n");
-	}
-
-	if (result != NULL)
-		pbx_builtin_setvar_helper(chan, "RECOG_RESULT", result);
-	else
-		pbx_builtin_setvar_helper(chan, "RECOG_RESULT", "");
+	if ((dtmf_enable == 1) && (dtmfkey != -1) && (res != -1))
+		res = dtmfkey;
 
 	if (recog_channel_unload_grammar(schannel, name) != 0) {
 		ast_log(LOG_ERROR, "Unable to unload grammar\n");
@@ -4841,11 +5188,11 @@ static int app_recog_exec(struct ast_channel *chan, void *data)
 
 	speech_channel_stop(schannel);
 	speech_channel_destroy(schannel);
+	ast_stopstream(chan);
 	
 done:
 	return res;
 }
-
 
 static int reload(void)
 {
@@ -5030,13 +5377,15 @@ AST_MODULE_INFO(ASTERISK_GPL_KEY, AST_MODFLAG_DEFAULT, "MRCP suite of applicatio
  * ( ) 10. Load tests, look at robustness, load, unexpected things such as killing server in request, etc.
  * ( ) 11. Packaged unimrcpserver with Flite, Festival, Sphinx, HTK, PocketSphinx, RealSpeak modules
  * ( ) 12. Resources/applications for Speaker Verification, Speaker Recognition, Speech Recording
+ *
+ * NOTE: If you want DTMF recognised, remember to set "codecs = PCMU PCMA L16/96/8000 PCMU/97/16000 telephone-event/101/8000" as telephone-event is important
  */
 
 /* For Emacs:
  * Local Variables:
  * mode:c
  * indent-tabs-mode:t
- * tab-width:5
+ * tab-width:4
  * c-basic-offset:4
  * End:
  * For VIM:
