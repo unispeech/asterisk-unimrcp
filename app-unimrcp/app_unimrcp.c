@@ -3868,6 +3868,14 @@ static int load_config(void)
 		ast_log(LOG_DEBUG, "general.offer-new-connection=%s\n",  value);
 		globals.unimrcp_offer_new_connection = apr_pstrdup(globals.pool, value);
 	}
+	if ((value = ast_variable_retrieve(cfg, "general", "rx-buffer-size")) != NULL) {
+		ast_log(LOG_DEBUG, "general.rx-buffer-size=%s\n",  value);
+		globals.unimrcp_rx_buffer_size = apr_pstrdup(globals.pool, value);
+	}
+	if ((value = ast_variable_retrieve(cfg, "general", "tx-buffer-size")) != NULL) {
+		ast_log(LOG_DEBUG, "general.tx-buffer-size=%s\n",  value);
+		globals.unimrcp_tx_buffer_size = apr_pstrdup(globals.pool, value);
+	}
 
 	while ((cat = ast_category_browse(cfg, cat)) != NULL) {
 		if (strcasecmp(cat, "general") != 0) {
