@@ -73,6 +73,7 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 200656 $")
 #include "asterisk/lock.h"
 #include "asterisk/file.h"
 #include "asterisk/app.h"
+#include "asterisk/dsp.h"
 
 /*** DOCUMENTATION
 	<application name="MRCPSynth" language="en_US">
@@ -3645,7 +3646,7 @@ static apt_bool_t recog_on_message_receive(mrcp_application_t *application, mrcp
 					char waveform_uri[256];
 					apr_snprintf(completion_cause, sizeof(completion_cause) - 1, "Completion-Cause: %03d", recog_hdr->completion_cause);
 					completion_cause[sizeof(completion_cause) - 1] = '\0';
-					apr_snprintf(waveform_uri, sizeof(waveform_uri) - 1, "Waveform-URI: %s", recog_hdr->waveform_uri);
+					apr_snprintf(waveform_uri, sizeof(waveform_uri) - 1, "Waveform-URI: %s", recog_hdr->waveform_uri.buf);
 					waveform_uri[sizeof(waveform_uri) - 1] = '\0';
 					if (recog_hdr->waveform_uri.length > 0) {
 						#if defined(ASTERISK162) || defined(ASTERISKSVN)
@@ -4552,15 +4553,10 @@ static int app_recog_exec(struct ast_channel *chan, void *data)
 	char option_nbest[64] = { 0 };
 	char option_speedvsa[64] = { 0 };
 	char option_mediatype[64] = { 0 };
-	char *tmp;
 	int speech = 0;
 	struct timeval start = { 0, 0 };
 	struct timeval detection_start = { 0, 0 };
 	int min = 100;
-	int max = -1;
-	int continue_analysis = 1;
-	int x;
-	int origrformat = 0;
 	struct ast_dsp *dsp = NULL;
 
 	if (!ast_strlen_zero(args.options)) {
@@ -4888,7 +4884,7 @@ static int app_recog_exec(struct ast_channel *chan, void *data)
 	}
 
 	int resf = -1;
-	struct ast_filestream* fs;
+	struct ast_filestream* fs = NULL;
 	off_t filelength = 0;
 
 	ast_stopstream(chan);
@@ -4902,7 +4898,7 @@ static int app_recog_exec(struct ast_channel *chan, void *data)
 				ast_log(LOG_WARNING, "ast_seekstream failed on %s for %s\n", chan->name, option_filename);
 			} else {
 				filelength = ast_tellstream(fs);
-				ast_log(LOG_NOTICE, "file length:%d\n", filelength);
+				ast_log(LOG_NOTICE, "file length:%"APR_OFF_T_FMT"\n", filelength);
 			}
 
 			if (ast_seekstream(fs, 0, SEEK_SET) == -1) {
@@ -4966,7 +4962,7 @@ static int app_recog_exec(struct ast_channel *chan, void *data)
 				freeframe = 0; /* By default free frame. */
 				f1 = ast_read(chan);
 
-				if (!f1) {
+				if (!f1 || !fs) {
 					ssdres = -1;
 					break;
 				}
