@@ -279,6 +279,10 @@ struct my_mrcp_globals_t {
 	char *unimrcp_max_connection_count;
 	/* The offer-new-connection configuration. */
 	char *unimrcp_offer_new_connection;
+	/* The rx-buffer-size configuration. */
+	char *unimrcp_rx_buffer_size;
+	/* The tx-buffer-size configuration. */
+	char *unimrcp_tx_buffer_size;
 	/* The default text-to-speech profile to use. */
 	char *unimrcp_default_synth_profile;
 	/* The default speech recognition profile to use. */
@@ -490,6 +494,8 @@ static void globals_null(void)
 	globals.pool = NULL;
 	globals.unimrcp_max_connection_count = NULL;
 	globals.unimrcp_offer_new_connection = NULL;
+	globals.unimrcp_rx_buffer_size = NULL;
+	globals.unimrcp_tx_buffer_size = NULL;
 	globals.unimrcp_default_synth_profile = NULL;
 	globals.unimrcp_default_recog_profile = NULL;
 	globals.unimrcp_log_level = NULL;
@@ -1258,6 +1264,21 @@ static mrcp_client_t *mod_unimrcp_client_create(apr_pool_t *mod_pool)
 		offer_new_connection = 1;
 
 	if ((connection_agent = mrcp_client_connection_agent_create(max_connection_count, offer_new_connection, pool)) != NULL) {
+		if (connection_agent != NULL) {
+ 			if (globals.rx_buffer_size != NULL) {
+				apr_size_t rx_buffer_size = (apr_size_t)atol(globals.rx_buffer_size);
+				if (rx_buffer_size > 0) {
+	 				mrcp_client_connection_rx_size_set(connection_agent, rx_buffer_size);
+				}
+ 			}
+ 			if (globals.tx_buffer_size != NULL) {
+				apr_size_t tx_buffer_size = (apr_size_t)atol(globals.tx_buffer_size);
+				if (tx_buffer_size > 0) {
+	 				mrcp_client_connection_tx_size_set(connection_agent, tx_buffer_size);
+				}
+ 			}
+ 		}
+
 		if (!mrcp_client_connection_agent_register(client, connection_agent, "MRCPv2ConnectionAgent"))
 			ast_log(LOG_WARNING, "Unable to register MRCP client connection agent\n");
 	}
