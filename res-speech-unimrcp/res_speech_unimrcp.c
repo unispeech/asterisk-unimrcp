@@ -36,7 +36,7 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: $")
 
 
 #define UNI_ENGINE_NAME "unimrcp"
-#define UNI_PROFILE_NAME "MRCPv2-Default"
+#define UNI_PROFILE_NAME "uni2"
 
 /** Timeout to wait for asynchronous response (actually this timeout shouldn't expire) */
 #define MRCP_APP_REQUEST_TIMEOUT 60 * 1000000
@@ -223,12 +223,16 @@ static void uni_recog_cleanup(uni_speech_t *uni_speech)
 }
 
 /*! \brief Load a local grammar on the speech structure */
-static int uni_recog_load_grammar(struct ast_speech *speech, char *grammar_name, char *grammar)
+static int uni_recog_load_grammar(struct ast_speech *speech, char *grammar_name, char *grammar_path)
 {
 	uni_speech_t *uni_speech = speech->data;
 	mrcp_message_t *mrcp_message;
+	mrcp_generic_header_t *generic_header;
+	const char *content_type = NULL;
+	char *tmp;
+	apr_file_t *file;
+	apt_str_t *body = NULL;
 
-	ast_log(LOG_NOTICE, "Load grammar '%s'\n",uni_speech_id_get(uni_speech));
 	mrcp_message = mrcp_application_message_create(
 								uni_speech->session,
 								uni_speech->channel,
@@ -237,38 +241,72 @@ static int uni_recog_load_grammar(struct ast_speech *speech, char *grammar_name,
 		ast_log(LOG_WARNING, "Failed to create MRCP message");
 		return -1;
 	}
-	
-	/* Set message body */
-	FILE *file = fopen(grammar,"r");
-	if(file) {
-		mrcp_generic_header_t *generic_header;
-		char text[4096];
-		apr_size_t size;
-		size = fread(text,1,sizeof(text),file);
-		apt_string_assign_n(&mrcp_message->body,text,size,mrcp_message->pool);
-		fclose(file);
 
-		/* Get/Allocate generic header */
-		generic_header = mrcp_generic_header_prepare(mrcp_message);
-		if(generic_header) {
-			/* Set generic header fields */
-			if(strstr(text,"#JSGF")) {
-				apt_string_assign(&generic_header->content_type,"application/x-jsgf",mrcp_message->pool);
+	/* 
+	 * Grammar name and path are mandatory attributes, 
+	 * grammar type can be optionally specified with path.
+	 *
+	 * SpeechLoadGrammar(name|path)
+	 * SpeechLoadGrammar(name|type:path)
+	 */
+
+	tmp = strchr(grammar_path,':');
+	if(tmp) {
+		*tmp = '\0';
+		content_type = grammar_path;
+		grammar_path = tmp+1;
+	}
+
+	if(apr_file_open(&file,grammar_path,APR_FOPEN_READ|APR_FOPEN_BINARY,0,mrcp_message->pool) == APR_SUCCESS) {
+		apr_finfo_t finfo;
+		if(apr_file_info_get(&finfo,APR_FINFO_SIZE,file) == APR_SUCCESS) {
+			/* Read message body */
+			body = &mrcp_message->body;
+			body->buf = apr_palloc(mrcp_message->pool,finfo.size+1);
+			body->length = (apr_size_t)finfo.size;
+			if(apr_file_read(file,body->buf,&body->length) != APR_SUCCESS) {
+				ast_log(LOG_WARNING, "Failed to read the content of grammar file: %s\n",grammar_path);
 			}
-			else if(strstr(text,"#ABNF")) {
-				apt_string_assign(&generic_header->content_type,"application/srgs",mrcp_message->pool);
-			}
-			else {
-				apt_string_assign(&generic_header->content_type,"application/srgs+xml",mrcp_message->pool);
-			}
-			mrcp_generic_header_property_add(mrcp_message,GENERIC_HEADER_CONTENT_TYPE);
-			apt_string_assign(&generic_header->content_id,grammar_name,mrcp_message->pool);
-			mrcp_generic_header_property_add(mrcp_message,GENERIC_HEADER_CONTENT_ID);
+			body->buf[body->length] = '\0';
 		}
+		apr_file_close(file);
 	}
 	else {
-		ast_log(LOG_WARNING, "No such grammar file available: %s\n",grammar);
+		ast_log(LOG_WARNING, "No such grammar file available: %s\n",grammar_path);
 		return -1;
+	}
+
+	if(!body || !body->buf) {
+		ast_log(LOG_WARNING, "No content available: %s\n",grammar_path);
+		return -1;
+	}
+
+	/* Try to implicitly detect content type, if it's not specified */
+	if(!content_type) {
+		if(strstr(body->buf,"#JSGF")) {
+			content_type = "application/x-jsgf";
+		}
+		else if(strstr(body->buf,"#ABNF")) {
+			content_type = "application/srgs";
+		}
+		else {
+			content_type = "application/srgs+xml";
+		}
+	}
+
+	ast_log(LOG_NOTICE, "Load grammar name:%s type:%s path:%s '%s'\n",
+				grammar_name,
+				content_type,
+				grammar_path,
+				uni_speech_id_get(uni_speech));
+	/* Get/allocate generic header */
+	generic_header = mrcp_generic_header_prepare(mrcp_message);
+	if(generic_header) {
+		/* Set generic header fields */
+		apt_string_assign(&generic_header->content_type,content_type,mrcp_message->pool);
+		mrcp_generic_header_property_add(mrcp_message,GENERIC_HEADER_CONTENT_TYPE);
+		apt_string_assign(&generic_header->content_id,grammar_name,mrcp_message->pool);
+		mrcp_generic_header_property_add(mrcp_message,GENERIC_HEADER_CONTENT_ID);
 	}
 
 	/* Send MRCP request and wait for response */
@@ -292,7 +330,9 @@ static int uni_recog_unload_grammar(struct ast_speech *speech, char *grammar_nam
 	mrcp_message_t *mrcp_message;
 	mrcp_generic_header_t *generic_header;
 
-	ast_log(LOG_NOTICE, "Unload grammar '%s'\n",uni_speech_id_get(uni_speech));
+	ast_log(LOG_NOTICE, "Unload grammar name:%s '%s'\n",
+				grammar_name,
+				uni_speech_id_get(uni_speech));
 	mrcp_message = mrcp_application_message_create(
 								uni_speech->session,
 								uni_speech->channel,
@@ -330,7 +370,9 @@ static int uni_recog_activate_grammar(struct ast_speech *speech, char *grammar_n
 	uni_speech_t *uni_speech = speech->data;
 	apr_pool_t *pool = mrcp_application_session_pool_get(uni_speech->session);
 
-	ast_log(LOG_NOTICE, "Activate grammar '%s'\n",uni_speech_id_get(uni_speech));
+	ast_log(LOG_NOTICE, "Activate grammar name:%s '%s'\n",
+						grammar_name,
+						uni_speech_id_get(uni_speech));
 	uni_speech->active_grammar_name = apr_pstrdup(pool,grammar_name);
 	return 0;
 }
@@ -340,7 +382,9 @@ static int uni_recog_deactivate_grammar(struct ast_speech *speech, char *grammar
 {
 	uni_speech_t *uni_speech = speech->data;
 
-	ast_log(LOG_NOTICE, "Deactivate grammar '%s'\n",uni_speech_id_get(uni_speech));
+	ast_log(LOG_NOTICE, "Deactivate grammar name:%s '%s'\n",
+						grammar_name,
+						uni_speech_id_get(uni_speech));
 	uni_speech->active_grammar_name = NULL;
 	return 0;
 }
