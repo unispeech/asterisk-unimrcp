@@ -36,7 +36,7 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: $")
 
 
 #define UNI_ENGINE_NAME "unimrcp"
-#define UNI_PROFILE_NAME "uni2"
+#define UNI_ENGINE_CONFIG "res-speech-unimrcp.conf"
 
 /** Timeout to wait for asynchronous response (actually this timeout shouldn't expire) */
 #define MRCP_APP_REQUEST_TIMEOUT 60 * 1000000
@@ -90,6 +90,12 @@ struct uni_engine_t {
 	mrcp_client_t      *client;
 	/* Application instance */
 	mrcp_application_t *application;
+	/* Profile name */
+	const char         *profile;
+	/* Log level */
+	apt_log_priority_e  log_level;
+	/* Log output */
+	apt_log_output_e    log_output;
 };
 
 static struct uni_engine_t uni_engine;
@@ -117,7 +123,7 @@ static int uni_recog_create(struct ast_speech *speech, int format)
 	const mpf_codec_descriptor_t *descriptor;
 
 	/* Create session instance */
-	session = mrcp_application_session_create(uni_engine.application,UNI_PROFILE_NAME,speech);
+	session = mrcp_application_session_create(uni_engine.application,uni_engine.profile,speech);
 	if(!session) {
 		ast_log(LOG_ERROR, "Failed to create session\n");
 		return -1;
@@ -870,6 +876,38 @@ static struct ast_speech_engine ast_engine = {
     AST_FORMAT_SLINEAR
 };
 
+
+/** \brief Load UniMRCP engine configuration (/etc/asterisk/res_speech_unimrcp.conf)*/
+static apt_bool_t uni_engine_config_load(void)
+{
+	const char *value = NULL;
+	struct ast_flags config_flags = { 0 };
+	struct ast_config *cfg = ast_config_load(UNI_ENGINE_CONFIG, config_flags);
+	if(!cfg) {
+		ast_log(LOG_WARNING, "No such configuration file %s\n", UNI_ENGINE_CONFIG);
+		return FALSE;
+	}
+
+	if((value = ast_variable_retrieve(cfg, "general", "unimrcp-profile")) != NULL) {
+		ast_log(LOG_DEBUG, "general.unimrcp-profile=%s\n", value);
+		uni_engine.profile = apr_pstrdup(uni_engine.pool, value);
+	} 
+
+	if((value = ast_variable_retrieve(cfg, "general", "log-level")) != NULL) {
+		ast_log(LOG_DEBUG, "general.log-level=%s\n", value);
+		uni_engine.log_level = apt_log_priority_translate(value);
+	}
+
+	if((value = ast_variable_retrieve(cfg, "general", "log-output")) != NULL) {
+		ast_log(LOG_DEBUG, "general.log-output=%s\n", value);
+		uni_engine.log_output = atoi(value);
+	}
+
+	ast_config_destroy(cfg);
+	return TRUE;
+}
+
+
 /** \brief Unload UniMRCP engine */
 static apt_bool_t uni_engine_unload()
 {
@@ -906,6 +944,9 @@ static apt_bool_t uni_engine_load()
 	uni_engine.pool = NULL;
 	uni_engine.client = NULL;
 	uni_engine.application = NULL;
+	uni_engine.profile = NULL;
+	uni_engine.log_level = APT_PRIO_INFO;
+	uni_engine.log_output = APT_LOG_OUTPUT_CONSOLE | APT_LOG_OUTPUT_FILE;
 
 	pool = apt_pool_create();
 	if(!pool) {
@@ -916,11 +957,18 @@ static apt_bool_t uni_engine_load()
 
 	uni_engine.pool = pool;
 
+	/* Load engine configuration */
+	uni_engine_config_load();
+
+	if(!uni_engine.profile) {
+		uni_engine.profile = "uni2";
+	}
+
 	dir_layout = apt_default_dir_layout_create(UNIMRCP_DIR_LOCATION,pool);
 	/* Create singleton logger */
-	apt_log_instance_create(APT_LOG_OUTPUT_CONSOLE | APT_LOG_OUTPUT_FILE, APT_PRIO_INFO, pool);
+	apt_log_instance_create(uni_engine.log_output, uni_engine.log_level, pool);
 	/* Open the log file */
-	apt_log_file_open(dir_layout->log_dir_path,"unimrcpclient",MAX_LOG_FILE_SIZE,MAX_LOG_FILE_COUNT,pool);
+	apt_log_file_open(dir_layout->log_dir_path,"astuni",MAX_LOG_FILE_SIZE,MAX_LOG_FILE_COUNT,pool);
 
 
 	uni_engine.client = unimrcp_client_create(dir_layout);
