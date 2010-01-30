@@ -85,17 +85,23 @@ struct uni_speech_t {
 /** \brief Declaration of UniMRCP based recognition engine */
 struct uni_engine_t {
 	/* Memory pool */
-	apr_pool_t         *pool;
+	apr_pool_t           *pool;
 	/* Client stack instance */
-	mrcp_client_t      *client;
+	mrcp_client_t        *client;
 	/* Application instance */
-	mrcp_application_t *application;
+	mrcp_application_t   *application;
+
 	/* Profile name */
-	const char         *profile;
+	const char           *profile;
 	/* Log level */
-	apt_log_priority_e  log_level;
+	apt_log_priority_e    log_level;
 	/* Log output */
-	apt_log_output_e    log_output;
+	apt_log_output_e      log_output;
+
+	/* MRCPv2 properties (header fields) loaded from config */
+	mrcp_message_header_t v2_properties;
+	/* MRCPv1 properties (header fields) loaded from config */
+	mrcp_message_header_t v1_properties;
 };
 
 static struct uni_engine_t uni_engine;
@@ -477,13 +483,14 @@ static int uni_recog_start(struct ast_speech *speech)
 			recog_header->cancel_if_queue = FALSE;
 			mrcp_resource_header_property_add(mrcp_message,RECOGNIZER_HEADER_CANCEL_IF_QUEUE);
 		}
-		/* Set timeouts (should be configurable) */
-		recog_header->no_input_timeout = 15000;
-		mrcp_resource_header_property_add(mrcp_message,RECOGNIZER_HEADER_NO_INPUT_TIMEOUT);
-		recog_header->recognition_timeout = 15000;
-		mrcp_resource_header_property_add(mrcp_message,RECOGNIZER_HEADER_RECOGNITION_TIMEOUT);
-		recog_header->start_input_timers = TRUE;
-		mrcp_resource_header_property_add(mrcp_message,RECOGNIZER_HEADER_START_INPUT_TIMERS);
+	}
+
+	/* Inherit properties loaded from config */
+	if(mrcp_message->start_line.version == MRCP_VERSION_2) {
+		mrcp_message_header_inherit(&mrcp_message->header,&uni_engine.v2_properties,mrcp_message->pool);
+	}
+	else {
+		mrcp_message_header_inherit(&mrcp_message->header,&uni_engine.v1_properties,mrcp_message->pool);
 	}
 
 	/* Reset last event (if any) */
@@ -891,9 +898,36 @@ static struct ast_speech_engine ast_engine = {
     AST_FORMAT_SLINEAR
 };
 
+/** \brief Init properties */
+static void uni_engine_properties_init(mrcp_message_header_t *properties, mrcp_version_e version)
+{
+	mrcp_message_header_init(properties);
+	properties->generic_header_accessor.vtable = mrcp_generic_header_vtable_get(version);
+	properties->resource_header_accessor.vtable = mrcp_recog_header_vtable_get(version);
+}
+
+/** \brief Load properties */
+static void uni_engine_properties_load(mrcp_message_header_t *properties, struct ast_config *cfg, const char *category, apr_pool_t *pool)
+{
+	struct ast_variable *var;
+	apt_pair_t pair;
+
+	mrcp_header_allocate(&properties->generic_header_accessor,pool);
+	mrcp_header_allocate(&properties->resource_header_accessor,pool);
+	for(var = ast_variable_browse(cfg, category); var; var = var->next) {
+		ast_log(LOG_DEBUG, "%s.%s=%s\n", category, var->name, var->value);
+		apt_string_set(&pair.name,var->name);
+		apt_string_set(&pair.value,var->value);
+		if(mrcp_header_parse(&properties->resource_header_accessor,&pair,pool) != TRUE) {
+			if(mrcp_header_parse(&properties->generic_header_accessor,&pair,pool) != TRUE) {
+				ast_log(LOG_WARNING, "Unknown MRCP header %s.%s=%s\n", category, var->name, var->value);
+			}
+		}
+	}
+}
 
 /** \brief Load UniMRCP engine configuration (/etc/asterisk/res_speech_unimrcp.conf)*/
-static apt_bool_t uni_engine_config_load(void)
+static apt_bool_t uni_engine_config_load(apr_pool_t *pool)
 {
 	const char *value = NULL;
 	struct ast_flags config_flags = { 0 };
@@ -917,6 +951,9 @@ static apt_bool_t uni_engine_config_load(void)
 		ast_log(LOG_DEBUG, "general.log-output=%s\n", value);
 		uni_engine.log_output = atoi(value);
 	}
+
+	uni_engine_properties_load(&uni_engine.v2_properties,cfg,"mrcpv2-properties",pool);
+	uni_engine_properties_load(&uni_engine.v1_properties,cfg,"mrcpv1-properties",pool);
 
 	ast_config_destroy(cfg);
 	return TRUE;
@@ -963,6 +1000,9 @@ static apt_bool_t uni_engine_load()
 	uni_engine.log_level = APT_PRIO_INFO;
 	uni_engine.log_output = APT_LOG_OUTPUT_CONSOLE | APT_LOG_OUTPUT_FILE;
 
+	uni_engine_properties_init(&uni_engine.v2_properties,MRCP_VERSION_2);
+	uni_engine_properties_init(&uni_engine.v1_properties,MRCP_VERSION_1);
+
 	pool = apt_pool_create();
 	if(!pool) {
 		ast_log(LOG_ERROR, "Failed to create APR pool\n");
@@ -973,7 +1013,7 @@ static apt_bool_t uni_engine_load()
 	uni_engine.pool = pool;
 
 	/* Load engine configuration */
-	uni_engine_config_load();
+	uni_engine_config_load(pool);
 
 	if(!uni_engine.profile) {
 		uni_engine.profile = "uni2";
