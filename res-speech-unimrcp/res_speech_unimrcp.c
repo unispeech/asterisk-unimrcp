@@ -235,6 +235,7 @@ static int uni_recog_load_grammar(struct ast_speech *speech, char *grammar_name,
 	mrcp_message_t *mrcp_message;
 	mrcp_generic_header_t *generic_header;
 	const char *content_type = NULL;
+	apt_bool_t inline_content = FALSE;
 	char *tmp;
 	apr_file_t *file;
 	apt_str_t *body = NULL;
@@ -244,7 +245,7 @@ static int uni_recog_load_grammar(struct ast_speech *speech, char *grammar_name,
 								uni_speech->channel,
 								RECOGNIZER_DEFINE_GRAMMAR);
 	if(!mrcp_message) {
-		ast_log(LOG_WARNING, "Failed to create MRCP message");
+		ast_log(LOG_WARNING, "Failed to create MRCP message\n");
 		return -1;
 	}
 
@@ -254,32 +255,46 @@ static int uni_recog_load_grammar(struct ast_speech *speech, char *grammar_name,
 	 *
 	 * SpeechLoadGrammar(name|path)
 	 * SpeechLoadGrammar(name|type:path)
+	 * SpeechLoadGrammar(name|builtin:grammar/digits)
 	 */
 
 	tmp = strchr(grammar_path,':');
 	if(tmp) {
-		*tmp = '\0';
-		content_type = grammar_path;
-		grammar_path = tmp+1;
+		const char *builtin_token = "builtin";
+		if(strncmp(grammar_path,builtin_token,sizeof(builtin_token)-1) == 0) {
+			content_type = "text/uri-list";
+			inline_content = TRUE;
+		}
+		else {
+			*tmp = '\0';
+			content_type = grammar_path;
+			grammar_path = tmp+1;
+		}
 	}
 
-	if(apr_file_open(&file,grammar_path,APR_FOPEN_READ|APR_FOPEN_BINARY,0,mrcp_message->pool) == APR_SUCCESS) {
-		apr_finfo_t finfo;
-		if(apr_file_info_get(&finfo,APR_FINFO_SIZE,file) == APR_SUCCESS) {
-			/* Read message body */
-			body = &mrcp_message->body;
-			body->buf = apr_palloc(mrcp_message->pool,finfo.size+1);
-			body->length = (apr_size_t)finfo.size;
-			if(apr_file_read(file,body->buf,&body->length) != APR_SUCCESS) {
-				ast_log(LOG_WARNING, "Failed to read the content of grammar file: %s\n",grammar_path);
-			}
-			body->buf[body->length] = '\0';
-		}
-		apr_file_close(file);
+	if(inline_content == TRUE) {
+		body = &mrcp_message->body;
+		apt_string_assign(body,grammar_path,mrcp_message->pool);
 	}
 	else {
-		ast_log(LOG_WARNING, "No such grammar file available: %s\n",grammar_path);
-		return -1;
+		if(apr_file_open(&file,grammar_path,APR_FOPEN_READ|APR_FOPEN_BINARY,0,mrcp_message->pool) == APR_SUCCESS) {
+			apr_finfo_t finfo;
+			if(apr_file_info_get(&finfo,APR_FINFO_SIZE,file) == APR_SUCCESS) {
+				/* Read message body */
+				body = &mrcp_message->body;
+				body->buf = apr_palloc(mrcp_message->pool,finfo.size+1);
+				body->length = (apr_size_t)finfo.size;
+				if(apr_file_read(file,body->buf,&body->length) != APR_SUCCESS) {
+					ast_log(LOG_WARNING, "Failed to read the content of grammar file: %s\n",grammar_path);
+				}
+				body->buf[body->length] = '\0';
+			}
+			apr_file_close(file);
+		}
+		else {
+			ast_log(LOG_WARNING, "No such grammar file available: %s\n",grammar_path);
+			return -1;
+		}
 	}
 
 	if(!body || !body->buf) {
@@ -348,10 +363,10 @@ static int uni_recog_unload_grammar(struct ast_speech *speech, char *grammar_nam
 		return -1;
 	}
 	
-	/* get/allocate generic header */
+	/* Get/allocate generic header */
 	generic_header = mrcp_generic_header_prepare(mrcp_message);
 	if(generic_header) {
-		/* set generic header fields */
+		/* Set generic header fields */
 		apt_string_assign(&generic_header->content_id,grammar_name,mrcp_message->pool);
 		mrcp_generic_header_property_add(mrcp_message,GENERIC_HEADER_CONTENT_ID);
 	}
@@ -457,12 +472,12 @@ static int uni_recog_start(struct ast_speech *speech)
 	/* Get/allocate recognizer header */
 	recog_header = (mrcp_recog_header_t*) mrcp_resource_header_prepare(mrcp_message);
 	if(recog_header) {
-		/* set recognizer header fields */
+		/* Set recognizer header fields */
 		if(mrcp_message->start_line.version == MRCP_VERSION_2) {
 			recog_header->cancel_if_queue = FALSE;
 			mrcp_resource_header_property_add(mrcp_message,RECOGNIZER_HEADER_CANCEL_IF_QUEUE);
 		}
-		/* set timeouts (should be configurable) */
+		/* Set timeouts (should be configurable) */
 		recog_header->no_input_timeout = 15000;
 		mrcp_resource_header_property_add(mrcp_message,RECOGNIZER_HEADER_NO_INPUT_TIMEOUT);
 		recog_header->recognition_timeout = 15000;
@@ -557,7 +572,7 @@ struct ast_speech_result* uni_recog_get(struct ast_speech *speech)
 	if(interpret) {
 		apr_xml_elem *instance;
 		apr_xml_elem *input;
-		/* get instance and input */
+		/* Get instance and input */
 		nlsml_interpret_results_get(interpret,&instance,&input);
 		if(input) {
 			const char *confidence;
@@ -759,22 +774,22 @@ static apt_bool_t uni_recog_channel_create(uni_speech_t *uni_speech, int format)
 	mpf_stream_capabilities_t *capabilities;
 	apr_pool_t *pool = mrcp_application_session_pool_get(uni_speech->session);
 	
-	/* create source stream capabilities */
+	/* Create source stream capabilities */
 	capabilities = mpf_source_stream_capabilities_create(pool);
-	/* add codec capabilities (Linear PCM) */
+	/* Add codec capabilities (Linear PCM) */
 	mpf_codec_capabilities_add(
 			&capabilities->codecs,
 			MPF_SAMPLE_RATE_8000,
 			"LPCM");
 
-	/* create media termination */
+	/* Create media termination */
 	termination = mrcp_application_audio_termination_create(
 			uni_speech->session,      /* session, termination belongs to */
 			&audio_stream_vtable,     /* virtual methods table of audio stream */
 			capabilities,             /* stream capabilities */
 			uni_speech);              /* object to associate */
 	
-	/* create MRCP channel */
+	/* Create MRCP channel */
 	channel = mrcp_application_channel_create(
 			uni_speech->session,      /* session, channel belongs to */
 			MRCP_RECOGNIZER_RESOURCE, /* MRCP resource identifier */
