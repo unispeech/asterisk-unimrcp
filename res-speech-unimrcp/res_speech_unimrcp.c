@@ -23,6 +23,7 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: $")
 
 #include <apr_thread_cond.h>
 #include <apr_thread_proc.h>
+#include <apr_tables.h>
 #include <unimrcp_client.h>
 #include <mrcp_application.h>
 #include <mrcp_message.h>
@@ -98,6 +99,8 @@ struct uni_engine_t {
 	/* Log output */
 	apt_log_output_e      log_output;
 
+	/* Grammars to be preloaded with each MRCP session, if anything specified in config [grammars] */
+	apr_table_t          *grammars;
 	/* MRCPv2 properties (header fields) loaded from config */
 	mrcp_message_header_t v2_properties;
 	/* MRCPv1 properties (header fields) loaded from config */
@@ -107,6 +110,7 @@ struct uni_engine_t {
 static struct uni_engine_t uni_engine;
 
 static apt_bool_t uni_recog_channel_create(uni_speech_t *uni_speech, int format);
+static apt_bool_t uni_recog_grammars_preload(uni_speech_t *uni_speech);
 static apt_bool_t uni_recog_sm_request_send(uni_speech_t *uni_speech, mrcp_sig_command_e sm_request);
 static apt_bool_t uni_recog_mrcp_request_send(uni_speech_t *uni_speech, mrcp_message_t *message);
 static void uni_recog_cleanup(uni_speech_t *uni_speech);
@@ -196,6 +200,7 @@ static int uni_recog_create(struct ast_speech *speech, int format)
 	}
 
 	ast_log(LOG_NOTICE, "Created speech instance '%s'\n",uni_speech_id_get(uni_speech));
+	uni_recog_grammars_preload(uni_speech);
 	return 0;
 }
 
@@ -811,6 +816,26 @@ static apt_bool_t uni_recog_channel_create(uni_speech_t *uni_speech, int format)
 	return TRUE;
 }
 
+/** \brief Preload grammar */
+static apt_bool_t uni_recog_grammars_preload(uni_speech_t *uni_speech)
+{
+	apr_table_t *grammars = uni_engine.grammars;
+	if(grammars && uni_speech->session) {
+		int i;
+		char *grammar_name;
+		char *grammar_path;
+		apr_pool_t *pool = mrcp_application_session_pool_get(uni_speech->session);
+		const apr_array_header_t *header = apr_table_elts(grammars);
+		apr_table_entry_t *entry = (apr_table_entry_t *) header->elts;
+		for(i=0; i<header->nelts; i++) {
+			grammar_name = apr_pstrdup(pool,entry[i].key);
+			grammar_path = apr_pstrdup(pool,entry[i].val);
+			uni_recog_load_grammar(uni_speech->speech_base,grammar_name,grammar_path);
+		}
+	}
+	return TRUE;
+}
+
 /** \brief Send session management request to client stack and wait for async response */
 static apt_bool_t uni_recog_sm_request_send(uni_speech_t *uni_speech, mrcp_sig_command_e sm_request)
 {
@@ -906,7 +931,7 @@ static void uni_engine_properties_init(mrcp_message_header_t *properties, mrcp_v
 	properties->resource_header_accessor.vtable = mrcp_recog_header_vtable_get(version);
 }
 
-/** \brief Load properties */
+/** \brief Load properties from config */
 static void uni_engine_properties_load(mrcp_message_header_t *properties, struct ast_config *cfg, const char *category, apr_pool_t *pool)
 {
 	struct ast_variable *var;
@@ -924,6 +949,18 @@ static void uni_engine_properties_load(mrcp_message_header_t *properties, struct
 			}
 		}
 	}
+}
+
+/** \brief Load grammars from config */
+static apr_table_t* uni_engine_grammars_load(struct ast_config *cfg, const char *category, apr_pool_t *pool)
+{
+	struct ast_variable *var;
+	apr_table_t *grammars = apr_table_make(pool,0);
+	for(var = ast_variable_browse(cfg, category); var; var = var->next) {
+		ast_log(LOG_DEBUG, "%s.%s=%s\n", category, var->name, var->value);
+		apr_table_set(grammars,var->name,var->value);
+	}
+	return grammars;
 }
 
 /** \brief Load UniMRCP engine configuration (/etc/asterisk/res_speech_unimrcp.conf)*/
@@ -951,6 +988,8 @@ static apt_bool_t uni_engine_config_load(apr_pool_t *pool)
 		ast_log(LOG_DEBUG, "general.log-output=%s\n", value);
 		uni_engine.log_output = atoi(value);
 	}
+
+	uni_engine.grammars = uni_engine_grammars_load(cfg,"grammars",pool);
 
 	uni_engine_properties_load(&uni_engine.v2_properties,cfg,"mrcpv2-properties",pool);
 	uni_engine_properties_load(&uni_engine.v1_properties,cfg,"mrcpv1-properties",pool);
@@ -999,6 +1038,7 @@ static apt_bool_t uni_engine_load()
 	uni_engine.profile = NULL;
 	uni_engine.log_level = APT_PRIO_INFO;
 	uni_engine.log_output = APT_LOG_OUTPUT_CONSOLE | APT_LOG_OUTPUT_FILE;
+	uni_engine.grammars = NULL;
 
 	uni_engine_properties_init(&uni_engine.v2_properties,MRCP_VERSION_2);
 	uni_engine_properties_init(&uni_engine.v1_properties,MRCP_VERSION_1);
