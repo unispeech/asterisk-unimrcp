@@ -27,7 +27,7 @@
  *
  * Authors of these are:
  *     UniMRCP:
- *         Arsen Chaloyen <achaloyen@gmail.com>
+ *         Arsen Chaloyan <achaloyan@gmail.com>
  *     FreeSWITCH: mod_unimrcp
  *         Christopher M. Rienzo <chris@rienzo.net>
  *
