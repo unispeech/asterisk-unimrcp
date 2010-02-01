@@ -110,6 +110,7 @@ struct uni_engine_t {
 static struct uni_engine_t uni_engine;
 
 static apt_bool_t uni_recog_channel_create(uni_speech_t *uni_speech, int format);
+static apt_bool_t uni_recog_properties_set(uni_speech_t *uni_speech);
 static apt_bool_t uni_recog_grammars_preload(uni_speech_t *uni_speech);
 static apt_bool_t uni_recog_sm_request_send(uni_speech_t *uni_speech, mrcp_sig_command_e sm_request);
 static apt_bool_t uni_recog_mrcp_request_send(uni_speech_t *uni_speech, mrcp_message_t *message);
@@ -200,6 +201,10 @@ static int uni_recog_create(struct ast_speech *speech, int format)
 	}
 
 	ast_log(LOG_NOTICE, "Created speech instance '%s'\n",uni_speech_id_get(uni_speech));
+
+	/* Set properties for session */
+	uni_recog_properties_set(uni_speech);
+	/* Preload grammars */
 	uni_recog_grammars_preload(uni_speech);
 	return 0;
 }
@@ -488,14 +493,6 @@ static int uni_recog_start(struct ast_speech *speech)
 			recog_header->cancel_if_queue = FALSE;
 			mrcp_resource_header_property_add(mrcp_message,RECOGNIZER_HEADER_CANCEL_IF_QUEUE);
 		}
-	}
-
-	/* Inherit properties loaded from config */
-	if(mrcp_message->start_line.version == MRCP_VERSION_2) {
-		mrcp_message_header_inherit(&mrcp_message->header,&uni_engine.v2_properties,mrcp_message->pool);
-	}
-	else {
-		mrcp_message_header_inherit(&mrcp_message->header,&uni_engine.v1_properties,mrcp_message->pool);
 	}
 
 	/* Reset last event (if any) */
@@ -813,6 +810,42 @@ static apt_bool_t uni_recog_channel_create(uni_speech_t *uni_speech, int format)
 		return FALSE;
 	}
 	uni_speech->channel = channel;
+	return TRUE;
+}
+
+/** \brief Set properties */
+static apt_bool_t uni_recog_properties_set(uni_speech_t *uni_speech)
+{
+	mrcp_message_t *mrcp_message;
+	ast_log(LOG_DEBUG, "Set properties '%s'\n",uni_speech_id_get(uni_speech));
+	mrcp_message = mrcp_application_message_create(
+								uni_speech->session,
+								uni_speech->channel,
+								RECOGNIZER_SET_PARAMS);
+	if(!mrcp_message) {
+		ast_log(LOG_WARNING, "Failed to create MRCP message\n");
+		return FALSE;
+	}
+	
+	/* Inherit properties loaded from config */
+	if(mrcp_message->start_line.version == MRCP_VERSION_2) {
+		mrcp_message_header_inherit(&mrcp_message->header,&uni_engine.v2_properties,mrcp_message->pool);
+	}
+	else {
+		mrcp_message_header_inherit(&mrcp_message->header,&uni_engine.v1_properties,mrcp_message->pool);
+	}
+
+	/* Send MRCP request and wait for response */
+	if(uni_recog_mrcp_request_send(uni_speech,mrcp_message) != TRUE) {
+		ast_log(LOG_WARNING, "Failed to send MRCP message\n");
+		return FALSE;
+	}
+
+	/* Check received response */
+	if(!uni_speech->mrcp_response || uni_speech->mrcp_response->start_line.status_code != MRCP_STATUS_CODE_SUCCESS) {
+		ast_log(LOG_WARNING, "Received failure response\n");
+		return FALSE;
+	}
 	return TRUE;
 }
 
