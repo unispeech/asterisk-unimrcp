@@ -45,6 +45,8 @@ fi
 
 moddir='${prefix}'
 
+AC_SUBST(asterisk_conf_dir)
+
 AC_DEFUN([AX_COMPILER_VENDOR],
 [
 AC_CACHE_CHECK([for _AC_LANG compiler vendor], ax_cv_[]_AC_LANG_ABBREV[]_compiler_vendor,
