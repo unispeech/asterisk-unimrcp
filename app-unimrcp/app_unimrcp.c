@@ -1065,7 +1065,7 @@ static int process_profile_config(profile_t *profile, const char *param, const c
 }
 
 /* Set RTP config struct with param, val pair. */
-#if UNI_VERSION_AT_LEAST(0,9,0)
+#if UNI_VERSION_AT_LEAST(0,10,0)
 static int process_rtp_config(mrcp_client_t *client, mpf_rtp_config_t *rtp_config, mpf_rtp_settings_t *rtp_settings, const char *param, const char *val, apr_pool_t *pool)
 #else
 static int process_rtp_config(mrcp_client_t *client, mpf_rtp_config_t *rtp_config, const char *param, const char *val, apr_pool_t *pool)
@@ -1073,7 +1073,7 @@ static int process_rtp_config(mrcp_client_t *client, mpf_rtp_config_t *rtp_confi
 {
 	int mine = 1;
 
-	#if UNI_VERSION_AT_LEAST(0,9,0)
+	#if UNI_VERSION_AT_LEAST(0,10,0)
 	if ((client == NULL) || (rtp_config == NULL) || (rtp_settings == NULL) || (param == NULL) || (val == NULL) || (pool == NULL))
 	#else
 	if ((client == NULL) || (rtp_config == NULL) || (param == NULL) || (val == NULL) || (pool == NULL))
@@ -1089,19 +1089,19 @@ static int process_rtp_config(mrcp_client_t *client, mpf_rtp_config_t *rtp_confi
 	else if (strcasecmp(param, "rtp-port-max") == 0)
 		rtp_config->rtp_port_max = (apr_port_t)atol(val);
 	else if (strcasecmp(param, "playout-delay") == 0)
-		#if UNI_VERSION_AT_LEAST(0,9,0)
+		#if UNI_VERSION_AT_LEAST(0,10,0)
 		rtp_settings->jb_config.initial_playout_delay = atol(val);
 		#else
 		rtp_config->jb_config.initial_playout_delay = atol(val);
 		#endif
 	else if (strcasecmp(param, "min-playout-delay") == 0)
-		#if UNI_VERSION_AT_LEAST(0,9,0)
+		#if UNI_VERSION_AT_LEAST(0,10,0)
 		rtp_settings->jb_config.min_playout_delay = atol(val);
 		#else
 		rtp_config->jb_config.min_playout_delay = atol(val);
 		#endif
 	else if (strcasecmp(param, "max-playout-delay") == 0)
-		#if UNI_VERSION_AT_LEAST(0,9,0)
+		#if UNI_VERSION_AT_LEAST(0,10,0)
 		rtp_settings->jb_config.max_playout_delay = atol(val);
 		#else
 		rtp_config->jb_config.min_playout_delay = atol(val);
@@ -1112,7 +1112,7 @@ static int process_rtp_config(mrcp_client_t *client, mpf_rtp_config_t *rtp_confi
 		const mpf_codec_manager_t *codec_manager = mrcp_client_codec_manager_get(client);
 
 		if (codec_manager != NULL) {
-			#if UNI_VERSION_AT_LEAST(0,9,0)
+			#if UNI_VERSION_AT_LEAST(0,10,0)
 			if (!mpf_codec_manager_codec_list_load(codec_manager, &rtp_settings->codec_list, val, pool))
 			#else
 			if (!mpf_codec_manager_codec_list_load(codec_manager, &rtp_config->codec_list, val, pool))
@@ -1120,32 +1120,32 @@ static int process_rtp_config(mrcp_client_t *client, mpf_rtp_config_t *rtp_confi
 				ast_log(LOG_WARNING, "Unable to load codecs\n");
 		}
 	} else if (strcasecmp(param, "ptime") == 0)
-		#if UNI_VERSION_AT_LEAST(0,9,0)
+		#if UNI_VERSION_AT_LEAST(0,10,0)
 		rtp_settings->ptime = (apr_uint16_t)atol(val);
 		#else
 		rtp_config->ptime = (apr_uint16_t)atol(val);
 		#endif
 #if UNI_VERSION_AT_LEAST(0,8,0)
 	else if (strcasecmp(param, "rtcp") == 0)
-		#if UNI_VERSION_AT_LEAST(0,9,0)
+		#if UNI_VERSION_AT_LEAST(0,10,0)
 		rtp_settings->rtcp = atoi(val);
 		#else
 		rtp_config->rtcp = atoi(val);
 		#endif
 	else if  (strcasecmp(param, "rtcp-bye") == 0)
-		#if UNI_VERSION_AT_LEAST(0,9,0)
+		#if UNI_VERSION_AT_LEAST(0,10,0)
 		rtp_settings->rtcp_bye_policy = atoi(val);
 		#else
 		rtp_config->rtcp_bye_policy = atoi(val);
 		#endif
 	else if (strcasecmp(param, "rtcp-tx-interval") == 0)
-		#if UNI_VERSION_AT_LEAST(0,9,0)
+		#if UNI_VERSION_AT_LEAST(0,10,0)
 		rtp_settings->rtcp_tx_interval = (apr_uint16_t)atoi(val);
 		#else
 		rtp_config->rtcp_tx_interval = (apr_uint16_t)atoi(val);
 		#endif
 	else if (strcasecmp(param, "rtcp-rx-resolution") == 0)
-		#if UNI_VERSION_AT_LEAST(0,9,0)
+		#if UNI_VERSION_AT_LEAST(0,10,0)
 		rtp_settings->rtcp_rx_resolution = (apr_uint16_t)atol(val);
 		#else
 		rtp_config->rtcp_rx_resolution = (apr_uint16_t)atol(val);
@@ -1158,7 +1158,7 @@ static int process_rtp_config(mrcp_client_t *client, mpf_rtp_config_t *rtp_confi
 }
 
 /* Set RTSP client config struct with param, val pair. */
-#if UNI_VERSION_AT_LEAST(0,9,0)
+#if UNI_VERSION_AT_LEAST(0,10,0)
 static int process_mrcpv1_config(rtsp_client_config_t *config, mrcp_sig_settings_t *sig_settings, const char *param, const char *val, apr_pool_t *pool)
 #else
 static int process_mrcpv1_config(rtsp_client_config_t *config, const char *param, const char *val, apr_pool_t *pool)
@@ -1166,7 +1166,7 @@ static int process_mrcpv1_config(rtsp_client_config_t *config, const char *param
 {
 	int mine = 1;
 
-	#if UNI_VERSION_AT_LEAST(0,9,0)
+	#if UNI_VERSION_AT_LEAST(0,10,0)
 	if ((config == NULL) || (param == NULL) || (sig_settings == NULL) || (val == NULL) || (pool == NULL))
 	#else
 	if ((config == NULL) || (param == NULL) || (val == NULL) || (pool == NULL))
@@ -1174,19 +1174,19 @@ static int process_mrcpv1_config(rtsp_client_config_t *config, const char *param
 		return mine;
 
 	if (strcasecmp(param, "server-ip") == 0)
-		#if UNI_VERSION_AT_LEAST(0,9,0)
+		#if UNI_VERSION_AT_LEAST(0,10,0)
 		sig_settings->server_ip = ip_addr_get(val, pool);
 		#else
 		config->server_ip = ip_addr_get(val, pool);
 		#endif
 	else if (strcasecmp(param, "server-port") == 0)
-		#if UNI_VERSION_AT_LEAST(0,9,0)
+		#if UNI_VERSION_AT_LEAST(0,10,0)
 		sig_settings->server_port = (apr_port_t)atol(val);
 		#else
 		config->server_port = (apr_port_t)atol(val);
 		#endif
 	else if (strcasecmp(param, "resource-location") == 0)
-		#if UNI_VERSION_AT_LEAST(0,9,0)
+		#if UNI_VERSION_AT_LEAST(0,10,0)
 		sig_settings->resource_location = apr_pstrdup(pool, val);
 		#else
 		config->resource_location = apr_pstrdup(pool, val);
@@ -1196,13 +1196,13 @@ static int process_mrcpv1_config(rtsp_client_config_t *config, const char *param
 	else if (strcasecmp(param, "max-connection-count") == 0)
 		config->max_connection_count = atol(val);
 	else if (strcasecmp(param, "force-destination") == 0)
-		#if UNI_VERSION_AT_LEAST(0,9,0)
+		#if UNI_VERSION_AT_LEAST(0,10,0)
 		sig_settings->force_destination = atoi(val);
 		#else
 		config->force_destination = atoi(val);
 		#endif
 	else if ((strcasecmp(param, "speechsynth") == 0) || (strcasecmp(param, "speechrecog") == 0))
-		#if UNI_VERSION_AT_LEAST(0,9,0)
+		#if UNI_VERSION_AT_LEAST(0,10,0)
 		apr_table_set(sig_settings->resource_map, param, val);
 		#else
 		apr_table_set(config->resource_map, param, val);
@@ -1214,7 +1214,7 @@ static int process_mrcpv1_config(rtsp_client_config_t *config, const char *param
 }
 
 /* Set SofiaSIP client config struct with param, val pair. */
-#if UNI_VERSION_AT_LEAST(0,9,0)
+#if UNI_VERSION_AT_LEAST(0,10,0)
 static int process_mrcpv2_config(mrcp_sofia_client_config_t *config, mrcp_sig_settings_t *sig_settings, const char *param, const char *val, apr_pool_t *pool)
 #else
 static int process_mrcpv2_config(mrcp_sofia_client_config_t *config, const char *param, const char *val, apr_pool_t *pool)
@@ -1222,7 +1222,7 @@ static int process_mrcpv2_config(mrcp_sofia_client_config_t *config, const char 
 {
 	int mine = 1;
 
-	#if UNI_VERSION_AT_LEAST(0,9,0)
+	#if UNI_VERSION_AT_LEAST(0,10,0)
 	if ((config == NULL) || (param == NULL) || (sig_settings == NULL) || (val == NULL) || (pool == NULL))
 	#else
 	if ((config == NULL) || (param == NULL) || (val == NULL) || (pool == NULL))
@@ -1236,25 +1236,25 @@ static int process_mrcpv2_config(mrcp_sofia_client_config_t *config, const char 
 	else if (strcasecmp(param,"client-port") == 0)
 		config->local_port = (apr_port_t)atol(val);
 	else if (strcasecmp(param, "server-ip") == 0)
-		#if UNI_VERSION_AT_LEAST(0,9,0)
+		#if UNI_VERSION_AT_LEAST(0,10,0)
 		sig_settings->server_ip = ip_addr_get(val, pool);
 		#else
 		config->remote_ip = ip_addr_get(val, pool);
 		#endif
 	else if (strcasecmp(param, "server-port") == 0)
-		#if UNI_VERSION_AT_LEAST(0,9,0)
+		#if UNI_VERSION_AT_LEAST(0,10,0)
 		sig_settings->server_port = (apr_port_t)atol(val);
 		#else
 		config->remote_port = (apr_port_t)atol(val);
 		#endif
 	else if (strcasecmp(param, "server-username") == 0)
-		#if UNI_VERSION_AT_LEAST(0,9,0)
+		#if UNI_VERSION_AT_LEAST(0,10,0)
 		sig_settings->user_name = apr_pstrdup(pool, val);
 		#else
 		config->remote_user_name = apr_pstrdup(pool, val);
 		#endif
 	else if (strcasecmp(param, "force-destination") == 0)
-		#if UNI_VERSION_AT_LEAST(0,9,0)
+		#if UNI_VERSION_AT_LEAST(0,10,0)
 		sig_settings->force_destination = atoi(val);
 		#else
 		config->force_destination = atoi(val);
@@ -1413,7 +1413,7 @@ static mrcp_client_t *mod_unimrcp_client_create(apr_pool_t *mod_pool)
 				mpf_termination_factory_t *termination_factory = NULL;
 				mrcp_profile_t * mprofile = NULL;
 				mpf_rtp_config_t *rtp_config = NULL;
-				#if UNI_VERSION_AT_LEAST(0,9,0)
+				#if UNI_VERSION_AT_LEAST(0,10,0)
 				mpf_rtp_settings_t *rtp_settings = mpf_rtp_settings_alloc(pool);
 				mrcp_sig_settings_t *sig_settings = mrcp_signaling_settings_alloc(pool);
 				#endif
@@ -1429,7 +1429,7 @@ static mrcp_client_t *mod_unimrcp_client_create(apr_pool_t *mod_pool)
 				}
 
 				/* Create RTP config, common to MRCPv1 and MRCPv2. */
-				#if UNI_VERSION_AT_LEAST(0,9,0)
+				#if UNI_VERSION_AT_LEAST(0,10,0)
 				if ((rtp_config = mpf_rtp_config_alloc(pool)) == NULL) {
 				#else
 				if ((rtp_config = mpf_rtp_config_create(pool)) == NULL) {
@@ -1452,7 +1452,7 @@ static mrcp_client_t *mod_unimrcp_client_create(apr_pool_t *mod_pool)
 					}
 
 					config->origin = DEFAULT_SDP_ORIGIN;
-					#if UNI_VERSION_AT_LEAST(0,9,0)
+					#if UNI_VERSION_AT_LEAST(0,10,0)
 					sig_settings->resource_location = DEFAULT_RESOURCE_LOCATION;
 					#else
 					config->resource_location = DEFAULT_RESOURCE_LOCATION;
@@ -1481,7 +1481,7 @@ static mrcp_client_t *mod_unimrcp_client_create(apr_pool_t *mod_pool)
 
 							ast_log(LOG_DEBUG, "Loading parameter %s:%s\n", param_name, param_value);
 
-							#if UNI_VERSION_AT_LEAST(0,9,0)
+							#if UNI_VERSION_AT_LEAST(0,10,0)
 							if ((!process_mrcpv1_config(config, sig_settings, param_name, param_value, pool)) &&
 								(!process_rtp_config(client, rtp_config, rtp_settings, param_name, param_value, pool)) &&
 							#else
@@ -1506,7 +1506,7 @@ static mrcp_client_t *mod_unimrcp_client_create(apr_pool_t *mod_pool)
 
 					config->local_ip = DEFAULT_LOCAL_IP_ADDRESS;
 					config->local_port = DEFAULT_SIP_LOCAL_PORT;
-					#if UNI_VERSION_AT_LEAST(0,9,0)
+					#if UNI_VERSION_AT_LEAST(0,10,0)
 					sig_settings->server_ip = DEFAULT_REMOTE_IP_ADDRESS;
 					sig_settings->server_port = DEFAULT_SIP_REMOTE_PORT;
 					#else
@@ -1540,7 +1540,7 @@ static mrcp_client_t *mod_unimrcp_client_create(apr_pool_t *mod_pool)
 
 							ast_log(LOG_DEBUG, "Loading parameter %s:%s\n", param_name, param_value);
 
-							#if UNI_VERSION_AT_LEAST(0,9,0)
+							#if UNI_VERSION_AT_LEAST(0,10,0)
 							if ((!process_mrcpv2_config(config, sig_settings, param_name, param_value, pool)) &&
 								(!process_rtp_config(client, rtp_config, rtp_settings, param_name, param_value, pool)) &&
 							#else
@@ -1562,7 +1562,7 @@ static mrcp_client_t *mod_unimrcp_client_create(apr_pool_t *mod_pool)
 				if ((termination_factory = mpf_rtp_termination_factory_create(rtp_config, pool)) != NULL)
 					mrcp_client_rtp_factory_register(client, termination_factory, name);
 
-				#if UNI_VERSION_AT_LEAST(0,9,0)
+				#if UNI_VERSION_AT_LEAST(0,10,0)
 				if (rtp_settings != NULL)
 					mrcp_client_rtp_settings_register(client, rtp_settings, "RTP-Settings");
 
@@ -1574,7 +1574,7 @@ static mrcp_client_t *mod_unimrcp_client_create(apr_pool_t *mod_pool)
 					mrcp_client_signaling_agent_register(client, agent, name);
 
 				/* Create the profile and register it. */
-				#if UNI_VERSION_AT_LEAST(0,9,0)
+				#if UNI_VERSION_AT_LEAST(0,10,0)
 				if ((mprofile = mrcp_client_profile_create(NULL, agent, connection_agent, media_engine, termination_factory, rtp_settings, sig_settings, pool)) != NULL) {
 				#else
 				if ((mprofile = mrcp_client_profile_create(NULL, agent, connection_agent, media_engine, termination_factory, pool)) != NULL)
