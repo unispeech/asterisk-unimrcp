@@ -54,17 +54,24 @@
 
 #define AST_MODULE "app_unimrcp"
 
+#ifdef ASTERISK12
+#define AST_MODULE_LOAD_DECLINE -1
+#endif
+
 #undef PACKAGE_BUGREPORT
 #undef PACKAGE_NAME
 #undef PACKAGE_STRING
 #undef PACKAGE_TARNAME
 #undef PACKAGE_VERSION
 
+#ifndef ASTERISK12
 #include "asterisk.h"
-
 ASTERISK_FILE_VERSION(__FILE__, "$Revision: 200656 $")
-#ifdef ASTERISK14
-	#include <stdio.h>
+#endif
+
+#if defined(ASTERISK12) || defined(ASTERISK14)
+#include <stdlib.h>
+#include <stdio.h>
 #endif
 
 #include "asterisk/channel.h"
@@ -3952,7 +3959,7 @@ static void recog_shutdown(void)
 
 static int load_config(void)
 {
-	#ifndef ASTERISK14
+	#if !defined(ASTERISK12) && !defined(ASTERISK14)
 	struct ast_flags config_flags = { 0 };
 	struct ast_config *cfg = ast_config_load(MRCP_CONFIG, config_flags);
 	#else
@@ -4137,8 +4144,10 @@ static const char* codec_to_str(format_t codec) {
 		case AST_FORMAT_ULAW: return "PCMU";
 		/*! Raw A-law data (G.711) */
 		case AST_FORMAT_ALAW: return "PCMA";
+		#ifndef ASTERISK12
 		/*! ADPCM (G.726, 32kbps, AAL2 codeword packing) */
 		case AST_FORMAT_G726_AAL2: return "L16";
+		#endif
 		/*! ADPCM (IMA) */
 		case AST_FORMAT_ADPCM: return "L16"; 
 		/*! Raw 16-bit Signed Linear (8000 Hz) PCM */
@@ -4153,15 +4162,17 @@ static const char* codec_to_str(format_t codec) {
 		case AST_FORMAT_ILBC: return "L16"; 
 		/*! ADPCM (G.726, 32kbps, RFC3551 codeword packing) */
 		case AST_FORMAT_G726: return "L16";
+		#ifndef ASTERISK12
 		/*! G.722 */
 		case AST_FORMAT_G722: return "L16";
+		#endif
 		#if defined(ASTERISKSVN) || defined(ASTERISK162)
 		/*! G.722.1 (also known as Siren7, 32kbps assumed) */
 		case AST_FORMAT_SIREN7: return "L16";
 		/*! G.722.1 Annex C (also known as Siren14, 48kbps assumed) */
 		case AST_FORMAT_SIREN14: return "L16";
 		#endif
-		#ifndef ASTERISK14
+		#if !defined(ASTERISK12) && !defined(ASTERISK14)
 		/*! Raw 16-bit Signed Linear (16000 Hz) PCM */
 		case AST_FORMAT_SLINEAR16: return "L16";
 		#endif
@@ -4179,8 +4190,10 @@ static int codec_to_bytes_per_sample(format_t codec) {
 		case AST_FORMAT_ULAW: return 1;
 		/*! Raw A-law data (G.711) */
 		case AST_FORMAT_ALAW: return 1;
+		#ifndef ASTERISK12
 		/*! ADPCM (G.726, 32kbps, AAL2 codeword packing) */
 		case AST_FORMAT_G726_AAL2: return 2;
+		#endif
 		/*! ADPCM (IMA) */
 		case AST_FORMAT_ADPCM: return 2; 
 		/*! Raw 16-bit Signed Linear (8000 Hz) PCM */
@@ -4195,15 +4208,17 @@ static int codec_to_bytes_per_sample(format_t codec) {
 		case AST_FORMAT_ILBC: return 2; 
 		/*! ADPCM (G.726, 32kbps, RFC3551 codeword packing) */
 		case AST_FORMAT_G726: return 2;
+		#ifndef ASTERISK12
 		/*! G.722 */
 		case AST_FORMAT_G722: return 2;
+		#endif
 		#if defined(ASTERISKSVN) || defined(ASTERISK162)
 		/*! G.722.1 (also known as Siren7, 32kbps assumed) */
 		case AST_FORMAT_SIREN7: return 2;
 		/*! G.722.1 Annex C (also known as Siren14, 48kbps assumed) */
 		case AST_FORMAT_SIREN14: return 2;
 		#endif
-		#ifndef ASTERISK14
+		#if !defined(ASTERISK12) && !defined(ASTERISK14)
 		/*! Raw 16-bit Signed Linear (16000 Hz) PCM */
 		case AST_FORMAT_SLINEAR16: return 2;
 		#endif
@@ -4221,8 +4236,10 @@ static format_t codec_to_format(format_t codec) {
 		case AST_FORMAT_ULAW: return AST_FORMAT_ULAW;
 		/*! Raw A-law data (G.711) */
 		case AST_FORMAT_ALAW: return AST_FORMAT_ALAW;
+		#ifndef ASTERISK12
 		/*! ADPCM (G.726, 32kbps, AAL2 codeword packing) */
 		case AST_FORMAT_G726_AAL2: return AST_FORMAT_SLINEAR;
+		#endif
 		/*! ADPCM (IMA) */
 		case AST_FORMAT_ADPCM: return AST_FORMAT_SLINEAR; 
 		/*! Raw 16-bit Signed Linear (8000 Hz) PCM */
@@ -4237,15 +4254,17 @@ static format_t codec_to_format(format_t codec) {
 		case AST_FORMAT_ILBC: return AST_FORMAT_SLINEAR; 
 		/*! ADPCM (G.726, 32kbps, RFC3551 codeword packing) */
 		case AST_FORMAT_G726: return AST_FORMAT_SLINEAR;
+		#ifndef ASTERISK12
 		/*! G.722 */
 		case AST_FORMAT_G722: return AST_FORMAT_SLINEAR;
+		#endif
 		#if defined(ASTERISKSVN) || defined(ASTERISK162)
 		/*! G.722.1 (also known as Siren7, 32kbps assumed) */
 		case AST_FORMAT_SIREN7: return AST_FORMAT_SLINEAR;
 		/*! G.722.1 Annex C (also known as Siren14, 48kbps assumed) */
 		case AST_FORMAT_SIREN14: return AST_FORMAT_SLINEAR;
 		#endif
-		#ifndef ASTERISK14
+		#if !defined(ASTERISK12) && !defined(ASTERISK14)
 		/*! Raw 16-bit Signed Linear (16000 Hz) PCM */
 		case AST_FORMAT_SLINEAR16: return AST_FORMAT_SLINEAR;
 		#endif
@@ -5354,13 +5373,20 @@ done:
 	return res;
 }
 
+#ifdef ASTERISK12
+int reload(void)
+#else
 static int reload(void)
+#endif
 {
 	return 0;
 }
 
-
+#ifdef ASTERISK12
+int unload_module(void)
+#else
 static int unload_module(void)
+#endif
 {
 	int res = 0;
 
@@ -5401,7 +5427,11 @@ static int unload_module(void)
 	return res;
 }
 
+#ifdef ASTERISK12
+int load_module(void)
+#else
 static int load_module(void)
+#endif
 {
 	int res = 0;
 
@@ -5516,27 +5546,25 @@ static int load_module(void)
 	return res;
 }
 
+#ifndef ASTERISK12
 AST_MODULE_INFO(ASTERISK_GPL_KEY, AST_MODFLAG_DEFAULT, "MRCP suite of applications",
 	.load = load_module,
 	.unload = unload_module,
 	.reload = reload
 );
+#endif
 
 /* TO DO:
  *
- * ( ) 1. Barge-in support from Asterisk (used when MRCP server doesn't support it) for ASR
- * ( ) 2. Support for other codecs, fallback to LPCM if MRCP server doesn't support codec
- * ( ) 3. Better handling of errors
- * ( ) 4. Documentation
+ * ( ) 1. Support for other codecs, fallback to LPCM if MRCP server doesn't support codec
+ * ( ) 2. Documentation
  *        ( ) install guide ( ), configuration guide ( ), user guide ( ), doxygen documentation ( ), application console+help ( ), etc.
- * ( ) 5. Fetching of grammar, SSML, etc. as URI - support for http, https, ftp, file, odbc, etc. using CURL - flag to indicate if MRCP server should fetch or if we should and then inline the result
- * ( ) 6. Caching of prompts for TTS, functions in console to manage cache, config for settings, etc. - cache to memory, file system or database
- * ( ) 7. Caching of grammar, SSML, etc. - TTS cache, SSML cache, etc.
- * ( ) 8. Example applications
- * ( ) 9. Packaging into a libmrcp library with callbacks for Asterisk specific features
- * ( ) 10. Load tests, look at robustness, load, unexpected things such as killing server in request, etc.
- * ( ) 11. Packaged unimrcpserver with Flite, Festival, Sphinx, HTK, PocketSphinx, RealSpeak modules
- * ( ) 12. Resources/applications for Speaker Verification, Speaker Recognition, Speech Recording
+ * ( ) 3. Fetching of grammar, SSML, etc. as URI - support for http, https, ftp, file, odbc, etc. using CURL - flag to indicate if MRCP server should fetch or if we should and then inline the result
+ * ( ) 4. Caching of prompts for TTS, functions in console to manage cache, config for settings, etc. - cache to memory, file system or database
+ * ( ) 5. Caching of grammar, SSML, etc. - TTS cache, SSML cache, etc.
+ * ( ) 6. Example applications
+ * ( ) 7. Packaging into a libmrcp library with callbacks for Asterisk specific features
+ * ( ) 8. Resources/applications for Speaker Verification, Speaker Recognition, Speech Recording
  *
  * NOTE: If you want DTMF recognised, remember to set "codecs = PCMU PCMA L16/96/8000 PCMU/97/16000 telephone-event/101/8000" as telephone-event is important
  */

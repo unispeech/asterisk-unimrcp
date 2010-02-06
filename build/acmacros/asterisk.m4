@@ -25,23 +25,44 @@ AC_DEFUN([FIND_ASTERISK], [
     AC_MSG_RESULT([$asterisk_version])
 
     case $asterisk_version in
+        SVN-1.2*)
+	        AC_DEFINE_UNQUOTED(ASTERISK12)
+                ;;
+        1.2*)
+	        AC_DEFINE_UNQUOTED(ASTERISK12)
+                ;;
+        SVN-1.4*)
+	        AC_DEFINE_UNQUOTED(ASTERISK14)
+                ;;
         1.4*)
 	        AC_DEFINE_UNQUOTED(ASTERISK14)
+                ;;
+        SVN-1.6.0.*)
+	        AC_DEFINE_UNQUOTED(ASTERISK160)
                 ;;
         1.6.0.*)
 	        AC_DEFINE_UNQUOTED(ASTERISK160)
                 ;;
+        SVN-1.6.1.*)
+	        AC_DEFINE_UNQUOTED(ASTERISK161)
+                ;;
         1.6.1.*)
 	        AC_DEFINE_UNQUOTED(ASTERISK161)
+                ;;
+        SVN-1.6.2.*)
+	        AC_DEFINE_UNQUOTED(ASTERISK162)
                 ;;
         1.6.2.*)
 	        AC_DEFINE_UNQUOTED(ASTERISK162)
                 ;;
+        SVN-trunk*)
+	        AC_DEFINE_UNQUOTED(ASTERISKSVN)
+                ;;
         SVN*)
-	        AC_DEFINE_UNQUOTED(ASTERISK162)
+	        AC_DEFINE_UNQUOTED(ASTERISKSVN)
                 ;;
         *)
-	        AC_DEFINE_UNQUOTED(ASTERISK162)
+	        AC_DEFINE_UNQUOTED(ASTERISKSVN)
                 ;;
     esac
 
