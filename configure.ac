@@ -84,6 +84,15 @@ AC_ARG_ENABLE(res-speech-unimrcp,
     [enable_res_speech_unimrcp="$enableval"],
     [enable_res_speech_unimrcp="yes"])
 
+    case $asterisk_version in
+	SVN-1.2*)
+	    enable_res_speech_unimrcp="no"
+	    ;;
+	1.2*)
+	    enable_res_speech_unimrcp="no"
+	    ;;
+    esac
+
 AM_CONDITIONAL([RES_SPEECH_UNIMRCP],[test "${enable_res_speech_unimrcp}" = "yes"])
 
 #Enable application module (app-unimrcp)
