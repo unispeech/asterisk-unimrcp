@@ -78,6 +78,22 @@ if test "${enable_maintainer_mode}" != "no"; then
     fi
 fi
 
+#Enable speech resource module (res-speech-unimrcp)
+AC_ARG_ENABLE(res-speech-unimrcp,
+    [AC_HELP_STRING([--disable-res-speech-unimrcp  ],[exclude UniMRCP speech resource module from build])],
+    [enable_res_speech_unimrcp="$enableval"],
+    [enable_res_speech_unimrcp="yes"])
+
+AM_CONDITIONAL([RES_SPEECH_UNIMRCP],[test "${enable_res_speech_unimrcp}" = "yes"])
+
+#Enable application module (app-unimrcp)
+AC_ARG_ENABLE(app-unimrcp,
+    [AC_HELP_STRING([--disable-app-unimrcp  ],[exclude UniMRCP application module from build])],
+    [enable_app_unimrcp="$enableval"],
+    [enable_app_unimrcp="yes"])
+
+AM_CONDITIONAL([APP_UNIMRCP],[test "${enable_app_unimrcp}" = "yes"])
+
 
 AM_CONDITIONAL(ISMAC, [test `uname -s` = Darwin])
 
@@ -93,4 +109,5 @@ dnl Report configuration.
 echo
 echo "Modules install path.............. ${prefix}"
 echo "Configuration file install path... ${asterisk_conf_dir}"
-
+echo "Speech resource module............ ${enable_res_speech_unimrcp}"
+echo "Application module................ ${enable_app_unimrcp}"

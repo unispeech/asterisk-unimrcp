@@ -14,7 +14,15 @@ MAINTAINERCLEANFILES 	= Makefile.in aclocal.m4 configure $(AUX_DIST)
 
 ACLOCAL			= aclocal -I $(macrodir)
 
-SUBDIRS                 = res-speech-unimrcp app-unimrcp
+SUBDIRS                 =
+
+if RES_SPEECH_UNIMRCP
+SUBDIRS               += res-speech-unimrcp
+endif
+
+if APP_UNIMRCP
+SUBDIRS               += app-unimrcp
+endif
 
 install-data-local:
 	test -f $(asterisk_conf_dir)/res-speech-unimrcp.conf || $(INSTALL) -m 644 conf/res-speech-unimrcp.conf $(asterisk_conf_dir)
