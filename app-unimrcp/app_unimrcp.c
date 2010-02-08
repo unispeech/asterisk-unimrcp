@@ -1584,7 +1584,7 @@ static mrcp_client_t *mod_unimrcp_client_create(apr_pool_t *mod_pool)
 				#if UNI_VERSION_AT_LEAST(0,10,0)
 				if ((mprofile = mrcp_client_profile_create(NULL, agent, connection_agent, media_engine, termination_factory, rtp_settings, sig_settings, pool)) != NULL) {
 				#else
-				if ((mprofile = mrcp_client_profile_create(NULL, agent, connection_agent, media_engine, termination_factory, pool)) != NULL)
+				if ((mprofile = mrcp_client_profile_create(NULL, agent, connection_agent, media_engine, termination_factory, pool)) != NULL) {
 				#endif
 					if (!mrcp_client_profile_register(client, mprofile, name))
 						ast_log(LOG_WARNING, "Unable to register MRCP client profile\n");
