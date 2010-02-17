@@ -271,15 +271,22 @@ static int uni_recog_load_grammar(struct ast_speech *speech, char *grammar_name,
 	 *
 	 * SpeechLoadGrammar(name|path)
 	 * SpeechLoadGrammar(name|type:path)
+	 * SpeechLoadGrammar(name|uri:path)
 	 * SpeechLoadGrammar(name|builtin:grammar/digits)
 	 */
 
 	tmp = strchr(grammar_path,':');
 	if(tmp) {
 		const char *builtin_token = "builtin";
+		const char *uri_token = "uri";
 		if(strncmp(grammar_path,builtin_token,sizeof(builtin_token)-1) == 0) {
 			content_type = "text/uri-list";
 			inline_content = TRUE;
+		}
+		else if(strncmp(grammar_path,uri_token,sizeof(uri_token)-1) == 0) {
+			content_type = "text/uri-list";
+			inline_content = TRUE;
+			grammar_path = tmp+1;
 		}
 		else {
 			*tmp = '\0';
