@@ -513,6 +513,8 @@ static int uni_recog_start(struct ast_speech *speech)
 			recog_header->cancel_if_queue = FALSE;
 			mrcp_resource_header_property_add(mrcp_message,RECOGNIZER_HEADER_CANCEL_IF_QUEUE);
 		}
+		recog_header->start_input_timers = TRUE;
+		mrcp_resource_header_property_add(mrcp_message,RECOGNIZER_HEADER_START_INPUT_TIMERS);
 	}
 
 	/* Reset last event (if any) */
