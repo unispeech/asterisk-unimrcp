@@ -9,6 +9,12 @@
 	<depend>unimrcp</depend>
  ***/
 
+#undef PACKAGE_BUGREPORT
+#undef PACKAGE_NAME
+#undef PACKAGE_STRING
+#undef PACKAGE_TARNAME
+#undef PACKAGE_VERSION
+
 #include "asterisk.h"
 #define AST_MODULE "res_speech_unimrcp" 
 ASTERISK_FILE_VERSION(__FILE__, "$Revision: $")
@@ -126,12 +132,19 @@ static const char* uni_speech_id_get(uni_speech_t *uni_speech)
 }
 
 /** \brief Set up the speech structure within the engine */
+#if defined(ASTERISK14)
+static int uni_recog_create(struct ast_speech *speech)
+#else
 static int uni_recog_create(struct ast_speech *speech, int format)
+#endif
 {
 	uni_speech_t *uni_speech;
 	mrcp_session_t *session;
 	apr_pool_t *pool;
 	const mpf_codec_descriptor_t *descriptor;
+#if defined(ASTERISK14)
+	int format = 0;
+#endif
 
 	/* Create session instance */
 	session = mrcp_application_session_create(uni_engine.application,uni_engine.profile,speech);
@@ -1007,8 +1020,12 @@ static apr_table_t* uni_engine_grammars_load(struct ast_config *cfg, const char 
 static apt_bool_t uni_engine_config_load(apr_pool_t *pool)
 {
 	const char *value = NULL;
+#if defined(ASTERISK14)
+	struct ast_config *cfg = ast_config_load(UNI_ENGINE_CONFIG);
+#else
 	struct ast_flags config_flags = { 0 };
 	struct ast_config *cfg = ast_config_load(UNI_ENGINE_CONFIG, config_flags);
+#endif
 	if(!cfg) {
 		ast_log(LOG_WARNING, "No such configuration file %s\n", UNI_ENGINE_CONFIG);
 		return FALSE;
