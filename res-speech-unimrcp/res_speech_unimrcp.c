@@ -201,7 +201,7 @@ static int uni_recog_create(struct ast_speech *speech, int format)
 		mpf_frame_buffer_t *media_buffer;
 		apr_size_t frame_size = mpf_codec_linear_frame_size_calculate(descriptor->sampling_rate,descriptor->channel_count);
 		/* Create media buffer */
-		ast_log(LOG_DEBUG, "Create media buffer frame_size:%d\n",frame_size);
+		ast_log(LOG_DEBUG, "Create media buffer frame_size:%"APR_SIZE_T_FMT"\n",frame_size);
 		media_buffer = mpf_frame_buffer_create(frame_size,20,pool);
 		uni_speech->media_buffer = media_buffer;
 	}
