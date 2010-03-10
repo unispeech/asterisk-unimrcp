@@ -241,7 +241,7 @@ static char *recogdescrip =
  */
 #define AUDIO_QUEUE_SIZE						(16000 * 2)
 
-#define SPEECH_CHANNEL_TIMEOUT_USEC				(10 * 1000000)
+#define SPEECH_CHANNEL_TIMEOUT_USEC				(30 * 1000000)
 
 #define MIME_TYPE_SSML_XML						"application/ssml+xml"
 #define MIME_TYPE_PLAIN_TEXT					"text/plain"
@@ -291,6 +291,10 @@ struct my_mrcp_globals_t {
 	char *unimrcp_rx_buffer_size;
 	/* The tx-buffer-size configuration. */
 	char *unimrcp_tx_buffer_size;
+#if UNI_VERSION_AT_LEAST(0,10,0)
+	/* The reqest timeout configuration. */
+	char *unimrcp_request_timeout;
+#endif
 	/* The default text-to-speech profile to use. */
 	char *unimrcp_default_synth_profile;
 	/* The default speech recognition profile to use. */
@@ -331,6 +335,8 @@ struct profile_t {
 	const char *srgs_xml_mime_type;
 	/* MIME type to use for SRGS ABNF grammars. */
 	const char *srgs_mime_type;
+	/* MIME type to use for SSML (TTS) */
+	const char *ssml_mime_type;
 	/* The profile configuration. */
 	apr_hash_t *cfg;
 };
@@ -504,6 +510,7 @@ static void globals_null(void)
 	globals.unimrcp_offer_new_connection = NULL;
 	globals.unimrcp_rx_buffer_size = NULL;
 	globals.unimrcp_tx_buffer_size = NULL;
+	globals.unimrcp_request_timeout = NULL;
 	globals.unimrcp_default_synth_profile = NULL;
 	globals.unimrcp_default_recog_profile = NULL;
 	globals.unimrcp_log_level = NULL;
@@ -1036,6 +1043,7 @@ static int profile_create(profile_t **profile, const char *name, const char *ver
 			lprofile->srgs_xml_mime_type = "application/srgs+xml";
 			lprofile->gsl_mime_type = "application/x-nuance-gsl";
 			lprofile->jsgf_mime_type = "application/x-jsgf";
+			lprofile->ssml_mime_type = "application/ssml+xml";
 			*profile = lprofile;
 		} else
 			res = -1;
@@ -1065,6 +1073,8 @@ static int process_profile_config(profile_t *profile, const char *param, const c
 		profile->srgs_xml_mime_type = apr_pstrdup(pool, val);
 	else if (strcasecmp(param, "srgs-mime-type") == 0)
 		profile->srgs_mime_type = apr_pstrdup(pool, val);
+	else if (strcasecmp(param, "ssml-mime-type") == 0)
+		profile->ssml_mime_type = apr_pstrdup(pool, val);
 	else
 		mine = 0;
 
@@ -1381,6 +1391,14 @@ static mrcp_client_t *mod_unimrcp_client_create(apr_pool_t *mod_pool)
 	 				mrcp_client_connection_tx_size_set(connection_agent, tx_buffer_size);
 				}
  			}
+			#if UNI_VERSION_AT_LEAST(0,10,0)
+			if (globals.unimrcp_request_timeout != NULL) {
+				apr_size_t request_timeout = (apr_size_t)atol(globals.unimrcp_request_timeout);
+				if (request_timeout > 0) {
+	 				mrcp_client_connection_timeout_set(connection_agent, request_timeout);
+				}
+			}
+			#endif
  		}
 
 		if (!mrcp_client_connection_agent_register(client, connection_agent, "MRCPv2ConnectionAgent"))
@@ -1888,10 +1906,10 @@ static mpf_termination_t *speech_channel_create_mpf_termination(speech_channel_t
 		mpf_codec_capabilities_add(&capabilities->codecs, sample_rates, schannel->codec);
 
 	termination = mrcp_application_audio_termination_create(
-					schannel->unimrcp_session,                        /* session, termination belongs to */
-					&schannel->application->audio_stream_vtable,      /* virtual methods table of audio stream */
-                    capabilities,                                     /* capabilities of audio stream */
-                    schannel);                                        /* object to associate */
+					schannel->unimrcp_session,                        /* Session, termination belongs to. */
+					&schannel->application->audio_stream_vtable,      /* Virtual methods table of audio stream. */
+                    capabilities,                                     /* Capabilities of audio stream. */
+                    schannel);                                        /* Object to associate. */
 
 	if (termination == NULL)
 		ast_log(LOG_ERROR, "(%s) Unable to create termination\n", schannel->name);
@@ -1956,6 +1974,8 @@ static int speech_channel_destroy(speech_channel_t *schannel)
 
 		/* Destroy the channel and session if not already done. */
 		if (schannel->state != SPEECH_CHANNEL_CLOSED) {
+			int warned = 0;
+
 			if ((schannel->unimrcp_session != NULL) && (schannel->unimrcp_channel != NULL)) {
 				if (!mrcp_application_session_terminate(schannel->unimrcp_session))
 					ast_log(LOG_WARNING, "(%s) %s unable to terminate application session\n", schannel->name, speech_channel_type_to_string(schannel->type));
@@ -1965,8 +1985,15 @@ static int speech_channel_destroy(speech_channel_t *schannel)
 				 */
 			}
 
-			if (schannel->cond != NULL)
-				apr_thread_cond_timedwait(schannel->cond, schannel->mutex, SPEECH_CHANNEL_TIMEOUT_USEC);
+			ast_log(LOG_DEBUG, "(%s) Waiting for MRCP session to terminate\n", schannel->name);
+			while (schannel->state != SPEECH_CHANNEL_CLOSED) {
+				if (schannel->cond != NULL) {
+					if ((apr_thread_cond_timedwait(schannel->cond, schannel->mutex, SPEECH_CHANNEL_TIMEOUT_USEC) == APR_TIMEUP) && (!warned)) {
+						warned = 1;
+						ast_log(LOG_WARNING, "(%s) MRCP session has not terminated after %d ms\n", schannel->name, SPEECH_CHANNEL_TIMEOUT_USEC / 1000);
+					}
+				}
+			}
 		}
 
 		if (schannel->state != SPEECH_CHANNEL_CLOSED) {
@@ -1975,12 +2002,9 @@ static int speech_channel_destroy(speech_channel_t *schannel)
 
 		if (schannel->dtmf_generator != NULL) {
 			ast_log(LOG_NOTICE, "(%s) DTMF generator destroyed\n", schannel->name);
-                        mpf_dtmf_generator_destroy(schannel->dtmf_generator);
-                        schannel->dtmf_generator = NULL;
-                }
-
-		if (schannel->mutex != NULL)
-			apr_thread_mutex_unlock(schannel->mutex);
+			mpf_dtmf_generator_destroy(schannel->dtmf_generator);
+			schannel->dtmf_generator = NULL;
+		}
 
 		if (schannel->audio_queue != NULL) {
 			if (audio_queue_destroy(schannel->audio_queue) != 0)
@@ -1991,6 +2015,9 @@ static int speech_channel_destroy(speech_channel_t *schannel)
 
 		if (schannel->params != NULL)
 			apr_hash_clear(schannel->params);
+
+		if (schannel->mutex != NULL)
+			apr_thread_mutex_unlock(schannel->mutex);
 
 		if (schannel->cond != NULL) {
 			if (apr_thread_cond_destroy(schannel->cond) != APR_SUCCESS)
@@ -2822,7 +2849,7 @@ static int synth_channel_speak(speech_channel_t *schannel, const char *text)
 
 		/* Good enough way of determining SSML or plain text body. */
 		if (text_starts_with(text, XML_ID) || text_starts_with(text, SSML_ID))
-			apt_string_assign(&generic_header->content_type, MIME_TYPE_SSML_XML, mrcp_message->pool);
+			apt_string_assign(&generic_header->content_type, schannel->profile->ssml_mime_type, mrcp_message->pool);
 		else
 			apt_string_assign(&generic_header->content_type, MIME_TYPE_PLAIN_TEXT, mrcp_message->pool);
 
@@ -4023,6 +4050,12 @@ static int load_config(void)
 		ast_log(LOG_DEBUG, "general.tx-buffer-size=%s\n",  value);
 		globals.unimrcp_tx_buffer_size = apr_pstrdup(globals.pool, value);
 	}
+	#if UNI_VERSION_AT_LEAST(0,10,0)
+	if ((value = ast_variable_retrieve(cfg, "general", "request-timeout")) != NULL) {
+		ast_log(LOG_DEBUG, "general.request-timeout=%s\n",  value);
+		globals.unimrcp_request_timeout = apr_pstrdup(globals.pool, value);
+	}
+	#endif
 
 	while ((cat = ast_category_browse(cfg, cat)) != NULL) {
 		if (strcasecmp(cat, "general") != 0) {
@@ -5018,15 +5051,42 @@ static int app_recog_exec(struct ast_channel *chan, void *data)
 		goto done;
 	}
 	
-	grammar_type_t tmp_grammar;
-	if ((text_starts_with( args.grammar, HTTP_ID)) || (text_starts_with( args.grammar, HTTPS_ID)) || (text_starts_with( args.grammar, BUILTIN_ID))) {
+	grammar_type_t tmp_grammar = GRAMMAR_TYPE_UNKNOWN;
+	const char *grammar_data = args.grammar;
+	if ((text_starts_with(args.grammar, HTTP_ID)) || (text_starts_with(args.grammar, HTTPS_ID)) || (text_starts_with(args.grammar, BUILTIN_ID)) || (text_starts_with(args.grammar, FILE_ID)) || (text_starts_with(args.grammar, SESSION_ID))) {
 		tmp_grammar = GRAMMAR_TYPE_URI;
+	} else if (text_starts_with(args.grammar, INLINE_ID)) {
+		grammar_data = args.grammar + strlen(INLINE_ID);
+	} else if (text_starts_with(args.grammar, ABNF_ID)) {
+		tmp_grammar = GRAMMAR_TYPE_SRGS;
 	} else {
+		/* TO DO : Instead of assuming SRGS+XML, assume it is a file and MRCP server can't get to file, so read it and let the content decide the grammar type. */
 		tmp_grammar = GRAMMAR_TYPE_SRGS_XML;
 	}
+
+	if (tmp_grammar == GRAMMAR_TYPE_UNKNOWN) {
+		if ((text_starts_with(grammar_data, HTTP_ID)) || (text_starts_with(grammar_data, HTTPS_ID)) || (text_starts_with(grammar_data, BUILTIN_ID)) || (text_starts_with(grammar_data, FILE_ID)) || (text_starts_with(grammar_data, SESSION_ID))) {
+			tmp_grammar = GRAMMAR_TYPE_URI;
+		} else if ((text_starts_with(grammar_data, XML_ID) || (text_starts_with(grammar_data, SRGS_ID)))) {
+			tmp_grammar = GRAMMAR_TYPE_SRGS_XML;
+		} else if (text_starts_with(grammar_data, GSL_ID)) {
+			tmp_grammar = GRAMMAR_TYPE_NUANCE_GSL;
+		} else if (text_starts_with(grammar_data, ABNF_ID)) {
+			tmp_grammar = GRAMMAR_TYPE_SRGS;
+		} else if (text_starts_with(grammar_data, JSGF_ID)) {
+			tmp_grammar = GRAMMAR_TYPE_JSGF;
+		} else {
+			ast_log(LOG_ERROR, "(%s) Unable to determine grammar type: %s\n", schannel->name, grammar_data);
+			res = -1;
+			speech_channel_stop(schannel);
+			speech_channel_destroy(schannel);
+			goto done;
+		}
+	}
+
 	ast_log(LOG_DEBUG, "Grammar type is: %i\n", tmp_grammar);
 
-	if (recog_channel_load_grammar(schannel, name, tmp_grammar, args.grammar) != 0) {
+	if (recog_channel_load_grammar(schannel, name, tmp_grammar, grammar_data) != 0) {
 		ast_log(LOG_ERROR, "Unable to load grammar\n");
 		res = -1;
 		speech_channel_stop(schannel);
