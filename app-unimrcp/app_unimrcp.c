@@ -5335,6 +5335,25 @@ static int app_recog_exec(struct ast_channel *chan, void *data)
 
 			/* Continue with recognition. */
 			while (((waitres = ast_waitfor(chan, 100)) >= 0)) {
+				int processing = 1;
+
+				if ((schannel != NULL) && (schannel->mutex != NULL)) {
+					if (schannel->mutex != NULL) {
+						apr_thread_mutex_lock(schannel->mutex);
+					}
+
+					if (schannel->state != SPEECH_CHANNEL_PROCESSING) {
+						processing = 0;
+					}
+
+					if (schannel->mutex != NULL) {
+						apr_thread_mutex_unlock(schannel->mutex);
+					}
+				}
+
+				if (processing == 0)
+					break;
+
 				if (waitres == 0)
 					continue;
 
