@@ -981,9 +981,12 @@ static struct ast_speech_engine ast_engine = {
 /** \brief Init properties */
 static void uni_engine_properties_init(mrcp_message_header_t *properties, mrcp_version_e version)
 {
+#if TRANSPARENT_HEADER_FIELDS_SUPPORT
+#else
 	mrcp_message_header_init(properties);
 	properties->generic_header_accessor.vtable = mrcp_generic_header_vtable_get(version);
 	properties->resource_header_accessor.vtable = mrcp_recog_header_vtable_get(version);
+#endif
 }
 
 /** \brief Load properties from config */
@@ -998,11 +1001,14 @@ static void uni_engine_properties_load(mrcp_message_header_t *properties, struct
 		ast_log(LOG_DEBUG, "%s.%s=%s\n", category, var->name, var->value);
 		apt_string_set(&pair.name,var->name);
 		apt_string_set(&pair.value,var->value);
+#if TRANSPARENT_HEADER_FIELDS_SUPPORT
+#else
 		if(mrcp_header_parse(&properties->resource_header_accessor,&pair,pool) != TRUE) {
 			if(mrcp_header_parse(&properties->generic_header_accessor,&pair,pool) != TRUE) {
 				ast_log(LOG_WARNING, "Unknown MRCP header %s.%s=%s\n", category, var->name, var->value);
 			}
 		}
+#endif
 	}
 }
 
