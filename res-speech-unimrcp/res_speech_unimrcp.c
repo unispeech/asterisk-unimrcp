@@ -850,12 +850,21 @@ static apt_bool_t uni_recog_properties_set(uni_speech_t *uni_speech)
 	}
 	
 	/* Inherit properties loaded from config */
+#if defined(TRANSPARENT_HEADER_FIELDS_SUPPORT)
+	if(mrcp_message->start_line.version == MRCP_VERSION_2) {
+		mrcp_header_fields_inherit(&mrcp_message->header,&uni_engine.v2_properties,mrcp_message->pool);
+	}
+	else {
+		mrcp_header_fields_inherit(&mrcp_message->header,&uni_engine.v1_properties,mrcp_message->pool);
+	}
+#else
 	if(mrcp_message->start_line.version == MRCP_VERSION_2) {
 		mrcp_message_header_inherit(&mrcp_message->header,&uni_engine.v2_properties,mrcp_message->pool);
 	}
 	else {
 		mrcp_message_header_inherit(&mrcp_message->header,&uni_engine.v1_properties,mrcp_message->pool);
 	}
+#endif
 
 	/* Send MRCP request and wait for response */
 	if(uni_recog_mrcp_request_send(uni_speech,mrcp_message) != TRUE) {
@@ -979,9 +988,14 @@ static struct ast_speech_engine ast_engine = {
 };
 
 /** \brief Init properties */
-static void uni_engine_properties_init(mrcp_message_header_t *properties, mrcp_version_e version)
+static void uni_engine_properties_init(mrcp_message_header_t *properties, mrcp_version_e version, apr_pool_t *pool)
 {
 #if defined(TRANSPARENT_HEADER_FIELDS_SUPPORT)
+	mrcp_message_header_allocate(
+		properties,
+		mrcp_generic_header_vtable_get(version),
+		mrcp_recog_header_vtable_get(version),
+		pool);
 #else
 	mrcp_message_header_init(properties);
 	properties->generic_header_accessor.vtable = mrcp_generic_header_vtable_get(version);
@@ -993,23 +1007,33 @@ static void uni_engine_properties_init(mrcp_message_header_t *properties, mrcp_v
 static void uni_engine_properties_load(mrcp_message_header_t *properties, struct ast_config *cfg, const char *category, apr_pool_t *pool)
 {
 	struct ast_variable *var;
-	apt_pair_t pair;
 
+#if defined(TRANSPARENT_HEADER_FIELDS_SUPPORT)
+	apt_header_field_t *header_field;
+	for(var = ast_variable_browse(cfg, category); var; var = var->next) {
+		ast_log(LOG_DEBUG, "%s.%s=%s\n", category, var->name, var->value);
+		header_field = apt_header_field_create_c(var->name,var->value,pool);
+		if(header_field) {
+			if(mrcp_header_field_add(properties,header_field,pool) == FALSE) {
+				ast_log(LOG_WARNING, "Unknown MRCP header %s.%s=%s\n", category, var->name, var->value);
+			}
+		}
+	}
+#else
+	apt_pair_t pair;
 	mrcp_header_allocate(&properties->generic_header_accessor,pool);
 	mrcp_header_allocate(&properties->resource_header_accessor,pool);
 	for(var = ast_variable_browse(cfg, category); var; var = var->next) {
 		ast_log(LOG_DEBUG, "%s.%s=%s\n", category, var->name, var->value);
 		apt_string_set(&pair.name,var->name);
 		apt_string_set(&pair.value,var->value);
-#if defined(TRANSPARENT_HEADER_FIELDS_SUPPORT)
-#else
 		if(mrcp_header_parse(&properties->resource_header_accessor,&pair,pool) != TRUE) {
 			if(mrcp_header_parse(&properties->generic_header_accessor,&pair,pool) != TRUE) {
 				ast_log(LOG_WARNING, "Unknown MRCP header %s.%s=%s\n", category, var->name, var->value);
 			}
 		}
-#endif
 	}
+#endif
 }
 
 /** \brief Load grammars from config */
@@ -1105,9 +1129,6 @@ static apt_bool_t uni_engine_load()
 	uni_engine.log_output = APT_LOG_OUTPUT_CONSOLE | APT_LOG_OUTPUT_FILE;
 	uni_engine.grammars = NULL;
 
-	uni_engine_properties_init(&uni_engine.v2_properties,MRCP_VERSION_2);
-	uni_engine_properties_init(&uni_engine.v1_properties,MRCP_VERSION_1);
-
 	pool = apt_pool_create();
 	if(!pool) {
 		ast_log(LOG_ERROR, "Failed to create APR pool\n");
@@ -1116,6 +1137,10 @@ static apt_bool_t uni_engine_load()
 	}
 
 	uni_engine.pool = pool;
+
+	/* Initialize properties */
+	uni_engine_properties_init(&uni_engine.v2_properties,MRCP_VERSION_2,pool);
+	uni_engine_properties_init(&uni_engine.v1_properties,MRCP_VERSION_1,pool);
 
 	/* Load engine configuration */
 	uni_engine_config_load(pool);
