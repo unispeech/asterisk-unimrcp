@@ -92,25 +92,25 @@ struct uni_speech_t {
 /** \brief Declaration of UniMRCP based recognition engine */
 struct uni_engine_t {
 	/* Memory pool */
-	apr_pool_t           *pool;
+	apr_pool_t            *pool;
 	/* Client stack instance */
-	mrcp_client_t        *client;
+	mrcp_client_t         *client;
 	/* Application instance */
-	mrcp_application_t   *application;
+	mrcp_application_t    *application;
 
 	/* Profile name */
-	const char           *profile;
+	const char            *profile;
 	/* Log level */
-	apt_log_priority_e    log_level;
+	apt_log_priority_e     log_level;
 	/* Log output */
-	apt_log_output_e      log_output;
+	apt_log_output_e       log_output;
 
 	/* Grammars to be preloaded with each MRCP session, if anything specified in config [grammars] */
-	apr_table_t          *grammars;
+	apr_table_t           *grammars;
 	/* MRCPv2 properties (header fields) loaded from config */
-	mrcp_message_header_t v2_properties;
+	mrcp_message_header_t *v2_properties;
 	/* MRCPv1 properties (header fields) loaded from config */
-	mrcp_message_header_t v1_properties;
+	mrcp_message_header_t *v1_properties;
 };
 
 static struct uni_engine_t uni_engine;
@@ -839,6 +839,7 @@ static apt_bool_t uni_recog_channel_create(uni_speech_t *uni_speech, int format)
 static apt_bool_t uni_recog_properties_set(uni_speech_t *uni_speech)
 {
 	mrcp_message_t *mrcp_message;
+	mrcp_message_header_t *properties;
 	ast_log(LOG_DEBUG, "Set properties '%s'\n",uni_speech_id_get(uni_speech));
 	mrcp_message = mrcp_application_message_create(
 								uni_speech->session,
@@ -850,21 +851,20 @@ static apt_bool_t uni_recog_properties_set(uni_speech_t *uni_speech)
 	}
 	
 	/* Inherit properties loaded from config */
+	if(mrcp_message->start_line.version == MRCP_VERSION_2) {
+		properties = uni_engine.v2_properties;
+	}
+	else {
+		properties = uni_engine.v1_properties;
+	}
+
+	if(properties) {
 #if defined(TRANSPARENT_HEADER_FIELDS_SUPPORT)
-	if(mrcp_message->start_line.version == MRCP_VERSION_2) {
-		mrcp_header_fields_inherit(&mrcp_message->header,&uni_engine.v2_properties,mrcp_message->pool);
-	}
-	else {
-		mrcp_header_fields_inherit(&mrcp_message->header,&uni_engine.v1_properties,mrcp_message->pool);
-	}
+		mrcp_header_fields_inherit(&mrcp_message->header,properties,mrcp_message->pool);
 #else
-	if(mrcp_message->start_line.version == MRCP_VERSION_2) {
-		mrcp_message_header_inherit(&mrcp_message->header,&uni_engine.v2_properties,mrcp_message->pool);
-	}
-	else {
-		mrcp_message_header_inherit(&mrcp_message->header,&uni_engine.v1_properties,mrcp_message->pool);
-	}
+		mrcp_message_header_inherit(&mrcp_message->header,properties,mrcp_message->pool);
 #endif
+	}
 
 	/* Send MRCP request and wait for response */
 	if(uni_recog_mrcp_request_send(uni_speech,mrcp_message) != TRUE) {
@@ -987,29 +987,18 @@ static struct ast_speech_engine ast_engine = {
     AST_FORMAT_SLINEAR
 };
 
-/** \brief Init properties */
-static void uni_engine_properties_init(mrcp_message_header_t *properties, mrcp_version_e version, apr_pool_t *pool)
-{
-#if defined(TRANSPARENT_HEADER_FIELDS_SUPPORT)
-	mrcp_message_header_allocate(
-		properties,
-		mrcp_generic_header_vtable_get(version),
-		mrcp_recog_header_vtable_get(version),
-		pool);
-#else
-	mrcp_message_header_init(properties);
-	properties->generic_header_accessor.vtable = mrcp_generic_header_vtable_get(version);
-	properties->resource_header_accessor.vtable = mrcp_recog_header_vtable_get(version);
-#endif
-}
-
 /** \brief Load properties from config */
-static void uni_engine_properties_load(mrcp_message_header_t *properties, struct ast_config *cfg, const char *category, apr_pool_t *pool)
+static mrcp_message_header_t* uni_engine_properties_load(struct ast_config *cfg, const char *category, mrcp_version_e version, apr_pool_t *pool)
 {
 	struct ast_variable *var;
+	mrcp_message_header_t *properties = NULL;
 
 #if defined(TRANSPARENT_HEADER_FIELDS_SUPPORT)
 	apt_header_field_t *header_field;
+	properties = mrcp_message_header_create(
+		mrcp_generic_header_vtable_get(version),
+		mrcp_recog_header_vtable_get(version),
+		pool);
 	for(var = ast_variable_browse(cfg, category); var; var = var->next) {
 		ast_log(LOG_DEBUG, "%s.%s=%s\n", category, var->name, var->value);
 		header_field = apt_header_field_create_c(var->name,var->value,pool);
@@ -1021,6 +1010,10 @@ static void uni_engine_properties_load(mrcp_message_header_t *properties, struct
 	}
 #else
 	apt_pair_t pair;
+	properties = apr_palloc(pool,sizeof(mrcp_message_header_t));
+	mrcp_message_header_init(properties);
+	properties->generic_header_accessor.vtable = mrcp_generic_header_vtable_get(version);
+	properties->resource_header_accessor.vtable = mrcp_recog_header_vtable_get(version);
 	mrcp_header_allocate(&properties->generic_header_accessor,pool);
 	mrcp_header_allocate(&properties->resource_header_accessor,pool);
 	for(var = ast_variable_browse(cfg, category); var; var = var->next) {
@@ -1034,6 +1027,7 @@ static void uni_engine_properties_load(mrcp_message_header_t *properties, struct
 		}
 	}
 #endif
+	return properties;
 }
 
 /** \brief Load grammars from config */
@@ -1080,8 +1074,8 @@ static apt_bool_t uni_engine_config_load(apr_pool_t *pool)
 
 	uni_engine.grammars = uni_engine_grammars_load(cfg,"grammars",pool);
 
-	uni_engine_properties_load(&uni_engine.v2_properties,cfg,"mrcpv2-properties",pool);
-	uni_engine_properties_load(&uni_engine.v1_properties,cfg,"mrcpv1-properties",pool);
+	uni_engine.v2_properties = uni_engine_properties_load(cfg,"mrcpv2-properties",MRCP_VERSION_2,pool);
+	uni_engine.v1_properties = uni_engine_properties_load(cfg,"mrcpv1-properties",MRCP_VERSION_1,pool);
 
 	ast_config_destroy(cfg);
 	return TRUE;
@@ -1137,10 +1131,8 @@ static apt_bool_t uni_engine_load()
 	}
 
 	uni_engine.pool = pool;
-
-	/* Initialize properties */
-	uni_engine_properties_init(&uni_engine.v2_properties,MRCP_VERSION_2,pool);
-	uni_engine_properties_init(&uni_engine.v1_properties,MRCP_VERSION_1,pool);
+	uni_engine.v2_properties = NULL;
+	uni_engine.v1_properties = NULL;
 
 	/* Load engine configuration */
 	uni_engine_config_load(pool);
