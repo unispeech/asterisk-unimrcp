@@ -605,16 +605,16 @@ struct ast_speech_result* uni_recog_get(struct ast_speech *speech)
 		apr_xml_elem *input;
 		/* Get instance and input */
 		nlsml_interpret_results_get(interpret,&instance,&input);
-		if(input) {
+		if(instance && input) {
 			const char *confidence;
 			const char *grammar;
 			speech->results = ast_calloc(sizeof(struct ast_speech_result), 1);
 			speech->results->text = NULL;
 			speech->results->score = 0;
-			if(input->first_cdata.first) {
-				speech->results->text = strdup(input->first_cdata.first->text);
+			if(instance->first_cdata.first) {
+				speech->results->text = strdup(instance->first_cdata.first->text);
 			}
-			confidence = nlsml_input_attrib_get(input,"confidence",TRUE);
+			confidence = nlsml_input_attrib_get(instance,"confidence",TRUE);
 			if(confidence) {
 				if(uni_speech->mrcp_event->start_line.version == MRCP_VERSION_2) {
 					speech->results->score = (int)(atof(confidence) * 100);
@@ -623,7 +623,7 @@ struct ast_speech_result* uni_recog_get(struct ast_speech *speech)
 					speech->results->score = atoi(confidence);
 				}
 			}
-			grammar = nlsml_input_attrib_get(input,"grammar",TRUE);
+			grammar = nlsml_input_attrib_get(interpret,"grammar",TRUE);
 			if(grammar) {
 				grammar = strchr(grammar,':');
 				if(grammar && *grammar != '\0') {
@@ -631,7 +631,7 @@ struct ast_speech_result* uni_recog_get(struct ast_speech *speech)
 					speech->results->grammar = strdup(grammar);
 				}
 			}
-			ast_log(LOG_NOTICE, "Interpreted input:%s score:%d grammar:%s\n",
+			ast_log(LOG_NOTICE, "Interpreted instance:%s score:%d grammar:%s\n",
 				speech->results->text ? speech->results->text : "none",
 				speech->results->score,
 				speech->results->grammar ? speech->results->grammar : "none");
