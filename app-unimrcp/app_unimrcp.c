@@ -1377,7 +1377,11 @@ static mrcp_client_t *mod_unimrcp_client_create(apr_pool_t *mod_pool)
 	if (offer_new_connection < 0)
 		offer_new_connection = 1;
 
+#if UNI_VERSION_AT_LEAST(1,0,0)
 	if ((connection_agent = mrcp_client_connection_agent_create("MRCPv2ConnectionAgent", max_connection_count, offer_new_connection, pool)) != NULL) {
+#else
+	if ((connection_agent = mrcp_client_connection_agent_create(max_connection_count, offer_new_connection, pool)) != NULL) {
+#endif
 		if (connection_agent != NULL) {
  			if (globals.unimrcp_rx_buffer_size != NULL) {
 				apr_size_t rx_buffer_size = (apr_size_t)atol(globals.unimrcp_rx_buffer_size);
@@ -1401,18 +1405,30 @@ static mrcp_client_t *mod_unimrcp_client_create(apr_pool_t *mod_pool)
 			#endif
  		}
 
+#if UNI_VERSION_AT_LEAST(1,0,0)
 		if (!mrcp_client_connection_agent_register(client, connection_agent))
+#else
+		if (!mrcp_client_connection_agent_register(client, connection_agent, "MRCPv2ConnectionAgent"))
+#endif
 			ast_log(LOG_WARNING, "Unable to register MRCP client connection agent\n");
 	}
 
 	/* Set up the media engine that will be shared with all profiles. */
+#if UNI_VERSION_AT_LEAST(1,0,0)
 	if ((media_engine = mpf_engine_create("MediaEngine", pool)) != NULL) {
+#else
+	if ((media_engine = mpf_engine_create(pool)) != NULL) {
+#endif
 		unsigned long realtime_rate = 1;
 
 		if (!mpf_engine_scheduler_rate_set(media_engine, realtime_rate))
 			ast_log(LOG_WARNING, "Unable to set scheduler rate for MRCP client media engine\n");
 
+#if UNI_VERSION_AT_LEAST(1,0,0)
 		if (!mrcp_client_media_engine_register(client, media_engine))
+#else
+		if (!mrcp_client_media_engine_register(client, media_engine, "MediaEngine"))
+#endif
 			ast_log(LOG_WARNING, "Unable to register MRCP client media engine\n");
 	}
 
@@ -1519,7 +1535,11 @@ static mrcp_client_t *mod_unimrcp_client_create(apr_pool_t *mod_pool)
 						}
 					}
 
+					#if UNI_VERSION_AT_LEAST(1,0,0)
 					agent = mrcp_unirtsp_client_agent_create(name, config, pool);
+					#else
+					agent = mrcp_unirtsp_client_agent_create(config, pool);
+					#endif
 				} else if (strcmp("2", version) == 0) {
 					/* MRCPv2 configuration. */
 					mrcp_sofia_client_config_t *config = mrcp_sofiasip_client_config_alloc(pool);
@@ -1578,7 +1598,11 @@ static mrcp_client_t *mod_unimrcp_client_create(apr_pool_t *mod_pool)
 						}
 					}
 
+					#if UNI_VERSION_AT_LEAST(1,0,0)
 					agent = mrcp_sofiasip_client_agent_create(name, config, pool);
+					#else
+					agent = mrcp_sofiasip_client_agent_create(config, pool);
+					#endif
 				} else {
 					ast_log(LOG_ERROR, "Version must be either \"1\" or \"2\"\n");
 					return NULL;
@@ -1596,7 +1620,11 @@ static mrcp_client_t *mod_unimrcp_client_create(apr_pool_t *mod_pool)
 				#endif
 
 				if (agent != NULL)
+					#if UNI_VERSION_AT_LEAST(1,0,0)
 					mrcp_client_signaling_agent_register(client, agent);
+					#else
+					mrcp_client_signaling_agent_register(client, agent, name);
+					#endif
 
 				/* Create the profile and register it. */
 				#if UNI_VERSION_AT_LEAST(0,10,0)
