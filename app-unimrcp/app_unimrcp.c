@@ -5122,7 +5122,6 @@ static int app_recog_exec(struct ast_channel *chan, void *data)
 		goto done;
 	}
 
-	int resf = -1;
 	struct ast_filestream* fs = NULL;
 	off_t filelength = 0;
 
@@ -5150,8 +5149,7 @@ static int app_recog_exec(struct ast_channel *chan, void *data)
 		}
 
 		if (bargein == 0) {
-			if (!resf)
-				res = ast_waitstream(chan, "");
+			res = ast_waitstream(chan, "");
 		}
 	}
 
@@ -5442,8 +5440,7 @@ static int app_recog_exec(struct ast_channel *chan, void *data)
 			res = -1;
 		} else {
 			if (bargein != 0) {
-				if (!resf)
-					res = ast_waitstream(chan, "");
+				res = ast_waitstream(chan, "");
 			}
 		}
 
