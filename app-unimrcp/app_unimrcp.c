@@ -4372,6 +4372,7 @@ static int app_synth_exec(struct ast_channel *chan, void *data)
 
 	if (ast_strlen_zero(data)) {
 		ast_log(LOG_WARNING, "%s requires an argument (text[,options])\n", app_synth);
+		pbx_builtin_setvar_helper(chan, "SYNTHSTATUS", "ERROR");
 		return -1;
 	}
 
@@ -4702,6 +4703,14 @@ static int app_synth_exec(struct ast_channel *chan, void *data)
 	speech_channel_destroy(schannel);
 
 done:
+	if (res < 0)
+		pbx_builtin_setvar_helper(chan, "SYNTHSTATUS", "ERROR");
+	else
+		pbx_builtin_setvar_helper(chan, "SYNTHSTATUS", "OK");
+
+	if ((res < 0) && (!ast_check_hangup(chan)))
+		res = 0;
+
 	return res;
 }
 
@@ -4732,6 +4741,7 @@ static int app_recog_exec(struct ast_channel *chan, void *data)
 
 	if (ast_strlen_zero(data)) {
 		ast_log(LOG_WARNING, "%s requires an argument (grammar[,options])\n", app_recog);
+		pbx_builtin_setvar_helper(chan, "RECOGSTATUS", "ERROR");
 		return -1;
 	}
 
@@ -5479,6 +5489,14 @@ static int app_recog_exec(struct ast_channel *chan, void *data)
 	ast_stopstream(chan);
 	
 done:
+	if (res < 0)
+		pbx_builtin_setvar_helper(chan, "RECOGSTATUS", "ERROR");
+	else
+		pbx_builtin_setvar_helper(chan, "RECOGSTATUS", "OK");
+
+	if ((res < 0) && (!ast_check_hangup(chan)))
+		res = 0;
+
 	return res;
 }
 
