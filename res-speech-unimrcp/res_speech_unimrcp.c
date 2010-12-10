@@ -1145,7 +1145,7 @@ static apt_bool_t uni_engine_load()
 	/* Create singleton logger */
 	apt_log_instance_create(uni_engine.log_output, uni_engine.log_level, pool);
 	/* Open the log file */
-	apt_log_file_open(dir_layout->log_dir_path,"astuni",MAX_LOG_FILE_SIZE,MAX_LOG_FILE_COUNT,pool);
+	apt_log_file_open(dir_layout->log_dir_path,"astuni",MAX_LOG_FILE_SIZE,MAX_LOG_FILE_COUNT,TRUE,pool);
 
 
 	uni_engine.client = unimrcp_client_create(dir_layout);
