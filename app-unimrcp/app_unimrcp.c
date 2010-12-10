@@ -2379,7 +2379,7 @@ static apt_bool_t speech_on_channel_add(mrcp_application_t *application, mrcp_se
 
 	if ((schannel != NULL) && (application != NULL) && (session != NULL) && (channel != NULL)) {
 		if ((session != NULL) && (status == MRCP_SIG_STATUS_CODE_SUCCESS)) {
-			if (schannel->stream != NULL)
+			if (schannel->stream != NULL) {
 				schannel->dtmf_generator = mpf_dtmf_generator_create(schannel->stream, schannel->pool);
 				/* schannel->dtmf_generator = mpf_dtmf_generator_create_ex(schannel->stream, MPF_DTMF_GENERATOR_OUTBAND, 70, 50, schannel->pool); */
 
@@ -2387,6 +2387,7 @@ static apt_bool_t speech_on_channel_add(mrcp_application_t *application, mrcp_se
 					ast_log(LOG_NOTICE, "(%s) DTMF generator created\n", schannel->name);
 				else
 					ast_log(LOG_NOTICE, "(%s) Unable to create DTMF generator\n", schannel->name);
+			}
 
 #if UNI_VERSION_AT_LEAST(0,8,0)
 			char codec_name[60] = { 0 };
