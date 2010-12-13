@@ -17,52 +17,75 @@ AC_DEFUN([FIND_ASTERISK], [
 
     if test -z "${asterisk_dir}"; then
 	echo "Asterisk install directory not specified, using /usr"
-    	asterisk_version=$(/usr/sbin/asterisk -V | cut -d' ' -f2)
+	if test -f "/usr/sbin/asterisk"; then
+ 	   	asterisk_version=$(/usr/sbin/asterisk -V | grep Asterisk | cut -d' ' -f2)
+	else
+		echo "Asterisk binary not found, using version.h to detect version"
+		asterisk_version=$(cat /usr/include/asterisk/version.h | sed -n 's/#define ASTERISK_VERSION "\(.*\)"/\1/p')
+	fi
     else
-	asterisk_version=$($asterisk_dir/sbin/asterisk -V | cut -d' ' -f2)
+	if test -f "$asterisk_dir/sbin/asterisk"; then
+ 	   	asterisk_version=$($asterisk_dir/sbin/asterisk -V | grep Asterisk | cut -d' ' -f2)
+	else
+		echo "Asterisk binary not found, using version.h to detect version"
+		asterisk_version=$(cat $asterisk_dir/include/asterisk/version.h | sed -n 's/#define ASTERISK_VERSION "\(.*\)"/\1/p')
+	fi
     fi
 
     AC_MSG_RESULT([$asterisk_version])
 
     case $asterisk_version in
-        SVN-1.2*)
-	        AC_DEFINE_UNQUOTED(ASTERISK12)
+        SVN-*1.2*)
+	        dnl AC_DEFINE_UNQUOTED(ASTERISK12)
+		AC_DEFINE([ASTERISK12], [], [Asterisk 1.2])
                 ;;
         1.2*)
-	        AC_DEFINE_UNQUOTED(ASTERISK12)
+	        dnl AC_DEFINE_UNQUOTED(ASTERISK12)
+		AC_DEFINE([ASTERISK12], [], [Asterisk 1.2])
                 ;;
-        SVN-1.4*)
-	        AC_DEFINE_UNQUOTED(ASTERISK14)
+        SVN-*1.4*)
+	        dnl AC_DEFINE_UNQUOTED(ASTERISK14)
+		AC_DEFINE([ASTERISK14], [], [Asterisk 1.4])
                 ;;
         1.4*)
-	        AC_DEFINE_UNQUOTED(ASTERISK14)
+	        dnl AC_DEFINE_UNQUOTED(ASTERISK14)
+		AC_DEFINE([ASTERISK14], [], [Asterisk 1.4])
                 ;;
-        SVN-1.6.0.*)
-	        AC_DEFINE_UNQUOTED(ASTERISK160)
+        SVN-*1.6.0.*)
+	        dnl AC_DEFINE_UNQUOTED(ASTERISK160)
+		AC_DEFINE([ASTERISK160], [], [Asterisk 1.6.0])
                 ;;
         1.6.0.*)
-	        AC_DEFINE_UNQUOTED(ASTERISK160)
+	        dnl AC_DEFINE_UNQUOTED(ASTERISK160)
+		AC_DEFINE([ASTERISK160], [], [Asterisk 1.6.0])
                 ;;
-        SVN-1.6.1.*)
-	        AC_DEFINE_UNQUOTED(ASTERISK161)
+        SVN-*1.6.1.*)
+	        dnl AC_DEFINE_UNQUOTED(ASTERISK161)
+		AC_DEFINE([ASTERISK161], [], [Asterisk 1.6.1])
                 ;;
         1.6.1.*)
-	        AC_DEFINE_UNQUOTED(ASTERISK161)
+	        dnl AC_DEFINE_UNQUOTED(ASTERISK161)
+		AC_DEFINE([ASTERISK161], [], [Asterisk 1.6.1])
                 ;;
-        SVN-1.6.2.*)
-	        AC_DEFINE_UNQUOTED(ASTERISK162)
+        SVN-*1.6.2.*)
+	        dnl AC_DEFINE_UNQUOTED(ASTERISK162)
+		AC_DEFINE([ASTERISK162], [], [Asterisk 1.6.2])
                 ;;
         1.6.2.*)
-	        AC_DEFINE_UNQUOTED(ASTERISK162)
+	        dnl AC_DEFINE_UNQUOTED(ASTERISK162)
+		AC_DEFINE([ASTERISK162], [], [Asterisk 1.6.2])
                 ;;
         SVN-trunk*)
-	        AC_DEFINE_UNQUOTED(ASTERISKSVN)
+	        dnl AC_DEFINE_UNQUOTED(ASTERISKSVN)
+		AC_DEFINE([ASTERISKSVN], [], [Asterisk SVN])
                 ;;
         SVN*)
-	        AC_DEFINE_UNQUOTED(ASTERISKSVN)
+	        dnl AC_DEFINE_UNQUOTED(ASTERISKSVN)
+		AC_DEFINE([ASTERISKSVN], [], [Asterisk SVN])
                 ;;
         *)
-	        AC_DEFINE_UNQUOTED(ASTERISKSVN)
+	        dnl AC_DEFINE_UNQUOTED(ASTERISKSVN)
+		AC_DEFINE([ASTERISKSVN], [], [Asterisk SVN])
                 ;;
     esac
 
