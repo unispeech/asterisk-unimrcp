@@ -80,6 +80,9 @@ struct uni_speech_t {
 	mrcp_sig_command_e     sm_request;
 	/* Satus code of session management response */
 	mrcp_sig_status_code_e sm_response;
+
+	/* Is recognition in-progress or not */
+	apt_bool_t             is_inprogress;
 	
 	/* In-progress request sent to server */
 	mrcp_message_t        *mrcp_request;
@@ -161,6 +164,7 @@ static int uni_recog_create(struct ast_speech *speech, int format)
 	uni_speech->media_buffer = NULL;
 	uni_speech->active_grammar_name = NULL;
 	uni_speech->is_sm_request = FALSE;
+	uni_speech->is_inprogress = FALSE;
 	uni_speech->sm_request = 0;
 	uni_speech->sm_response = MRCP_SIG_STATUS_CODE_SUCCESS;
 	uni_speech->mrcp_request = NULL;
@@ -255,6 +259,52 @@ static void uni_recog_cleanup(uni_speech_t *uni_speech)
 	}
 
 	mrcp_application_session_destroy(uni_speech->session);
+}
+
+/*! \brief Stop the in-progress recognition */
+static int uni_recog_stop(struct ast_speech *speech)
+{
+	uni_speech_t *uni_speech = speech->data;
+	mrcp_message_t *mrcp_message;
+	mrcp_generic_header_t *generic_header;
+	mrcp_recog_header_t *recog_header;
+	
+	if(!uni_speech->is_inprogress) {
+		return 0;
+	}
+ 
+	ast_log(LOG_NOTICE, "Stop recognition '%s'\n",uni_speech_id_get(uni_speech));
+	mrcp_message = mrcp_application_message_create(
+								uni_speech->session,
+								uni_speech->channel,
+								RECOGNIZER_STOP);
+	if(!mrcp_message) {
+		ast_log(LOG_WARNING, "Failed to create MRCP message\n");
+		return -1;
+	}
+	
+	/* Reset last event (if any) */
+	uni_speech->mrcp_event = NULL;
+
+	/* Send MRCP request and wait for response */
+	if(uni_recog_mrcp_request_send(uni_speech,mrcp_message) != TRUE) {
+		ast_log(LOG_WARNING, "Failed to send MRCP message\n");
+		return -1;
+	}
+
+	/* Check received response */
+	if(!uni_speech->mrcp_response || uni_speech->mrcp_response->start_line.status_code != MRCP_STATUS_CODE_SUCCESS) {
+		ast_log(LOG_WARNING, "Received failure response\n");
+		return -1;
+	}
+	
+	/* Reset media buffer */
+	mpf_frame_buffer_restart(uni_speech->media_buffer);
+	
+	ast_speech_change_state(speech, AST_SPEECH_STATE_NOT_READY);
+	
+	uni_speech->is_inprogress = FALSE;
+	return 0;
 }
 
 /*! \brief Load a local grammar on the speech structure */
@@ -387,6 +437,10 @@ static int uni_recog_unload_grammar(struct ast_speech *speech, char *grammar_nam
 	mrcp_message_t *mrcp_message;
 	mrcp_generic_header_t *generic_header;
 
+	if(uni_speech->is_inprogress) {
+		uni_recog_stop(speech);
+	}
+
 	ast_log(LOG_NOTICE, "Unload grammar name:%s '%s'\n",
 				grammar_name,
 				uni_speech_id_get(uni_speech));
@@ -439,6 +493,10 @@ static int uni_recog_deactivate_grammar(struct ast_speech *speech, char *grammar
 {
 	uni_speech_t *uni_speech = speech->data;
 
+	if(uni_speech->is_inprogress) {
+		uni_recog_stop(speech);
+	}
+
 	ast_log(LOG_NOTICE, "Deactivate grammar name:%s '%s'\n",
 						grammar_name,
 						uni_speech_id_get(uni_speech));
@@ -481,6 +539,10 @@ static int uni_recog_start(struct ast_speech *speech)
 	mrcp_message_t *mrcp_message;
 	mrcp_generic_header_t *generic_header;
 	mrcp_recog_header_t *recog_header;
+
+	if(uni_speech->is_inprogress) {
+		uni_recog_stop(speech);
+	}
 
 	ast_log(LOG_NOTICE, "Start audio '%s'\n",uni_speech_id_get(uni_speech));
 	mrcp_message = mrcp_application_message_create(
@@ -536,6 +598,8 @@ static int uni_recog_start(struct ast_speech *speech)
 	mpf_frame_buffer_restart(uni_speech->media_buffer);
 	
 	ast_speech_change_state(speech, AST_SPEECH_STATE_READY);
+	
+	uni_speech->is_inprogress = TRUE;
 	return 0;
 }
 
@@ -543,6 +607,11 @@ static int uni_recog_start(struct ast_speech *speech)
 static int uni_recog_change(struct ast_speech *speech, char *name, const char *value)
 {
 	uni_speech_t *uni_speech = speech->data;
+
+	if(uni_speech->is_inprogress) {
+		uni_recog_stop(speech);
+	}
+  	
 	ast_log(LOG_NOTICE, "Change setting '%s'\n",uni_speech_id_get(uni_speech));
 	return 0;
 }
@@ -551,6 +620,11 @@ static int uni_recog_change(struct ast_speech *speech, char *name, const char *v
 static int uni_recog_change_results_type(struct ast_speech *speech,enum ast_speech_results_type results_type)
 {
 	uni_speech_t *uni_speech = speech->data;
+
+	if(uni_speech->is_inprogress) {
+		uni_recog_stop(speech);
+	}
+  	
 	ast_log(LOG_NOTICE, "Change result type '%s'\n",uni_speech_id_get(uni_speech));
 	return -1;
 }
@@ -566,6 +640,10 @@ struct ast_speech_result* uni_recog_get(struct ast_speech *speech)
 	uni_speech_t *uni_speech = speech->data;
 	apr_pool_t *pool = mrcp_application_session_pool_get(uni_speech->session);
 
+	if(uni_speech->is_inprogress) {
+		uni_recog_stop(speech);
+	}
+  
 	ast_log(LOG_NOTICE, "Get result '%s'\n",uni_speech_id_get(uni_speech));
 	if(!uni_speech->mrcp_event) {
 		ast_log(LOG_WARNING, "No RECOGNITION-COMPLETE message received\n");
@@ -727,8 +805,15 @@ static apt_bool_t on_message_receive(mrcp_application_t *application, mrcp_sessi
 	
 	if(message->start_line.message_type == MRCP_MESSAGE_TYPE_EVENT) {
 		if(message->start_line.method_id == RECOGNIZER_RECOGNITION_COMPLETE) {
-			uni_speech->mrcp_event = message;
-			ast_speech_change_state(uni_speech->speech_base,AST_SPEECH_STATE_DONE);
+			uni_speech->is_inprogress = FALSE;			
+			if (uni_speech->speech_base->state != AST_SPEECH_STATE_NOT_READY) {
+				uni_speech->mrcp_event = message;
+				ast_speech_change_state(uni_speech->speech_base,AST_SPEECH_STATE_DONE);
+			}
+			else {
+				uni_speech->mrcp_event = NULL;
+				ast_speech_change_state(uni_speech->speech_base,AST_SPEECH_STATE_NOT_READY);
+			}
 		}
 		else if(message->start_line.method_id == RECOGNIZER_START_OF_INPUT) {
 			ast_set_flag(uni_speech->speech_base,AST_SPEECH_QUIET);
