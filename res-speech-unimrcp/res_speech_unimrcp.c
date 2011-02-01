@@ -30,6 +30,7 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: $")
 #include <apr_thread_cond.h>
 #include <apr_thread_proc.h>
 #include <apr_tables.h>
+#include <apr_hash.h>
 #include <unimrcp_client.h>
 #include <mrcp_application.h>
 #include <mrcp_message.h>
@@ -71,8 +72,8 @@ struct uni_speech_t {
 	/* Buffer of media frames */
 	mpf_frame_buffer_t    *media_buffer;
 
-	/* Active grammar name (Content-ID) */
-	const char            *active_grammar_name;
+	/* Active grammars (Content-IDs) */
+	apr_hash_t            *active_grammars;
 	
 	/* Is session management request in-progress or not */
 	apt_bool_t             is_sm_request;
@@ -162,7 +163,7 @@ static int uni_recog_create(struct ast_speech *speech, int format)
 	uni_speech->wait_object = NULL;
 	uni_speech->mutex = NULL;
 	uni_speech->media_buffer = NULL;
-	uni_speech->active_grammar_name = NULL;
+	uni_speech->active_grammars = apr_hash_make(pool);
 	uni_speech->is_sm_request = FALSE;
 	uni_speech->is_inprogress = FALSE;
 	uni_speech->sm_request = 0;
@@ -444,6 +445,9 @@ static int uni_recog_unload_grammar(struct ast_speech *speech, char *grammar_nam
 	ast_log(LOG_NOTICE, "Unload grammar name:%s '%s'\n",
 				grammar_name,
 				uni_speech_id_get(uni_speech));
+
+	apr_hash_set(uni_speech->active_grammars,grammar_name,APR_HASH_KEY_STRING,NULL);
+
 	mrcp_message = mrcp_application_message_create(
 								uni_speech->session,
 								uni_speech->channel,
@@ -480,11 +484,13 @@ static int uni_recog_activate_grammar(struct ast_speech *speech, char *grammar_n
 {
 	uni_speech_t *uni_speech = speech->data;
 	apr_pool_t *pool = mrcp_application_session_pool_get(uni_speech->session);
+	const char *entry;
 
 	ast_log(LOG_NOTICE, "Activate grammar name:%s '%s'\n",
 						grammar_name,
 						uni_speech_id_get(uni_speech));
-	uni_speech->active_grammar_name = apr_pstrdup(pool,grammar_name);
+	entry = apr_pstrdup(pool,grammar_name);
+	apr_hash_set(uni_speech->active_grammars,entry,APR_HASH_KEY_STRING,entry);
 	return 0;
 }
 
@@ -500,7 +506,7 @@ static int uni_recog_deactivate_grammar(struct ast_speech *speech, char *grammar
 	ast_log(LOG_NOTICE, "Deactivate grammar name:%s '%s'\n",
 						grammar_name,
 						uni_speech_id_get(uni_speech));
-	uni_speech->active_grammar_name = NULL;
+	apr_hash_set(uni_speech->active_grammars,grammar_name,APR_HASH_KEY_STRING,NULL);
 	return 0;
 }
 
@@ -557,13 +563,27 @@ static int uni_recog_start(struct ast_speech *speech)
 	/* Get/allocate generic header */
 	generic_header = mrcp_generic_header_prepare(mrcp_message);
 	if(generic_header) {
+		apr_hash_index_t *it;
+		void *val;
+		const char *grammar_name;
 		const char *content;
 		/* Set generic header fields */
 		apt_string_assign(&generic_header->content_type,"text/uri-list",mrcp_message->pool);
 		mrcp_generic_header_property_add(mrcp_message,GENERIC_HEADER_CONTENT_TYPE);
 
-		/* Set message body */
-		content = apr_pstrcat(mrcp_message->pool,"session:",uni_speech->active_grammar_name,NULL);
+		/* Construct and set message body */
+		it = apr_hash_first(mrcp_message->pool,uni_speech->active_grammars);
+		if(it) {
+			apr_hash_this(it,NULL,NULL,&val);
+			grammar_name = val;
+			content = apr_pstrcat(mrcp_message->pool,"session:",grammar_name,NULL);
+			it = apr_hash_next(it);
+		}
+		for(; it; it = apr_hash_next(it)) {
+			apr_hash_this(it,NULL,NULL,&val);
+			grammar_name = val;
+			content = apr_pstrcat(mrcp_message->pool,content,"\nsession:",grammar_name,NULL);
+		}
 		apt_string_set(&mrcp_message->body,content);
 	}
 
