@@ -126,7 +126,7 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 200656 $")
 		(1 - 19 digits), sint=speech incomplete timeout (1 - 19 digits), dit=DTMF
 		interdigit timeout (1 - 19 digits), dtt=DTMF terminate timout (1 - 19 digits),
 		dttc=DTMF terminate characters, sw=save waveform (true/false), nac=new audio
-		channel (true/false), sl=speech language (en-US/en-GB/etc.), rm=recognition
+		channel (true/false), spl=speech language (en-US/en-GB/etc.), rm=recognition
 		mode, hmaxd=hotword max duration (1 - 19 digits), hmind=hotword min duration
 		(1 - 19 digits), cdb=clear DTMF buffer (true/false), enm=early no match
 		(true/false), iwu=input waveform URI, mt=media type.</para>
@@ -199,7 +199,7 @@ static char *recogdescrip =
 "(1 - 19 digits), sint=speech incomplete timeout (1 - 19 digits), dit=DTMF\n"
 "interdigit timeout (1 - 19 digits), dtt=DTMF terminate timout (1 - 19 digits),\n"
 "dttc=DTMF terminate characters, sw=save waveform (true/false), nac=new audio\n"
-"channel (true/false), sl=speech language (en-US/en-GB/etc.), rm=recognition\n"
+"channel (true/false), spl=speech language (en-US/en-GB/etc.), rm=recognition\n"
 "mode, hmaxd=hotword max duration (1 - 19 digits), hmind=hotword min duration\n"
 "(1 - 19 digits), cdb=clear DTMF buffer (true/false), enm=early no match\n"
 "(true/false), iwu=input waveform URI, mt=media type.\n";
@@ -4752,6 +4752,7 @@ static int app_recog_exec(struct ast_channel *chan, void *data)
 	AST_STANDARD_APP_ARGS(args, parse);
 	char option_confidencethresh[64] = { 0 };
 	char option_senselevel[64] = { 0 };
+	char option_speechlanguage[64] = { 0 };
 	char option_profile[256] = { 0 };
 	char option_interrupt[64] = { 0 };
 	char option_filename[384] = { 0 };
@@ -4881,6 +4882,9 @@ static int app_recog_exec(struct ast_channel *chan, void *data)
 				} else if (strcasecmp(key, "sl") == 0) {
 					strncpy(option_senselevel, value, sizeof(option_senselevel) - 1);
 					option_senselevel[sizeof(option_senselevel) - 1] = '\0';
+				} else if (strcasecmp(key, "spl") == 0) {
+					strncpy(option_speechlanguage, value, sizeof(option_speechlanguage) - 1);
+					option_speechlanguage[sizeof(option_speechlanguage) - 1] = '\0';
 				} else if (strcasecmp(key, "mt") == 0) {
 					strncpy(option_mediatype, value, sizeof(option_mediatype) - 1);
 					option_mediatype[sizeof(option_mediatype) - 1] = '\0';
@@ -4935,6 +4939,9 @@ static int app_recog_exec(struct ast_channel *chan, void *data)
 	}
 	if (!ast_strlen_zero(option_senselevel)) {
 		ast_log(LOG_NOTICE, "Sensitivity-level: %s\n", option_senselevel);
+	}
+	if (!ast_strlen_zero(option_speechlanguage)) {
+		ast_log(LOG_NOTICE, "Speech-language: %s\n", option_speechlanguage);
 	}
 	if (!ast_strlen_zero(option_inputwaveuri)) {
 		ast_log(LOG_NOTICE, "Input wave URI: %s\n", option_inputwaveuri);
@@ -5079,6 +5086,8 @@ static int app_recog_exec(struct ast_channel *chan, void *data)
 		speech_channel_set_param(schannel, "media-type", option_mediatype);
 	if (!ast_strlen_zero(option_senselevel))
 		speech_channel_set_param(schannel, "sensitivity-level", option_senselevel);
+	if (!ast_strlen_zero(option_speechlanguage))
+		speech_channel_set_param(schannel, "speech-language", option_speechlanguage);
 		
 	int ireadformat = chan->readformat;
 	/* if (ast_set_read_format(chan, AST_FORMAT_SLINEAR) < 0) { */
