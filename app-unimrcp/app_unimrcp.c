@@ -5042,7 +5042,7 @@ static int app_recog_exec(struct ast_channel *chan, void *data)
 	if (!ast_strlen_zero(option_confidencethresh))
 		speech_channel_set_param(schannel, "confidence-threshold", option_confidencethresh);
 	if (!ast_strlen_zero(option_inputwaveuri))
-		speech_channel_set_param(schannel, "input-wave-uri", option_inputwaveuri);
+		speech_channel_set_param(schannel, "input-waveform-uri", option_inputwaveuri);
 	if (!ast_strlen_zero(option_earlynomatch))
 		speech_channel_set_param(schannel, "earlynomatch",option_earlynomatch);
 	if (!ast_strlen_zero(option_cleardtmfbuf))
