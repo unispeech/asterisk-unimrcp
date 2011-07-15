@@ -341,8 +341,8 @@ static int uni_recog_load_grammar(struct ast_speech *speech, char *grammar_name,
 
 	tmp = strchr(grammar_path,':');
 	if(tmp) {
-		const char *builtin_token = "builtin";
-		const char *uri_token = "uri";
+		const char builtin_token[] = "builtin";
+		const char uri_token[] = "uri";
 		if(strncmp(grammar_path,builtin_token,sizeof(builtin_token)-1) == 0) {
 			content_type = "text/uri-list";
 			inline_content = TRUE;
