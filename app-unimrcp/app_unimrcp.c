@@ -749,15 +749,8 @@ static int audio_buffer_create(audio_buffer_t **buffer, apr_size_t max_len)
 
 static void audio_buffer_destroy(audio_buffer_t *buffer)
 {
-	if (buffer != NULL) {
-		if (buffer->pool != NULL) {
-			apr_pool_destroy(buffer->pool);
-			buffer->pool = NULL;
-		}
-
-		buffer->data = NULL;
-		buffer->datalen = 0;
-		buffer->used = 0;
+	if (buffer != NULL && buffer->pool != NULL) {
+		apr_pool_destroy(buffer->pool);
 	}
 }
 
@@ -868,17 +861,15 @@ static int audio_queue_destroy(audio_queue_t *queue)
 			queue->mutex = NULL;
 		}
 
-		if (queue->pool != NULL) {
-			apr_pool_destroy(queue->pool);
-			queue->pool = NULL;
-		}
-
 		queue->name = NULL;
 		queue->read_bytes = 0;
 		queue->waiting = 0;
 		queue->write_bytes = 0;
 
 		ast_log(LOG_DEBUG, "(%s) audio queue destroyed\n", name);
+		if (queue->pool != NULL) {
+			apr_pool_destroy(queue->pool);
+		}
 	}
 
 	return 0;
@@ -2057,9 +2048,6 @@ static int speech_channel_destroy(speech_channel_t *schannel)
 				ast_log(LOG_WARNING, "(%s) Unable to destroy channel condition variable\n", schannel->name);
 		}
 
-		if (schannel->pool != NULL)
-			apr_pool_destroy(schannel->pool);
-
 		schannel->name = NULL;
 		schannel->profile = NULL;
 		schannel->application = NULL;
@@ -2075,6 +2063,10 @@ static int speech_channel_destroy(speech_channel_t *schannel)
 		schannel->params = NULL;
 		schannel->data = NULL;
 		schannel->chan = NULL;
+
+		if (schannel->pool != NULL)
+			apr_pool_destroy(schannel->pool);
+
 	} else {
 		ast_log(LOG_ERROR, "Speech channel structure pointer is NULL\n");
 		return -1;
