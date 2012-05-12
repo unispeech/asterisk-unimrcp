@@ -1986,6 +1986,7 @@ static mpf_termination_t *speech_channel_create_mpf_termination(speech_channel_t
 static int speech_channel_destroy(speech_channel_t *schannel)
 {
 	if (schannel != NULL) {
+		apr_pool_t *pool = schannel->pool;
 		ast_log(LOG_DEBUG, "Destroying speech channel: Name=%s, Type=%s, Codec=%s, Rate=%u\n", schannel->name, speech_channel_type_to_string(schannel->type), schannel->codec, schannel->rate);
 
 		if (schannel->mutex)
@@ -2064,9 +2065,8 @@ static int speech_channel_destroy(speech_channel_t *schannel)
 		schannel->data = NULL;
 		schannel->chan = NULL;
 
-		if (schannel->pool != NULL)
-			apr_pool_destroy(schannel->pool);
-
+		if (pool != NULL)
+			apr_pool_destroy(pool);
 	} else {
 		ast_log(LOG_ERROR, "Speech channel structure pointer is NULL\n");
 		return -1;
