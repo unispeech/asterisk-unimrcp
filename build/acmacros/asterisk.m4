@@ -84,8 +84,8 @@ AC_DEFUN([FIND_ASTERISK], [
 		AC_DEFINE([ASTERISKSVN], [], [Asterisk SVN])
                 ;;
         *)
-	        dnl AC_DEFINE_UNQUOTED(ASTERISKSVN)
-		AC_DEFINE([ASTERISKSVN], [], [Asterisk SVN])
+	        dnl AC_DEFINE_UNQUOTED(ASTERISKOTHER)
+		AC_DEFINE([ASTERISKOTHER], [], [Asterisk Other])
                 ;;
     esac
 
