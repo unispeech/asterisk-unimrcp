@@ -52,21 +52,15 @@
 	<depend>apr</depend>
  ***/
 
-#define AST_MODULE "app_unimrcp"
+/* Asterisk includes. */
+#include "ast_compat_defs.h"
 
 #ifdef ASTERISK12
 #define AST_MODULE_LOAD_DECLINE -1
-#endif
-
-#undef PACKAGE_BUGREPORT
-#undef PACKAGE_NAME
-#undef PACKAGE_STRING
-#undef PACKAGE_TARNAME
-#undef PACKAGE_VERSION
-
-#ifndef ASTERISK12
-#include "asterisk.h"
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 200656 $")
+#define AST_COMPAT_STATIC
+#else  /* >= 1 4 */
+#define AST_COMPAT_STATIC static
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: $")
 #endif
 
 #if defined(ASTERISK12) || defined(ASTERISK14)
@@ -74,7 +68,8 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 200656 $")
 #include <stdio.h>
 #endif
 
-#include "asterisk/channel.h"
+#define AST_MODULE "app_unimrcp"
+
 #include "asterisk/pbx.h"
 #include "asterisk/module.h"
 #include "asterisk/lock.h"
@@ -172,7 +167,7 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 200656 $")
 static char *app_synth = "MRCPSynth";
 static char *app_recog = "MRCPRecog";
 
-#if !defined(ASTERISKSVN) && !defined(ASTERISK162) && !defined(ASTERISKOTHER)
+#if !AST_VERSION_AT_LEAST(1,6,2)
 static char *synthsynopsis = "MRCP synthesis application.";
 static char *synthdescrip =
 "Supports version 1 and 2 of MRCP, using UniMRCP. The options can be one or\n"
@@ -260,10 +255,6 @@ static char *recogdescrip =
 #define INLINE_ID								"inline:"
 
 int apr_initialized = 0;
-
-#if !defined(ASTERISKSVN)
-typedef int64_t format_t;
-#endif
 
 /* MRCP application. */
 struct my_mrcp_application_t {
@@ -3835,11 +3826,11 @@ static apt_bool_t recog_on_message_receive(mrcp_application_t *application, mrcp
 					apr_snprintf(waveform_uri, sizeof(waveform_uri) - 1, "Waveform-URI: %s", recog_hdr->waveform_uri.buf);
 					waveform_uri[sizeof(waveform_uri) - 1] = '\0';
 					if (recog_hdr->waveform_uri.length > 0) {
-						#if defined(ASTERISK162) || defined(ASTERISKSVN) || defined(ASTERISKOTHER)
+#if AST_VERSION_AT_LEAST(1,6,2)
 						strncat(completion_cause,",", 1);
-						#else
+#else
 						strncat(completion_cause,"|", 1);
-						#endif
+#endif
 						strncat(completion_cause, waveform_uri, strlen(waveform_uri) );
 					}
 					recog_channel_set_results(schannel, completion_cause);
@@ -4011,12 +4002,12 @@ static void recog_shutdown(void)
 
 static int load_config(void)
 {
-	#if !defined(ASTERISK12) && !defined(ASTERISK14)
+#if AST_VERSION_AT_LEAST(1,6,0)
 	struct ast_flags config_flags = { 0 };
 	struct ast_config *cfg = ast_config_load(MRCP_CONFIG, config_flags);
-	#else
+#else
 	struct ast_config *cfg = ast_config_load(MRCP_CONFIG);
-	#endif
+#endif
 	const char *cat = NULL;
 	struct ast_variable *var;
 	const char *value = NULL;
@@ -4025,12 +4016,12 @@ static int load_config(void)
 		ast_log(LOG_WARNING, "No such configuration file %s\n", MRCP_CONFIG);
 		return -1;
 	}
-	#if defined(ASTERISKSVN) || defined(ASTERISK162) || defined(ASTERISKOTHER)
+#if AST_VERSION_AT_LEAST(1,6,2)
 	else if (cfg == CONFIG_STATUS_FILEINVALID) {
 		ast_log(LOG_ERROR, "Config file " MRCP_CONFIG " is in an invalid format, aborting\n");
 		return -1;
 	}
-	#endif
+#endif
 
 	globals_clear();
 	globals_default();
@@ -4192,174 +4183,10 @@ static apt_bool_t unimrcp_log(const char *file, int line, const char *id, apt_lo
  * from the MRCP server.
  */
 
-static const char* codec_to_str(struct ast_channel *chan, int readformat) {
-	format_t	codec;
+/* --- CODEC/FORMAT FUNCTIONS  --- */
 
-
-	if (chan == NULL)
-		return "L16";
-
-	#ifndef ASTERISKOTHER
-	if (readformat)
-		codec = chan->rawreadformat;
-	else
-		codec = chan->rawwriteformat;
-	#else
-	if (readformat) {
-		struct ast_format oreadformat;
-		ast_format_clear(&oreadformat);
-		ast_format_copy(&oreadformat, ast_channel_rawreadformat(chan));
-		codec = oreadformat.id;
-	} else {
-		struct ast_format owriteformat;
-		ast_format_clear(&owriteformat);
-		ast_format_copy(&owriteformat, ast_channel_rawwriteformat(chan));
-		codec = owriteformat.id;
-	}
-	#endif
-
-	switch(codec) {
-		/*! G.723.1 compression */
-		case AST_FORMAT_G723_1: return "L16";
-		/*! GSM compression */
-		case AST_FORMAT_GSM: return "L16";
-		/*! Raw mu-law data (G.711) */
-		case AST_FORMAT_ULAW: return "PCMU";
-		/*! Raw A-law data (G.711) */
-		case AST_FORMAT_ALAW: return "PCMA";
-		#ifndef ASTERISK12
-		/*! ADPCM (G.726, 32kbps, AAL2 codeword packing) */
-		case AST_FORMAT_G726_AAL2: return "L16";
-		#endif
-		/*! ADPCM (IMA) */
-		case AST_FORMAT_ADPCM: return "L16"; 
-		/*! Raw 16-bit Signed Linear (8000 Hz) PCM */
-		case AST_FORMAT_SLINEAR: return "L16";
-		/*! LPC10, 180 samples/frame */
-		case AST_FORMAT_LPC10: return "L16";
-		/*! G.729A audio */
-		case AST_FORMAT_G729A: return "L16";
-		/*! SpeeX Free Compression */
-		case AST_FORMAT_SPEEX: return "L16";
-		/*! iLBC Free Compression */
-		case AST_FORMAT_ILBC: return "L16"; 
-		/*! ADPCM (G.726, 32kbps, RFC3551 codeword packing) */
-		case AST_FORMAT_G726: return "L16";
-		#ifndef ASTERISK12
-		/*! G.722 */
-		case AST_FORMAT_G722: return "L16";
-		#endif
-		#if defined(ASTERISKSVN) || defined(ASTERISK162) || defined(ASTERISKOTHER)
-		/*! G.722.1 (also known as Siren7, 32kbps assumed) */
-		case AST_FORMAT_SIREN7: return "L16";
-		/*! G.722.1 Annex C (also known as Siren14, 48kbps assumed) */
-		case AST_FORMAT_SIREN14: return "L16";
-		#endif
-		#if !defined(ASTERISK12) && !defined(ASTERISK14)
-		/*! Raw 16-bit Signed Linear (16000 Hz) PCM */
-		case AST_FORMAT_SLINEAR16: return "L16";
-		#endif
-		default: return "L16";
-	}
-}
-
-static int codec_to_bytes_per_sample(struct ast_channel *chan, int readformat) {
-	format_t	codec;
-
-
-	if (chan == NULL)
-		return 2;
-
-	#ifndef ASTERISKOTHER
-	if (readformat)
-		codec = chan->rawwriteformat;
-	else
-		codec = chan->rawreadformat;
-	#else
-	if (readformat) {
-		struct ast_format oreadformat;
-		ast_format_clear(&oreadformat);
-		ast_format_copy(&oreadformat, ast_channel_rawreadformat(chan));
-		codec = oreadformat.id;
-	} else {
-		struct ast_format owriteformat;
-		ast_format_clear(&owriteformat);
-		ast_format_copy(&owriteformat, ast_channel_rawwriteformat(chan));
-		codec = owriteformat.id;
-	}
-	#endif
-
-	switch(codec) {
-		/*! G.723.1 compression */
-		case AST_FORMAT_G723_1: return 2;
-		/*! GSM compression */
-		case AST_FORMAT_GSM: return 2;
-		/*! Raw mu-law data (G.711) */
-		case AST_FORMAT_ULAW: return 1;
-		/*! Raw A-law data (G.711) */
-		case AST_FORMAT_ALAW: return 1;
-		#ifndef ASTERISK12
-		/*! ADPCM (G.726, 32kbps, AAL2 codeword packing) */
-		case AST_FORMAT_G726_AAL2: return 2;
-		#endif
-		/*! ADPCM (IMA) */
-		case AST_FORMAT_ADPCM: return 2; 
-		/*! Raw 16-bit Signed Linear (8000 Hz) PCM */
-		case AST_FORMAT_SLINEAR: return 2;
-		/*! LPC10, 180 samples/frame */
-		case AST_FORMAT_LPC10: return 2;
-		/*! G.729A audio */
-		case AST_FORMAT_G729A: return 2;
-		/*! SpeeX Free Compression */
-		case AST_FORMAT_SPEEX: return 2;
-		/*! iLBC Free Compression */
-		case AST_FORMAT_ILBC: return 2; 
-		/*! ADPCM (G.726, 32kbps, RFC3551 codeword packing) */
-		case AST_FORMAT_G726: return 2;
-		#ifndef ASTERISK12
-		/*! G.722 */
-		case AST_FORMAT_G722: return 2;
-		#endif
-		#if defined(ASTERISKSVN) || defined(ASTERISK162) || defined(ASTERISKOTHER)
-		/*! G.722.1 (also known as Siren7, 32kbps assumed) */
-		case AST_FORMAT_SIREN7: return 2;
-		/*! G.722.1 Annex C (also known as Siren14, 48kbps assumed) */
-		case AST_FORMAT_SIREN14: return 2;
-		#endif
-		#if !defined(ASTERISK12) && !defined(ASTERISK14)
-		/*! Raw 16-bit Signed Linear (16000 Hz) PCM */
-		case AST_FORMAT_SLINEAR16: return 2;
-		#endif
-		default: return 2;
-	}
-}
-
-static format_t codec_to_format(struct ast_channel *chan, int readformat) {
-	format_t	codec;
-
-
-	if (chan == NULL)
-		return AST_FORMAT_SLINEAR;
-
-	#ifndef ASTERISKOTHER
-	if (readformat)
-		codec = chan->rawwriteformat;
-	else
-		codec = chan->rawreadformat;
-	#else
-	if (readformat) {
-		struct ast_format oreadformat;
-		ast_format_clear(&oreadformat);
-		ast_format_copy(&oreadformat, ast_channel_rawreadformat(chan));
-		codec = oreadformat.id;
-	} else {
-		struct ast_format owriteformat;
-		ast_format_clear(&owriteformat);
-		ast_format_copy(&owriteformat, ast_channel_rawwriteformat(chan));
-		codec = owriteformat.id;
-	}
-	#endif
-
+static int get_speech_codec(int codec)
+{
 	switch(codec) {
 		/*! G.723.1 compression */
 		case AST_FORMAT_G723_1: return AST_FORMAT_SLINEAR;
@@ -4369,10 +4196,10 @@ static format_t codec_to_format(struct ast_channel *chan, int readformat) {
 		case AST_FORMAT_ULAW: return AST_FORMAT_ULAW;
 		/*! Raw A-law data (G.711) */
 		case AST_FORMAT_ALAW: return AST_FORMAT_ALAW;
-		#ifndef ASTERISK12
+#if AST_VERSION_AT_LEAST(1,4,0)
 		/*! ADPCM (G.726, 32kbps, AAL2 codeword packing) */
 		case AST_FORMAT_G726_AAL2: return AST_FORMAT_SLINEAR;
-		#endif
+#endif
 		/*! ADPCM (IMA) */
 		case AST_FORMAT_ADPCM: return AST_FORMAT_SLINEAR; 
 		/*! Raw 16-bit Signed Linear (8000 Hz) PCM */
@@ -4387,33 +4214,76 @@ static format_t codec_to_format(struct ast_channel *chan, int readformat) {
 		case AST_FORMAT_ILBC: return AST_FORMAT_SLINEAR; 
 		/*! ADPCM (G.726, 32kbps, RFC3551 codeword packing) */
 		case AST_FORMAT_G726: return AST_FORMAT_SLINEAR;
-		#ifndef ASTERISK12
+#if AST_VERSION_AT_LEAST(1,4,0)
 		/*! G.722 */
 		case AST_FORMAT_G722: return AST_FORMAT_SLINEAR;
-		#endif
-		#if defined(ASTERISKSVN) || defined(ASTERISK162) || defined(ASTERISKOTHER)
+#endif
+#if AST_VERSION_AT_LEAST(1,6,2)
 		/*! G.722.1 (also known as Siren7, 32kbps assumed) */
 		case AST_FORMAT_SIREN7: return AST_FORMAT_SLINEAR;
 		/*! G.722.1 Annex C (also known as Siren14, 48kbps assumed) */
 		case AST_FORMAT_SIREN14: return AST_FORMAT_SLINEAR;
-		#endif
-		#if !defined(ASTERISK12) && !defined(ASTERISK14)
+#endif
+#if AST_VERSION_AT_LEAST(1,6,0)
 		/*! Raw 16-bit Signed Linear (16000 Hz) PCM */
 		case AST_FORMAT_SLINEAR16: return AST_FORMAT_SLINEAR;
-		#endif
+#endif
 		default: return AST_FORMAT_SLINEAR;
 	}
+	return AST_FORMAT_SLINEAR;
 }
 
-#if defined(STERISKSVN) || defined(ASTERISKOTHER)
-static int app_synth_exec(struct ast_channel *chan, const char *data)
-#else
-static int app_synth_exec(struct ast_channel *chan, void *data)
-#endif
+static int get_synth_format(struct ast_channel *chan, ast_format_compat *format)
 {
+	ast_format_compat raw_format;
+	ast_channel_get_rawwriteformat(chan, &raw_format);
+	format->id = get_speech_codec(raw_format.id);
+	return 0;
+}
+
+static int get_recog_format(struct ast_channel *chan, ast_format_compat *format)
+{
+	ast_format_compat raw_format;
+	ast_channel_get_rawreadformat(chan, &raw_format);
+	format->id = get_speech_codec(raw_format.id);
+	return 0;
+}
+
+static const char* format_to_str(const ast_format_compat *format)
+{
+	switch(format->id) {
+		/*! Raw mu-law data (G.711) */
+		case AST_FORMAT_ULAW: return "PCMU";
+		/*! Raw A-law data (G.711) */
+		case AST_FORMAT_ALAW: return "PCMA";
+		/*! Raw 16-bit Signed Linear (8000 Hz) PCM */
+		case AST_FORMAT_SLINEAR: return "L16";
+	}
+	return "L16";
+}
+
+static int format_to_bytes_per_sample(const ast_format_compat *format)
+{
+	switch(format->id) {
+		/*! Raw mu-law data (G.711) */
+		case AST_FORMAT_ULAW: return 1;
+		/*! Raw A-law data (G.711) */
+		case AST_FORMAT_ALAW: return 1;
+		/*! Raw 16-bit Signed Linear (8000 Hz) PCM */
+		case AST_FORMAT_SLINEAR: return 2;
+	}
+	return 2;
+}
+
+static int app_synth_exec(struct ast_channel *chan, ast_app_data data)
+{
+	ast_format_compat nwriteformat;
+	ast_format_clear(&nwriteformat);
+	get_synth_format(chan, &nwriteformat);
+
 	int samplerate = 8000;
 	/* int framesize = DEFAULT_FRAMESIZE; */
-	int framesize = codec_to_bytes_per_sample(chan, 0) * (DEFAULT_FRAMESIZE / 2);
+	int framesize = format_to_bytes_per_sample(&nwriteformat) * (DEFAULT_FRAMESIZE / 2);
 	int dtmf_enable = 0;
 	struct ast_frame *f;
 	struct ast_frame fr;
@@ -4594,11 +4464,7 @@ static int app_synth_exec(struct ast_channel *chan, void *data)
 	ast_log(LOG_NOTICE, "DTMF enable: %d\n", dtmf_enable);
 
 	/* Answer if it's not already going. */
-	#ifndef ASTERISKOTHER
-	if (chan->_state != AST_STATE_UP)
-	#else
 	if (ast_channel_state(chan) != AST_STATE_UP)
-	#endif
 		ast_answer(chan);
 	ast_stopstream(chan);
 
@@ -4609,7 +4475,7 @@ static int app_synth_exec(struct ast_channel *chan, void *data)
 	name[sizeof(name) - 1] = '\0';
 
 	/* if (speech_channel_create(&schannel, name, SPEECH_CHANNEL_SYNTHESIZER, &globals.synth, "L16", samplerate, chan) != 0) { */
-	if (speech_channel_create(&schannel, name, SPEECH_CHANNEL_SYNTHESIZER, &globals.synth, codec_to_str(chan, 0), samplerate, chan) != 0) {
+	if (speech_channel_create(&schannel, name, SPEECH_CHANNEL_SYNTHESIZER, &globals.synth, format_to_str(&nwriteformat), samplerate, chan) != 0) {
 		res = -1;
 		goto done;
 	}
@@ -4656,23 +4522,11 @@ static int app_synth_exec(struct ast_channel *chan, void *data)
 	if (!ast_strlen_zero(option_prate))
 		speech_channel_set_param(schannel, "prosody-rate", option_prate);
 
-	#ifdef ASTERISKOTHER
-	struct ast_format nwriteformat;
-	ast_format_clear(&nwriteformat);
-	ast_format_copy(&nwriteformat, ast_channel_rawwriteformat(chan));
-
-	struct ast_format owriteformat;
+	ast_format_compat owriteformat;
 	ast_format_clear(&owriteformat);
-	ast_format_copy(&owriteformat, ast_channel_writeformat(chan));
-	#else
-	int owriteformat = chan->writeformat;
-	#endif
+	ast_channel_get_writeformat(chan, &owriteformat);
 
-	#ifdef ASTERISKOTHER
-	if (owriteformat.id && (ast_set_write_format(chan, &nwriteformat) < 0)) {
-	#else
-	if (ast_set_write_format(chan, codec_to_format(chan, 0)) < 0) {
-	#endif
+	if (ast_channel_set_writeformat(chan, &nwriteformat) < 0) {
 		ast_log(LOG_WARNING, "Unable to set write format to signed linear\n");
 		res = -1;
 		speech_channel_stop(schannel);
@@ -4700,21 +4554,11 @@ static int app_synth_exec(struct ast_channel *chan, void *data)
 					memset(&fr, 0, sizeof(fr));
 					fr.frametype = AST_FRAME_VOICE;
 					/* fr.subclass.codec = AST_FORMAT_SLINEAR; */
-					#if defined(ASTERISKSVN)
-					fr.subclass.codec = codec_to_format(chan, 0);
-					#elif defined(ASTERISKOTHER)
-					ast_format_set(&fr.subclass.format, codec_to_format(chan, 0), 0);
-					#else
-					fr.subclass = codec_to_format(chan, 0);
-					#endif
+					ast_frame_set_format(&fr, &nwriteformat);
 					fr.datalen = len;
 					/* fr.samples = len / 2; */
-					fr.samples = len / codec_to_bytes_per_sample(chan, 0);
-					#if defined(ASTERISKSVN) || defined(ASTERISK162) || defined(ASTERISK161) || defined(ASTERISKOTHER)
-					fr.data.ptr = buffer;
-					#else
-					fr.data = buffer;
-					#endif
+					fr.samples = len / format_to_bytes_per_sample(&nwriteformat);
+					ast_frame_set_data(&fr, buffer);
 					fr.mallocd = 0;
 					fr.offset = AST_FRIENDLY_OFFSET;
 					fr.src = __PRETTY_FUNCTION__;
@@ -4731,7 +4575,7 @@ static int app_synth_exec(struct ast_channel *chan, void *data)
 				} else {
 					if (rres == 0) {
 						/* next = ast_tvadd(next, ast_samp2tv(framesize/2, samplerate)); */
-						next = ast_tvadd(next, ast_samp2tv(framesize / codec_to_bytes_per_sample(chan, 0), samplerate));
+						next = ast_tvadd(next, ast_samp2tv(framesize / format_to_bytes_per_sample(&nwriteformat), samplerate));
 						ast_log(LOG_WARNING, "Writer starved for audio\n");
 					}
 				}
@@ -4750,11 +4594,7 @@ static int app_synth_exec(struct ast_channel *chan, void *data)
 						break;
 					} else if ((dtmf_enable) && (f->frametype == AST_FRAME_DTMF)) {
 						dobreak = 1;
-						#if defined(ASTERISKSVN) || defined(ASTERISKOTHER)
-						dtmfkey = f->subclass.integer;
-						#else
-						dtmfkey =  f->subclass;
-						#endif
+						dtmfkey = ast_frame_get_dtmfkey(f);
 
 						ast_log(LOG_DEBUG, "User pressed a key (%d)\n", dtmfkey);
 						if (option_interrupt && strchr(option_interrupt, dtmfkey)) {
@@ -4780,13 +4620,7 @@ static int app_synth_exec(struct ast_channel *chan, void *data)
 		} while (rres == 0);
 	}
 
-	#ifdef ASTERISKOTHER
-	if (owriteformat.id)
-		ast_set_write_format(chan, &owriteformat);
-	#else
-	if (owriteformat)
-		ast_set_write_format(chan, owriteformat);
-	#endif
+	ast_channel_set_writeformat(chan, &owriteformat);
 
 	if (fp != NULL)
 		fclose(fp);
@@ -4806,11 +4640,7 @@ done:
 	return res;
 }
 
-#if defined(ASTERISKSVN) || defined(ASTERISKOTHER)
-static int app_recog_exec(struct ast_channel *chan, const char *data)
-#else
-static int app_recog_exec(struct ast_channel *chan, void *data)
-#endif
+static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 {
 	int samplerate = 8000;
 	int dtmf_enable = 0;
@@ -5101,19 +4931,19 @@ static int app_recog_exec(struct ast_channel *chan, void *data)
 	ast_log(LOG_NOTICE, "DTMF enable: %d\n", dtmf_enable);
 
 	/* Answer if it's not already going. */
-	#ifndef ASTERISKOTHER
-	if (chan->_state != AST_STATE_UP)
-	#else
 	if (ast_channel_state(chan) != AST_STATE_UP)
-	#endif
 		ast_answer(chan);
 	ast_stopstream(chan);
 
 	apr_snprintf(name, sizeof(name) - 1, "ASR-%lu", (unsigned long int)speech_channel_number);
 	name[sizeof(name) - 1] = '\0';
 
+	ast_format_compat nreadformat;
+	ast_format_clear(&nreadformat);
+	get_recog_format(chan, &nreadformat);
+
 	/* if (speech_channel_create(&schannel, name, SPEECH_CHANNEL_RECOGNIZER, &globals.recog, "L16", samplerate, chan) != 0) { */
-	if (speech_channel_create(&schannel, name, SPEECH_CHANNEL_RECOGNIZER, &globals.recog, codec_to_str(chan, 1), samplerate, chan) != 0) {
+	if (speech_channel_create(&schannel, name, SPEECH_CHANNEL_RECOGNIZER, &globals.recog, format_to_str(&nreadformat), samplerate, chan) != 0) {
 		res = -1;
 		goto done;
 	}
@@ -5183,24 +5013,12 @@ static int app_recog_exec(struct ast_channel *chan, void *data)
 		speech_channel_set_param(schannel, "sensitivity-level", option_senselevel);
 	if (!ast_strlen_zero(option_speechlanguage))
 		speech_channel_set_param(schannel, "speech-language", option_speechlanguage);
-		
-	#ifdef ASTERISKOTHER
-	struct ast_format nreadformat;
-	ast_format_clear(&nreadformat);
-	ast_format_copy(&nreadformat, ast_channel_rawreadformat(chan));
 
-	struct ast_format oreadformat;
+	ast_format_compat oreadformat;
 	ast_format_clear(&oreadformat);
-	ast_format_copy(&oreadformat, ast_channel_readformat(chan));
-	#else
-	int oreadformat = chan->readformat;
-	#endif
+	ast_channel_get_readformat(chan, &oreadformat);
 
-	#ifdef ASTERISKOTHER
-	if (oreadformat.id && (ast_set_read_format(chan, &nreadformat) < 0)) {
-	#else
-	if (ast_set_read_format(chan, codec_to_format(chan, 1)) < 0) {
-	#endif
+	if (ast_channel_set_readformat(chan, &nreadformat) < 0) {
 		ast_log(LOG_WARNING, "Unable to set read format to signed linear\n");
 		res = -1;
 		speech_channel_stop(schannel);
@@ -5258,46 +5076,22 @@ static int app_recog_exec(struct ast_channel *chan, void *data)
 
 	/* Open file, get file length, seek to begin, apply and play. */ 
 	if (!ast_strlen_zero(option_filename)) {
-		#ifndef ASTERISKOTHER
-		if ((fs = ast_openstream(chan, option_filename, chan->language)) == NULL) {
-		#else
 		if ((fs = ast_openstream(chan, option_filename, ast_channel_language(chan))) == NULL) {
-		#endif
-			#ifndef ASTERISKOTHER
-			ast_log(LOG_WARNING, "ast_openstream failed on %s for %s\n", chan->name, option_filename);
-			#else
 			ast_log(LOG_WARNING, "ast_openstream failed on %s for %s\n", ast_channel_name(chan), option_filename);
-			#endif
 		} else {
 			if (ast_seekstream(fs, -1, SEEK_END) == -1) {
-				#ifndef ASTERISKOTHER
-				ast_log(LOG_WARNING, "ast_seekstream failed on %s for %s\n", chan->name, option_filename);
-				#else
 				ast_log(LOG_WARNING, "ast_seekstream failed on %s for %s\n", ast_channel_name(chan), option_filename);
-				#endif
 			} else {
 				filelength = ast_tellstream(fs);
 				ast_log(LOG_NOTICE, "file length:%"APR_OFF_T_FMT"\n", filelength);
 			}
 
 			if (ast_seekstream(fs, 0, SEEK_SET) == -1) {
-				#ifndef ASTERISKOTHER
-				ast_log(LOG_WARNING, "ast_seekstream failed on %s for %s\n", chan->name, option_filename);
-				#else
 				ast_log(LOG_WARNING, "ast_seekstream failed on %s for %s\n", ast_channel_name(chan), option_filename);
-				#endif
 			} else if (ast_applystream(chan, fs) == -1) {
-				#ifndef ASTERISKOTHER
-				ast_log(LOG_WARNING, "ast_applystream failed on %s for %s\n", chan->name, option_filename);
-				#else
 				ast_log(LOG_WARNING, "ast_applystream failed on %s for %s\n", ast_channel_name(chan), option_filename);
-				#endif
 			} else if (ast_playstream(fs) == -1) {
-				#ifndef ASTERISKOTHER
-				ast_log(LOG_WARNING, "ast_playstream failed on %s for %s\n", chan->name, option_filename);
-				#else
 				ast_log(LOG_WARNING, "ast_playstream failed on %s for %s\n", ast_channel_name(chan), option_filename);
-				#endif
 			}
 		}
 
@@ -5444,11 +5238,7 @@ static int app_recog_exec(struct ast_channel *chan, void *data)
 				} else if (f1->frametype == AST_FRAME_VIDEO) {
 					/* Ignore. */
 				} else if ((dtmf_enable != 0) && (f1->frametype == AST_FRAME_DTMF)) {
-					#if defined(ASTERISKSVN) || defined(ASTERISKOTHER)
-					dtmfkey = f1->subclass.integer;
-					#else
-					dtmfkey =  f1->subclass;
-					#endif
+					dtmfkey = ast_frame_get_dtmfkey(f1);
 					ast_log(LOG_DEBUG, "ssd: User pressed DTMF key (%d)\n", dtmfkey);
 					break;
 				}
@@ -5487,11 +5277,7 @@ static int app_recog_exec(struct ast_channel *chan, void *data)
 						if ((dsp_frame_data[i] != NULL) && (dsp_frame_data[i]->speech == 1)) {
 							myFrame = dsp_frame_data[i];
 							len = myFrame->f->datalen;
-							#if defined(ASTERISKSVN) || defined(ASTERISK162) || defined(ASTERISK161) || defined(ASTERISKOTHER)
-							rres = speech_channel_write(schannel, (void *)(myFrame->f->data.ptr), &len);
-							#else
-							rres = speech_channel_write(schannel, (void *)(myFrame->f->data), &len);	
-							#endif
+							rres = speech_channel_write(schannel, ast_frame_get_data(f), &len);
 						}
 
 						if (rres != 0)
@@ -5545,21 +5331,13 @@ static int app_recog_exec(struct ast_channel *chan, void *data)
 
 				if (f->frametype == AST_FRAME_VOICE) {
 					len = f->datalen;
-					#if defined(ASTERISKSVN) || defined(ASTERISK162) || defined(ASTERISK161) || defined(ASTERISKOTHER)
-					rres = speech_channel_write(schannel, (void *)(f->data.ptr), &len);
-					#else
-					rres = speech_channel_write(schannel, (void *)(f->data), &len);	
-					#endif
+					rres = speech_channel_write(schannel, ast_frame_get_data(f), &len);
 					if (rres != 0)
 						break;
 				} else if (f->frametype == AST_FRAME_VIDEO) {
 					/* Ignore. */
 				} else if ((dtmf_enable != 0) && (f->frametype == AST_FRAME_DTMF)) {
-					#if defined(ASTERISKSVN) || defined(ASTERISKOTHER)
-					dtmfkey = f->subclass.integer;
-					#else
-					dtmfkey =  f->subclass;
-					#endif
+					dtmfkey = ast_frame_get_dtmfkey(f);
 
 					ast_log(LOG_DEBUG, "User pressed DTMF key (%d)\n", dtmfkey);
 					if (dtmf_enable == 2) { /* Send dtmf frame to ASR engine. */
@@ -5624,13 +5402,7 @@ static int app_recog_exec(struct ast_channel *chan, void *data)
 		goto done;
 	}
 
-	#ifdef ASTERISKOTHER
-	if (oreadformat.id)
-		ast_set_read_format(chan, &oreadformat);
-	#else
-	if (oreadformat)
-		ast_set_read_format(chan, oreadformat);
-	#endif
+	ast_channel_set_readformat(chan, &oreadformat);
 
 	speech_channel_stop(schannel);
 	speech_channel_destroy(schannel);
@@ -5648,20 +5420,12 @@ done:
 	return res;
 }
 
-#ifdef ASTERISK12
-int reload(void)
-#else
-static int reload(void)
-#endif
+AST_COMPAT_STATIC int reload(void)
 {
 	return 0;
 }
 
-#ifdef ASTERISK12
-int unload_module(void)
-#else
-static int unload_module(void)
-#endif
+AST_COMPAT_STATIC int unload_module(void)
 {
 	int res = 0;
 
@@ -5702,11 +5466,7 @@ static int unload_module(void)
 	return res;
 }
 
-#ifdef ASTERISK12
-int load_module(void)
-#else
-static int load_module(void)
-#endif
+AST_COMPAT_STATIC int load_module(void)
 {
 	int res = 0;
 
@@ -5809,14 +5569,14 @@ static int load_module(void)
 		return AST_MODULE_LOAD_DECLINE;
 	}
 
-	#if defined(ASTERISKSVN) || defined(ASTERISKOTHER) || defined(ASTERISK162) || defined(ASTERISKOTHER)
 	/* Register the applications. */
+#if AST_VERSION_AT_LEAST(1,6,2)
 	res = ast_register_application_xml(app_synth, app_synth_exec);
 	res |= ast_register_application_xml(app_recog, app_recog_exec);
-	#else 
+#else 
 	res = ast_register_application(app_synth, app_synth_exec, synthsynopsis, synthdescrip);
 	res |= ast_register_application(app_recog, app_recog_exec, recogsynopsis, recogdescrip);
-	#endif
+#endif
 
 	return res;
 }
@@ -5854,4 +5614,3 @@ AST_MODULE_INFO(ASTERISK_GPL_KEY, AST_MODFLAG_DEFAULT, "MRCP suite of applicatio
  * For VIM:
  * vim:set softtabstop=4 shiftwidth=4 tabstop=4:
  */
-

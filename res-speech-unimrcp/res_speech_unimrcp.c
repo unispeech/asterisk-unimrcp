@@ -1,30 +1,38 @@
-/* 
- * The implementation of Asterisk's Speech API via UniMRCP
+/*
+ * Asterisk -- An open source telephony toolkit.
  *
- * Copyright (C) 2009, Arsen Chaloyan  <achaloyan@gmail.com>
+ * See http://www.asterisk.org for more information about
+ * the Asterisk project. Please do not directly contact
+ * any of the maintainers of this project for assistance;
+ * the project provides a web site, mailing lists and IRC
+ * channels for your use.
  *
+ * This program is free software, distributed under the terms of
+ * the GNU General Public License Version 2. See the LICENSE file
+ * at the top of the source tree.
+ *
+ * Please follow coding guidelines 
+ * http://svn.digium.com/view/asterisk/trunk/doc/CODING-GUIDELINES
  */
 
-/*** MODULEINFO
-	<depend>unimrcp</depend>
- ***/
+/*! \file
+ *
+ * \brief Implementation of the Asterisk's Speech API via UniMRCP
+ *
+ * \author Arsen Chaloyan arsen.chaloyan@unimrcp.org
+ * 
+ * \ingroup applications
+ */
 
-#undef PACKAGE_BUGREPORT
-#undef PACKAGE_NAME
-#undef PACKAGE_STRING
-#undef PACKAGE_TARNAME
-#undef PACKAGE_VERSION
+/* Asterisk includes. */
+#include "ast_compat_defs.h"
 
-#include "asterisk.h"
 #define AST_MODULE "res_speech_unimrcp" 
 ASTERISK_FILE_VERSION(__FILE__, "$Revision: $")
 
 #include <asterisk/module.h>
-#include <asterisk/logger.h>
-#include <asterisk/strings.h>
 #include <asterisk/config.h>
 #include <asterisk/frame.h>
-#include <asterisk/dsp.h>
 #include <asterisk/speech.h>
 
 #include <apr_thread_cond.h>
@@ -53,7 +61,6 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: $")
 typedef struct uni_speech_t uni_speech_t;
 /** \brief Forward declaration of engine */
 typedef struct uni_engine_t uni_engine_t;
-
 
 /** \brief Declaration of UniMRCP based speech structure */
 struct uni_speech_t {
@@ -119,7 +126,8 @@ struct uni_engine_t {
 
 static struct uni_engine_t uni_engine;
 
-static apt_bool_t uni_recog_channel_create(uni_speech_t *uni_speech, int format);
+static int uni_recog_create_internal(struct ast_speech *speech, ast_format_compat *format);
+static apt_bool_t uni_recog_channel_create(uni_speech_t *uni_speech, ast_format_compat *format);
 static apt_bool_t uni_recog_properties_set(uni_speech_t *uni_speech);
 static apt_bool_t uni_recog_grammars_preload(uni_speech_t *uni_speech);
 static apt_bool_t uni_recog_sm_request_send(uni_speech_t *uni_speech, mrcp_sig_command_e sm_request);
@@ -135,20 +143,44 @@ static const char* uni_speech_id_get(uni_speech_t *uni_speech)
 	return "none";
 }
 
-/** \brief Set up the speech structure within the engine */
-#if defined(ASTERISK14)
-static int uni_recog_create(struct ast_speech *speech)
-#else
-static int uni_recog_create(struct ast_speech *speech, int format)
+/** \brief Backward compatible define for the const qualifier */
+#if AST_VERSION_AT_LEAST(1,8,0)
+#define ast_compat_const const
+#else /* < 1.8 */
+#define ast_compat_const
 #endif
+
+/** \brief Version dependent prototypes of uni_recog_create() function */
+#if AST_VERSION_AT_LEAST(10,0,0)
+static int uni_recog_create(struct ast_speech *speech, ast_format_compat *format)
+{
+	return uni_recog_create_internal(speech,format);
+}
+#elif AST_VERSION_AT_LEAST(1,6,0)
+static int uni_recog_create(struct ast_speech *speech, int format_id)
+{
+	ast_format_compat format;
+	ast_format_clear(&format);
+	format.id = format_id;
+	return uni_recog_create_internal(speech,&format);
+}
+#else /* 1.4 */
+static int uni_recog_create(struct ast_speech *speech)
+{
+	ast_format_compat format;
+	ast_format_clear(&format);
+	format.id = 0;
+	return uni_recog_create_internal(speech,&format);
+}
+#endif
+
+/** \brief Set up the speech structure within the engine */
+static int uni_recog_create_internal(struct ast_speech *speech, ast_format_compat *format)
 {
 	uni_speech_t *uni_speech;
 	mrcp_session_t *session;
 	apr_pool_t *pool;
 	const mpf_codec_descriptor_t *descriptor;
-#if defined(ASTERISK14)
-	int format = 0;
-#endif
 
 	/* Create session instance */
 	session = mrcp_application_session_create(uni_engine.application,uni_engine.profile,speech);
@@ -309,7 +341,7 @@ static int uni_recog_stop(struct ast_speech *speech)
 }
 
 /*! \brief Load a local grammar on the speech structure */
-static int uni_recog_load_grammar(struct ast_speech *speech, char *grammar_name, char *grammar_path)
+static int uni_recog_load_grammar(struct ast_speech *speech, ast_compat_const char *grammar_name, ast_compat_const char *grammar_path)
 {
 	uni_speech_t *uni_speech = speech->data;
 	mrcp_message_t *mrcp_message;
@@ -432,7 +464,7 @@ static int uni_recog_load_grammar(struct ast_speech *speech, char *grammar_name,
 }
 
 /** \brief Unload a local grammar */
-static int uni_recog_unload_grammar(struct ast_speech *speech, char *grammar_name)
+static int uni_recog_unload_grammar(struct ast_speech *speech, ast_compat_const char *grammar_name)
 {
 	uni_speech_t *uni_speech = speech->data;
 	mrcp_message_t *mrcp_message;
@@ -480,7 +512,7 @@ static int uni_recog_unload_grammar(struct ast_speech *speech, char *grammar_nam
 }
 
 /** \brief Activate a loaded grammar */
-static int uni_recog_activate_grammar(struct ast_speech *speech, char *grammar_name)
+static int uni_recog_activate_grammar(struct ast_speech *speech, ast_compat_const char *grammar_name)
 {
 	uni_speech_t *uni_speech = speech->data;
 	apr_pool_t *pool = mrcp_application_session_pool_get(uni_speech->session);
@@ -495,7 +527,7 @@ static int uni_recog_activate_grammar(struct ast_speech *speech, char *grammar_n
 }
 
 /** \brief Deactivate a loaded grammar */
-static int uni_recog_deactivate_grammar(struct ast_speech *speech, char *grammar_name)
+static int uni_recog_deactivate_grammar(struct ast_speech *speech, ast_compat_const char *grammar_name)
 {
 	uni_speech_t *uni_speech = speech->data;
 
@@ -624,7 +656,7 @@ static int uni_recog_start(struct ast_speech *speech)
 }
 
 /** \brief Change an engine specific setting */
-static int uni_recog_change(struct ast_speech *speech, char *name, const char *value)
+static int uni_recog_change(struct ast_speech *speech, ast_compat_const char *name, const char *value)
 {
 	uni_speech_t *uni_speech = speech->data;
 
@@ -945,8 +977,6 @@ static apt_bool_t uni_message_handler(const mrcp_app_message_t *app_message)
 	return mrcp_application_message_dispatch(&uni_dispatcher,app_message);
 }
 
-
-
 /** \brief Process MPF frame */
 static apt_bool_t uni_recog_stream_read(mpf_audio_stream_t *stream, mpf_frame_t *frame)
 {
@@ -976,7 +1006,7 @@ static const mpf_audio_stream_vtable_t audio_stream_vtable = {
 };
 
 /** \brief Create recognition channel */
-static apt_bool_t uni_recog_channel_create(uni_speech_t *uni_speech, int format)
+static apt_bool_t uni_recog_channel_create(uni_speech_t *uni_speech, ast_format_compat *format)
 {
 	mrcp_channel_t *channel;
 	mpf_termination_t *termination;
@@ -1146,23 +1176,21 @@ static apt_bool_t uni_recog_mrcp_request_send(uni_speech_t *uni_speech, mrcp_mes
 	return res;
 }
 
-
 /** \brief Speech engine declaration */
 static struct ast_speech_engine ast_engine = { 
-    UNI_ENGINE_NAME,
-    uni_recog_create,
-    uni_recog_destroy,
-    uni_recog_load_grammar,
-    uni_recog_unload_grammar,
-    uni_recog_activate_grammar,
-    uni_recog_deactivate_grammar,
-    uni_recog_write,
-    uni_recog_dtmf,
-    uni_recog_start,
-    uni_recog_change,
-    uni_recog_change_results_type,
-    uni_recog_get,
-    AST_FORMAT_SLINEAR
+	UNI_ENGINE_NAME,
+	uni_recog_create,
+	uni_recog_destroy,
+	uni_recog_load_grammar,
+	uni_recog_unload_grammar,
+	uni_recog_activate_grammar,
+	uni_recog_deactivate_grammar,
+	uni_recog_write,
+	uni_recog_dtmf,
+	uni_recog_start,
+	uni_recog_change,
+	uni_recog_change_results_type,
+	uni_recog_get
 };
 
 /** \brief Load properties from config */
@@ -1258,7 +1286,6 @@ static apt_bool_t uni_engine_config_load(apr_pool_t *pool)
 	ast_config_destroy(cfg);
 	return TRUE;
 }
-
 
 /** \brief Unload UniMRCP engine */
 static apt_bool_t uni_engine_unload()
@@ -1363,6 +1390,20 @@ static int load_module(void)
 		uni_engine_unload();
 		return AST_MODULE_LOAD_FAILURE;
 	}
+
+#if AST_VERSION_AT_LEAST(10,0,0)
+	ast_engine.formats = ast_format_cap_alloc_nolock();
+	if(!ast_engine.formats) {
+		ast_log(LOG_ERROR, "Failed to alloc media format capabilities\n");
+		uni_engine_unload();
+		return AST_MODULE_LOAD_FAILURE;
+	}
+	struct ast_format format;
+	ast_format_set(&format, AST_FORMAT_SLINEAR, 0);
+	ast_format_cap_add(ast_engine.formats, &format); 
+#else /* <= 1.8 */
+	ast_engine.formats = AST_FORMAT_SLINEAR;
+#endif
 
 	if(ast_speech_register(&ast_engine)) {
 		ast_log(LOG_ERROR, "Failed to register module\n");
