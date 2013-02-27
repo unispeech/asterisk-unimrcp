@@ -119,4 +119,5 @@ AC_DEFUN([FIND_ASTERISK], [
     ASTERISK_INCLUDES="-I$asterisk_dir/include"
     AC_SUBST(ASTERISK_INCLUDES)
     AC_SUBST(asterisk_conf_dir)
+    AC_SUBST(asterisk_xmldoc_dir)
 ])
