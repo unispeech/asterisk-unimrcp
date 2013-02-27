@@ -24,10 +24,12 @@ AC_DEFUN([FIND_ASTERISK], [
         if test "${asterisk_conf_dir}" = ""; then
             asterisk_conf_dir="/etc/asterisk"
         fi
+        asterisk_xmldoc_dir="/var/lib/asterisk/documentation/thirdparty"
     else
         if test "${asterisk_conf_dir}" = ""; then
             asterisk_conf_dir="${asterisk_dir}/etc/asterisk"
         fi
+        asterisk_xmldoc_dir="${asterisk_dir}/var/lib/asterisk/documentation/thirdparty"
     fi
 
     dnl Detect Asterisk version
