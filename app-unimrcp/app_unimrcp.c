@@ -90,6 +90,10 @@ int unload_mrcpsynth_app();
 int load_mrcprecog_app();
 int unload_mrcprecog_app();
 
+/* SynthAndRecog application. */ 
+int load_synthandrecog_app();
+int unload_synthandrecog_app();
+
 /* Connects UniMRCP logging to Asterisk. */
 static apt_bool_t unimrcp_log(const char *file, int line, const char *id, apt_log_priority_e priority, const char *format, va_list arg_ptr)
 {
@@ -199,6 +203,7 @@ AST_COMPAT_STATIC int load_module(void)
 	/* Load the applications. */
 	load_mrcpsynth_app();
 	load_mrcprecog_app();
+	load_synthandrecog_app();
 
 	/* Start the client stack. */
 	if (!mrcp_client_start(globals.mrcp_client)) {
@@ -258,6 +263,7 @@ AST_COMPAT_STATIC int unload_module(void)
 	/* Unload the applications. */
 	unload_mrcpsynth_app();
 	unload_mrcprecog_app();
+	unload_synthandrecog_app();
 
 	/* Stop the MRCP client stack. */
 	if (globals.mrcp_client != NULL) {

@@ -9,11 +9,12 @@ app_unimrcp_la_SOURCES = audio_queue.c \
                          ast_unimrcp_framework.c \
                          app_mrcpsynth.c \
                          app_mrcprecog.c \
+                         app_synthandrecog.c \
                          app_unimrcp.c
 app_unimrcp_la_LDFLAGS = -avoid-version -no-undefined -module
 app_unimrcp_la_LIBADD  = $(UNIMRCP_LIBS)
 
-XMLDOC_FILES           = app_mrcpsynth.c app_mrcprecog.c
+XMLDOC_FILES           = app_mrcpsynth.c app_mrcprecog.c app_synthandrecog.c
 
 all-local: .xmldocs/app_unimrcp-en_US.xml
 
