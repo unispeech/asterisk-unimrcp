@@ -424,7 +424,7 @@ static int recog_channel_set_results(speech_channel_t *schannel, const char *res
 }
 
 /* Get the recognition results. */
-static int recog_channel_get_results(speech_channel_t *schannel, char **result)
+static int recog_channel_get_results(speech_channel_t *schannel, const char **result)
 {
 	int status = 0;
 
@@ -448,7 +448,7 @@ static int recog_channel_get_results(speech_channel_t *schannel, char **result)
 	}
 
 	if (r->result && (strlen(r->result) > 0)) {
-		*result = strdup(r->result);
+		*result = apr_pstrdup(schannel->pool, r->result);
 		ast_log(LOG_DEBUG, "(%s) result:\n\n%s\n", schannel->name, *result);
 		r->result = NULL;
 		r->start_of_input = 0;
@@ -1920,7 +1920,7 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 			}
 		}
 
-		char* result = NULL;
+		const char* result = NULL;
 
 		if (recog_channel_check_results(schannel) == 0) {
 			if (recog_channel_get_results(schannel, &result) == 0) {
