@@ -299,8 +299,6 @@ static int uni_recog_stop(struct ast_speech *speech)
 {
 	uni_speech_t *uni_speech = speech->data;
 	mrcp_message_t *mrcp_message;
-	mrcp_generic_header_t *generic_header;
-	mrcp_recog_header_t *recog_header;
 	
 	if(!uni_speech->is_inprogress) {
 		return 0;
@@ -598,7 +596,7 @@ static int uni_recog_start(struct ast_speech *speech)
 		apr_hash_index_t *it;
 		void *val;
 		const char *grammar_name;
-		const char *content;
+		const char *content = NULL;
 		/* Set generic header fields */
 		apt_string_assign(&generic_header->content_type,"text/uri-list",mrcp_message->pool);
 		mrcp_generic_header_property_add(mrcp_message,GENERIC_HEADER_CONTENT_TYPE);
@@ -616,7 +614,9 @@ static int uni_recog_start(struct ast_speech *speech)
 			grammar_name = val;
 			content = apr_pstrcat(mrcp_message->pool,content,"\nsession:",grammar_name,NULL);
 		}
-		apt_string_set(&mrcp_message->body,content);
+		if(content) {
+			apt_string_set(&mrcp_message->body,content);
+		}
 	}
 
 	/* Get/allocate recognizer header */
