@@ -898,6 +898,8 @@ const char* format_to_str(const ast_format_compat *format)
 		case AST_FORMAT_ALAW: return "PCMA";
 		/*! Raw 16-bit Signed Linear (8000 Hz) PCM */
 		case AST_FORMAT_SLINEAR: return "L16";
+		/*! Use Raw 16-bit Signed Linear (8000 Hz) PCM for the rest */
+		default: return "L16";
 	}
 	return "L16";
 }
@@ -911,6 +913,8 @@ int format_to_bytes_per_sample(const ast_format_compat *format)
 		case AST_FORMAT_ALAW: return 1;
 		/*! Raw 16-bit Signed Linear (8000 Hz) PCM */
 		case AST_FORMAT_SLINEAR: return 2;
+		/*! Use Raw 16-bit Signed Linear (8000 Hz) PCM for the rest */
+		default: return 2;
 	}
 	return 2;
 }
