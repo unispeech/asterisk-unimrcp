@@ -1274,6 +1274,9 @@ static int synthandrecog_option_apply(sar_options_t *options, const char *key, c
 		options->flags |= SAR_BARGEIN;
 		options->params[OPT_ARG_BARGEIN] = value;
 	}
+	else {
+		ast_log(LOG_WARNING, "Unknown option: %s\n", key);
+	}
 	return 0;
 }
 
