@@ -604,11 +604,10 @@ mrcp_client_t *mod_unimrcp_client_create(apr_pool_t *mod_pool)
 	if (max_connection_count <= 0)
 		max_connection_count = 120;
 
-	if ((globals.unimrcp_offer_new_connection != NULL) && (strlen(globals.unimrcp_offer_new_connection) > 0))
-		offer_new_connection = (strcasecmp("true", globals.unimrcp_offer_new_connection) == 0);
-
-	if (offer_new_connection < 0)
-		offer_new_connection = 1;
+	if (globals.unimrcp_offer_new_connection != NULL) {
+		if (strcasecmp(globals.unimrcp_offer_new_connection, "true") == 0 || atoi(globals.unimrcp_offer_new_connection) == 1)
+			offer_new_connection = TRUE;
+	}
 
 #if UNI_VERSION_AT_LEAST(1,0,0)
 	if ((connection_agent = mrcp_client_connection_agent_create("MRCPv2ConnectionAgent", max_connection_count, offer_new_connection, pool)) != NULL) {
