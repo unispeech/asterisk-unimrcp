@@ -133,8 +133,8 @@ void speech_channel_set_state(speech_channel_t *schannel, speech_channel_state_t
 	}
 }
 
-/* Send BARGE-IN-OCCURED. */
-int speech_channel_bargeinoccured(speech_channel_t *schannel) 
+/* Send BARGE-IN-OCCURRED. */
+int speech_channel_bargeinoccurred(speech_channel_t *schannel) 
 {
 	int status = 0;
 	
@@ -159,7 +159,7 @@ int speech_channel_bargeinoccured(speech_channel_t *schannel)
 			status = -1;
 		} else {
 			if (!mrcp_application_message_send(schannel->unimrcp_session, schannel->unimrcp_channel, mrcp_message))
-				ast_log(LOG_WARNING, "(%s) [speech_channel_bargeinoccured] Failed to send BARGE_IN_OCCURRED message\n", schannel->name);
+				ast_log(LOG_WARNING, "(%s) [speech_channel_bargeinoccurred] Failed to send BARGE_IN_OCCURRED message\n", schannel->name);
 			else if (schannel->cond != NULL) {
 				while (schannel->state == SPEECH_CHANNEL_PROCESSING) {
 					if (apr_thread_cond_timedwait(schannel->cond, schannel->mutex, SPEECH_CHANNEL_TIMEOUT_USEC) == APR_TIMEUP) {

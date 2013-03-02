@@ -966,10 +966,10 @@ static int app_synth_exec(struct ast_channel *chan, ast_app_data data)
 							dobreak = 0;
 						}
 
-						ast_log(LOG_DEBUG, "(%s) sending BARGE-IN-OCCURED\n", schannel->name);
+						ast_log(LOG_DEBUG, "(%s) sending BARGE-IN-OCCURRED\n", schannel->name);
 
-						if (speech_channel_bargeinoccured(schannel) != 0) {
-							ast_log(LOG_ERROR, "(%s) Failed to send BARGE-IN-OCCURED\n", schannel->name);
+						if (speech_channel_bargeinoccurred(schannel) != 0) {
+							ast_log(LOG_ERROR, "(%s) Failed to send BARGE-IN-OCCURRED\n", schannel->name);
 							dobreak = 0;
 						}
 					

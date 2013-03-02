@@ -138,8 +138,8 @@ void speech_channel_set_state_unlocked(speech_channel_t *schannel, speech_channe
 /* Set the current channel state. */
 void speech_channel_set_state(speech_channel_t *schannel, speech_channel_state_t state);
 
-/* Send BARGE-IN-OCCURED. */
-int speech_channel_bargeinoccured(speech_channel_t *schannel);
+/* Send BARGE-IN-OCCURRED. */
+int speech_channel_bargeinoccurred(speech_channel_t *schannel);
 
 int speech_channel_create(speech_channel_t **schannel, const char *name, speech_channel_type_t type, ast_mrcp_application_t *app, const char *codec, apr_uint16_t rate, struct ast_channel *chan);
 
