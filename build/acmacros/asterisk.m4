@@ -32,7 +32,7 @@ AC_DEFUN([FIND_ASTERISK], [
         asterisk_xmldoc_dir="${asterisk_dir}/var/lib/asterisk/documentation/thirdparty"
     fi
 
-    dnl Detect Asterisk version
+    dnl Determine Asterisk version
     if test "${asterisk_version}" = ""; then
         if test -f "$asterisk_dir/sbin/asterisk"; then
             asterisk_version=$($asterisk_dir/sbin/asterisk -V | grep Asterisk | cut -d' ' -f2)
@@ -42,12 +42,16 @@ AC_DEFUN([FIND_ASTERISK], [
         fi
     fi
 
+    if test "${asterisk_version}" = ""; then
+        AC_MSG_ERROR([Could not determine Asterisk version, please explicitly specify version string using the option --with-asterisk-version=major.minor.patch])
+    fi
+
     AC_MSG_RESULT([$asterisk_version])
 
     case $asterisk_version in
         SVN*)
-            dnl If using an SVN revision, the version number of Asterisk is supposed to be explicitly specified.
-            AC_MSG_ERROR([Could not detect Asterisk version, please explicitly specify it as follows: --with-asterisk-version=major.minor.patch])
+            dnl The version number is supposed to be explicitly specified in case an SVN revision of Asterisk is used.
+            AC_MSG_ERROR([Could not determine major, minor, and patch version numbers of Asterisk, please explicitly specify version string using the option --with-asterisk-version=major.minor.patch])
             ;;
     esac
 
