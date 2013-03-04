@@ -1,4 +1,4 @@
-MAINTAINERCLEANFILES 	      = Makefile.in
+MAINTAINERCLEANFILES          = Makefile.in
 
 INCLUDES                      = -I../include $(UNIMRCP_INCLUDES) $(ASTERISK_INCLUDES)
 

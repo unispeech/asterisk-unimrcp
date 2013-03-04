@@ -1,27 +1,27 @@
-macrodir		= @ac_macro_dir@
-auxdir			= @ac_aux_dir@
-AUX_DIST		= $(auxdir)/config.guess \
-                          $(auxdir)/config.sub \
-                          $(auxdir)/install-sh \
-                          $(auxdir)/ltconfig \
-                          $(auxdir)/ltmain.sh \
-                          $(auxdir)/depcomp \
-                          $(auxdir)/missing
-EXTRA_DIST		= bootstrap
+macrodir             = @ac_macro_dir@
+auxdir               = @ac_aux_dir@
+AUX_DIST             = $(auxdir)/config.guess \
+                       $(auxdir)/config.sub \
+                       $(auxdir)/install-sh \
+                       $(auxdir)/ltconfig \
+                       $(auxdir)/ltmain.sh \
+                       $(auxdir)/depcomp \
+                       $(auxdir)/missing
+EXTRA_DIST           = bootstrap
 
-AUTOMAKE_OPTIONS 	= foreign
-MAINTAINERCLEANFILES 	= Makefile.in aclocal.m4 configure $(AUX_DIST)
+AUTOMAKE_OPTIONS     = foreign
+MAINTAINERCLEANFILES = Makefile.in aclocal.m4 configure $(AUX_DIST)
 
-ACLOCAL			= aclocal -I $(macrodir)
+ACLOCAL              = aclocal -I $(macrodir)
 
-SUBDIRS                 =
+SUBDIRS              =
 
 if RES_SPEECH_UNIMRCP
-SUBDIRS               += res-speech-unimrcp
+SUBDIRS              += res-speech-unimrcp
 endif
 
 if APP_UNIMRCP
-SUBDIRS               += app-unimrcp
+SUBDIRS              += app-unimrcp
 endif
 
 install-data-local:
