@@ -19,7 +19,7 @@
  *
  * \brief MRCP synthesis and recognition application
  *
- * \author\verbatim Arsen Chaloyan <achaloyan@gmail.com> \endverbatim
+ * \author\verbatim Arsen Chaloyan <arsen.chaloyan@unimrcp.org> \endverbatim
  * 
  * \ingroup applications
  */
@@ -58,14 +58,14 @@
 			</parameter>
 		</syntax>
 		<description>
-			<para>This application establishes two MRCP sessions: one for speech 
-			synthesis and the other for speech recognition. Once the user starts
-			speaking (barge-in occurred), the synthesis session is stoped, while 
-			the recognition engine starts processing the input. Once the 
-			recognition is complete, the application exits and returns the results 
-			to the dialplan.</para>
-			<para>The recognition status ${RECOG_STATUS} is either "OK" or "ERROR", 
-			while the result ${RECOG_RESULT} contains an NLSML result received from
+			<para>This application establishes two MRCP sessions: one for speech synthesis and the other for speech recognition. 
+			Once the user starts speaking (barge-in occurred), the synthesis session is stopped, and the recognition engine 
+			starts processing the input. Once recognition completes, the application exits and return results to the dialplan.</para>
+			<para>If recognition successfully started, the variable ${RECOG_STATUS} is set to "OK"; otherwise, if recognition 
+			terminated prematurely, the variable ${RECOG_STATUS} is set to "ERROR".</para> 
+			<para>The variable ${RECOG_COMPLETION_CAUSE} indicates whether recognition completed successfully with a match or
+			an error occurred. ("000" - success, "001" - nomatch, "002" - noinput) </para> 
+			<para>If recognition completed successfully, the variable ${RECOG_RESULT} is set to an NLSML result received from 
 			the MRCP server.</para>
 		</description>
 	</application>
@@ -521,38 +521,6 @@ int synth_channel_bargein_occurred(speech_channel_t *schannel)
 
 /* --- MRCP ASR --- */
 
-/* Check if recognition is complete. */
-static int recog_channel_check_results(speech_channel_t *schannel)
-{
-	int status = 0;
-	recognizer_data_t *r;
-
-	if (schannel != NULL) {
-		if (schannel->mutex != NULL)
-			apr_thread_mutex_lock(schannel->mutex);
-
-		if ((r = (recognizer_data_t *)schannel->data) != NULL) {
-			if ((r->result != NULL) && (strlen(r->result) > 0))
-				ast_log(LOG_DEBUG, "(%s) SUCCESS, have result\n", schannel->name);
-			else if (r->start_of_input)
-				ast_log(LOG_DEBUG, "(%s) SUCCESS, start of input\n", schannel->name);
-			else
-				status = -1;
-		} else {
-			ast_log(LOG_ERROR, "(%s) Recognizer data struct is NULL\n", schannel->name);
-			status = -1;
-		}
-	} else {
-		ast_log(LOG_ERROR, "(unknown) channel error!\n");
-		status = -1;
-	}
-
-	if (schannel->mutex != NULL)
-		apr_thread_mutex_unlock(schannel->mutex);
-
-	return status;
-}
-
 /* Start recognizer's input timers. */
 static int recog_channel_start_input_timers(speech_channel_t *schannel)
 {   
@@ -633,7 +601,7 @@ static int recog_channel_set_start_of_input(speech_channel_t *schannel)
 }
 
 /* Set the recognition results. */
-static int recog_channel_set_results(speech_channel_t *schannel, const char *result)
+static int recog_channel_set_results(speech_channel_t *schannel, int completion_cause, const apt_str_t *result, const apt_str_t *waveform_uri)
 {
 	int status = 0;
 
@@ -656,7 +624,7 @@ static int recog_channel_set_results(speech_channel_t *schannel, const char *res
 		return -1;
 	}
 
-	if (r->result && (strlen(r->result) > 0)) {
+	if (r->completion_cause >= 0) {
 		ast_log(LOG_DEBUG, "(%s) result is already set\n", schannel->name);
 
 		if (schannel->mutex != NULL)
@@ -665,17 +633,14 @@ static int recog_channel_set_results(speech_channel_t *schannel, const char *res
 		return -1;
 	}
 
-	if ((result == NULL) || (strlen(result) == 0)) {
-		ast_log(LOG_DEBUG, "(%s) result is NULL\n", schannel->name);
-
-		if (schannel->mutex != NULL)
-			apr_thread_mutex_unlock(schannel->mutex);
-
-		return -1;
+	if (result && result->length > 0) {
+		/* The duplicated string will always be NUL-terminated. */
+		r->result = apr_pstrndup(schannel->pool, result->buf, result->length);
+		ast_log(LOG_DEBUG, "(%s) result:\n\n%s\n", schannel->name, r->result);
 	}
-
-	ast_log(LOG_DEBUG, "(%s) result:\n\n%s\n", schannel->name, result);
-	r->result = apr_pstrdup(schannel->pool, result);
+	r->completion_cause = completion_cause;
+	if (waveform_uri && waveform_uri->length > 0)
+		r->waveform_uri = apr_pstrndup(schannel->pool, waveform_uri->buf, waveform_uri->length);
 
 	if (schannel->mutex != NULL)
 		apr_thread_mutex_unlock(schannel->mutex);
@@ -684,10 +649,8 @@ static int recog_channel_set_results(speech_channel_t *schannel, const char *res
 }
 
 /* Get the recognition results. */
-static int recog_channel_get_results(speech_channel_t *schannel, const char **result)
+static int recog_channel_get_results(speech_channel_t *schannel, const char **completion_cause, const char **result, const char **waveform_uri)
 {
-	int status = 0;
-
 	if (schannel == NULL) {
 		ast_log(LOG_ERROR, "(unknown) channel error!\n");
 		return -1;
@@ -707,22 +670,41 @@ static int recog_channel_get_results(speech_channel_t *schannel, const char **re
 		return -1;
 	}
 
-	if (r->result && (strlen(r->result) > 0)) {
-		*result = apr_pstrdup(schannel->pool, r->result);
-		ast_log(LOG_DEBUG, "(%s) result:\n\n%s\n", schannel->name, *result);
-		r->result = NULL;
-		r->start_of_input = 0;
-	} else if (r->start_of_input) {
-		ast_log(LOG_DEBUG, "(%s) start of input\n", schannel->name);
-		status = 1;
-		r->start_of_input = 0;
-	} else
-		status = -1;
+	if (r->completion_cause < 0) {
+		ast_log(LOG_ERROR, "(%s) Recognition terminated prematurely\n", schannel->name);
+
+		if (schannel->mutex != NULL)
+			apr_thread_mutex_unlock(schannel->mutex);
+
+		return -1;
+	}
+
+	if (completion_cause) {
+		*completion_cause = apr_psprintf(schannel->pool, "%03d", r->completion_cause);
+		ast_log(LOG_DEBUG, "(%s) completion-cause: %s\n", schannel->name, *completion_cause);
+		r->completion_cause = 0;
+	}
+
+	if (result) {
+		if (r->result && (strlen(r->result) > 0)) {
+			*result = apr_pstrdup(schannel->pool, r->result);
+			ast_log(LOG_DEBUG, "(%s) result:\n\n%s\n", schannel->name, *result);
+			r->result = NULL;
+		}
+	}
+
+	if (waveform_uri) {
+		if (r->waveform_uri && (strlen(r->waveform_uri) > 0)) {
+			*waveform_uri = apr_pstrdup(schannel->pool, r->waveform_uri);
+			ast_log(LOG_DEBUG, "(%s) waveform-uri: %s\n", schannel->name, *waveform_uri);
+			r->waveform_uri = NULL;
+		}
+	}
 
 	if (schannel->mutex != NULL)
 		apr_thread_mutex_unlock(schannel->mutex);
 
-	return status;
+	return 0;
 }
 
 /* Flag that the recognizer channel timers are started. */
@@ -794,6 +776,7 @@ static int recog_channel_start(speech_channel_t *schannel, const char *name, int
 		}
 
 		r->result = NULL;
+		r->completion_cause = -1;
 		r->start_of_input = 0;
 
 		r->timers_started = start_input_timers;
@@ -1004,7 +987,7 @@ static int recog_channel_load_grammar(speech_channel_t *schannel, const char *na
 
 	return status;
 }
-
+#if 0
 /* Unload speech recognition grammar. */
 static int recog_channel_unload_grammar(speech_channel_t *schannel, const char *grammar_name)
 {
@@ -1041,7 +1024,7 @@ static int recog_channel_unload_grammar(speech_channel_t *schannel, const char *
 
 	return status;
 }
-
+#endif
 /* Handle the MRCP responses/events. */
 static apt_bool_t recog_on_message_receive(speech_channel_t *schannel, mrcp_message_t *message)
 {
@@ -1057,7 +1040,7 @@ static apt_bool_t recog_on_message_receive(speech_channel_t *schannel, mrcp_mess
 			} else if (message->start_line.request_state == MRCP_REQUEST_STATE_COMPLETE) {
 				/* RECOGNIZE failed to start. */
 				if (recog_hdr->completion_cause == RECOGNIZER_COMPLETION_CAUSE_UNKNOWN)
-					ast_log(LOG_DEBUG, "(%s) RECOGNIZE failed: status = %d\n", schannel->name,	 message->start_line.status_code);
+					ast_log(LOG_DEBUG, "(%s) RECOGNIZE failed: status = %d\n", schannel->name, message->start_line.status_code);
 				else
 					ast_log(LOG_DEBUG, "(%s) RECOGNIZE failed: status = %d, completion-cause = %03d\n", schannel->name, message->start_line.status_code, recog_hdr->completion_cause);
 				speech_channel_set_state(schannel, SPEECH_CHANNEL_ERROR);
@@ -1109,35 +1092,7 @@ static apt_bool_t recog_on_message_receive(speech_channel_t *schannel, mrcp_mess
 		/* Received MRCP event. */
 		if (message->start_line.method_id == RECOGNIZER_RECOGNITION_COMPLETE) {
 			ast_log(LOG_DEBUG, "(%s) RECOGNITION COMPLETE, Completion-Cause: %03d\n", schannel->name, recog_hdr->completion_cause);
-			if (message->body.length > 0) {
-				if (message->body.buf[message->body.length - 1] == '\0') {
-					recog_channel_set_results(schannel, message->body.buf);
-				} else {
-					/* string is not null terminated */
-					char *result = (char *)apr_palloc(schannel->pool, message->body.length + 1);
-					ast_log(LOG_DEBUG, "(%s) Recognition result is not null-terminated.  Appending null terminator\n", schannel->name);
-					strncpy(result, message->body.buf, message->body.length);
-					result[message->body.length] = '\0';
-					recog_channel_set_results(schannel, result);
-				}
-			} else {
-				char completion_cause[512];
-				char waveform_uri[256];
-				apr_snprintf(completion_cause, sizeof(completion_cause) - 1, "Completion-Cause: %03d", recog_hdr->completion_cause);
-				completion_cause[sizeof(completion_cause) - 1] = '\0';
-				apr_snprintf(waveform_uri, sizeof(waveform_uri) - 1, "Waveform-URI: %s", recog_hdr->waveform_uri.buf);
-				waveform_uri[sizeof(waveform_uri) - 1] = '\0';
-				if (recog_hdr->waveform_uri.length > 0) {
-#if AST_VERSION_AT_LEAST(1,6,0)
-					strncat(completion_cause,",", 1);
-#else
-					strncat(completion_cause,"|", 1);
-#endif
-					strncat(completion_cause, waveform_uri, strlen(waveform_uri) );
-				}
-				recog_channel_set_results(schannel, completion_cause);
-				ast_log(LOG_DEBUG, "(%s) No result\n", schannel->name);
-			}
+			recog_channel_set_results(schannel, recog_hdr->completion_cause, &message->body, &recog_hdr->waveform_uri);
 			speech_channel_set_state(schannel, SPEECH_CHANNEL_READY);
 		} else if (message->start_line.method_id == RECOGNIZER_START_OF_INPUT) {
 			ast_log(LOG_DEBUG, "(%s) START OF INPUT\n", schannel->name);
@@ -1620,26 +1575,41 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 		}
 	}
 
+	const char *completion_cause = NULL;
 	const char *result = NULL;
+	const char *waveform_uri = NULL;
 
-	if (recog_channel_check_results(sar_session.recog_channel) == 0) {
-		if (recog_channel_get_results(sar_session.recog_channel, &result) == 0) {
-			ast_log(LOG_NOTICE, "Result=|%s|\n", result);
-		} else {
-			ast_log(LOG_ERROR, "Unable to retrieve result\n");
-		}
+	if (recog_channel_get_results(sar_session.recog_channel, &completion_cause, &result, &waveform_uri) != 0) {
+		ast_log(LOG_WARNING, "Unable to retrieve result\n");
+		res = -1;
+		return synthandrecog_exit(&sar_session, res);
 	}
 
-	if (result != NULL)
+	/* Completion cause should always be available at this stage. */
+	if (completion_cause)
+		pbx_builtin_setvar_helper(chan, "RECOG_COMPLETION_CAUSE", completion_cause);
+	
+	/* Result may not be available if recognition completed with nomatch, noinput, or other error cause. */
+	if (result) {
+		ast_log(LOG_NOTICE, "Result=|%s|\n", result);
 		pbx_builtin_setvar_helper(chan, "RECOG_RESULT", result);
-	else
+	}
+	else {
 		pbx_builtin_setvar_helper(chan, "RECOG_RESULT", "");
+	}
 
+	/* If Waveform URI is available, pass it further to dialplan. */
+	if (waveform_uri)
+		pbx_builtin_setvar_helper(chan, "RECOG_WAVEFORM_URI", waveform_uri);
+
+
+#if 0 /* Not really needed -> channel is going to be destroyed, anyway. */
 	if (recog_channel_unload_grammar(sar_session.recog_channel, recog_name) != 0) {
 		ast_log(LOG_ERROR, "Unable to unload grammar\n");
 		res = -1;
 		return synthandrecog_exit(&sar_session, res);
 	}
+#endif
 
 	ast_channel_set_readformat(chan, &oreadformat);
 	ast_channel_set_writeformat(chan, &owriteformat);
