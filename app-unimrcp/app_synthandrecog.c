@@ -1140,7 +1140,7 @@ static apt_bool_t recog_stream_read(mpf_audio_stream_t *stream, mpf_frame_t *fra
 	if ((schannel != NULL) && (stream != NULL) && (frame != NULL)) {
 		if (schannel->dtmf_generator != NULL) {
 			if (mpf_dtmf_generator_sending(schannel->dtmf_generator)) {
-				ast_log(LOG_NOTICE, "(%s) DTMF frame written\n", schannel->name);
+				ast_log(LOG_DEBUG, "(%s) DTMF frame written\n", schannel->name);
 				mpf_dtmf_generator_put_frame(schannel->dtmf_generator, frame);
 				return TRUE;
 			}
