@@ -117,9 +117,13 @@ struct recognizer_data_t {
 	apr_hash_t *grammars;
 	/* The last grammar used (for pause/resume). */
 	grammar_t *last_grammar;
-	/* Recognize result. */
-	char *result;
-	/* true, if voice has started. */
+	/* Recognition result. */
+	const char *result;
+	/* Completion cause. */
+	int completion_cause;
+	/* Waveform URI [optional]. */
+	const char *waveform_uri;
+	/* True, if voice has started. */
 	int start_of_input;
 	/* True, if input timers have started. */
 	int timers_started;
