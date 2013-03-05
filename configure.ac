@@ -24,6 +24,9 @@ m4_undefine([AC_PROG_F77])
 m4_defun([AC_PROG_F77],[])
 AC_PROG_LIBTOOL
 
+dnl Search for pkg-config
+AC_PATH_PROG(PKG_CONFIG, pkg-config)
+
 AC_SUBST(ac_aux_dir)
 AC_SUBST(ac_macro_dir)
 

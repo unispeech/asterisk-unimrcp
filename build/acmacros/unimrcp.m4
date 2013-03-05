@@ -8,7 +8,7 @@ AC_DEFUN([FIND_UNIMRCP], [
         [unimrcp_dir=$withval],
         [unimrcp_dir="/usr/local/unimrcp"])
 
-    dnl whether unimrcp_dir points to source or installed dir
+    dnl Whether unimrcp_dir points to source or installed dir
     is_source_dir=1
 
     if test "$unimrcp_dir" = "builtin"; then
@@ -24,9 +24,13 @@ AC_DEFUN([FIND_UNIMRCP], [
     if test $is_source_dir = 1; then
         AC_MSG_ERROR([Only installed dir location is supported now])
     else
-        UNIMRCP_INCLUDES="`pkg-config --cflags $unimrcp_config`"
-        UNIMRCP_LIBS="`pkg-config --libs $unimrcp_config`"
-        uni_version="`pkg-config --modversion $unimrcp_config`"
+        if test -n "$PKG_CONFIG"; then
+            UNIMRCP_INCLUDES="`$PKG_CONFIG --cflags $unimrcp_config`"
+            UNIMRCP_LIBS="`$PKG_CONFIG --libs $unimrcp_config`"
+            uni_version="`$PKG_CONFIG --modversion $unimrcp_config`"
+        else
+            AC_MSG_ERROR([pkg-config is not available])
+        fi
     fi
 
     AC_DEFINE_UNQUOTED(UNIMRCP_DIR_LOCATION,"$unimrcp_dir")
