@@ -534,6 +534,9 @@ int speech_channel_open(speech_channel_t *schannel, ast_mrcp_profile_t *profile)
 
 		return 2;
 	}
+	
+	/* Set session name for logging purposes. */
+	mrcp_application_session_name_set(schannel->unimrcp_session, schannel->name);
 
 	/* Create audio termination and add to channel. */
 	if ((termination = speech_channel_create_mpf_termination(schannel)) == NULL) {
