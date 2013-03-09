@@ -1601,12 +1601,18 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 		goto done;
 	}
 	
-	grammar_type_t tmp_grammar = GRAMMAR_TYPE_UNKNOWN;
-	const char *grammar_data = args.grammar;
-	grammar_data = get_grammar_type(schannel,grammar_data,&tmp_grammar);
-	ast_log(LOG_DEBUG, "Grammar type is: %i\n", tmp_grammar);
+	const char *grammar_content = NULL;
+	grammar_type_t grammar_type = GRAMMAR_TYPE_UNKNOWN;
+	if (determine_grammar_type(schannel, args.grammar, &grammar_content, &grammar_type) != 0) {
+		ast_log(LOG_WARNING, "Unable to determine grammar type\n");
+		res = -1;
+		speech_channel_stop(schannel);
+		speech_channel_destroy(schannel);
+		goto done;
+	}
+	ast_log(LOG_DEBUG, "Grammar type is: %i\n", grammar_type);
 
-	if (recog_channel_load_grammar(schannel, name, tmp_grammar, grammar_data) != 0) {
+	if (recog_channel_load_grammar(schannel, name, grammar_type, grammar_content) != 0) {
 		ast_log(LOG_ERROR, "Unable to load grammar\n");
 		res = -1;
 		speech_channel_stop(schannel);

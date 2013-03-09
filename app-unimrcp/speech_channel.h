@@ -170,9 +170,23 @@ const char *speech_channel_state_to_string(speech_channel_state_t state);
 /* Convert speech channel type into a string. */
 const char *speech_channel_type_to_string(speech_channel_type_t type);
 
-const char* get_synth_content_type(speech_channel_t *schannel, const char *text);
+/* 
+ * Determine synthesis content type by specified text.
+ * @param schannel the speech channel to use
+ * @param text the input text
+ * @param content_type the output content
+ * @param content_type the output content type
+ */
+int determine_synth_content_type(speech_channel_t *schannel, const char *text, const char **content, const char **content_type);
 
-const char* get_grammar_type(speech_channel_t *schannel, const char *grammar_data, grammar_type_t *grammar_type);
+/* 
+ * Determine grammar type by specified grammar data.
+ * @param schannel the speech channel to use
+ * @param grammar_data the input grammar data
+ * @param grammar_type the output grammar content
+ * @param grammar_type the output grammar type
+ */
+int determine_grammar_type(speech_channel_t *schannel, const char *grammar_data, const char **grammar_content, grammar_type_t *grammar_type);
 
 /* Create a grammar object to reference in recognition requests. */
 int grammar_create(grammar_t **grammar, const char *name, grammar_type_t type, const char *data, apr_pool_t *pool);
@@ -188,7 +202,6 @@ const char* format_to_str(const ast_format_compat *format);
 int format_to_bytes_per_sample(const ast_format_compat *format);
 
 /* --- GENERIC FUNCTIONS --- */
-void trimstr(char* input) ;
-int text_starts_with(const char *text, const char *match);
+void trimstr(char* input);
 
 #endif /* SPEECH_CHANNEL_H */

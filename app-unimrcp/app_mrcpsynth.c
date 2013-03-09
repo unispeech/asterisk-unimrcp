@@ -562,14 +562,14 @@ static int synth_channel_set_params(speech_channel_t *schannel, mrcp_message_t *
 }
 
 /* Send SPEAK request to synthesizer. */
-static int synth_channel_speak(speech_channel_t *schannel, const char *text)
+static int synth_channel_speak(speech_channel_t *schannel, const char *content, const char *content_type)
 {
 	int status = 0;
 	mrcp_message_t *mrcp_message = NULL;
 	mrcp_generic_header_t *generic_header = NULL;
 	mrcp_synth_header_t *synth_header = NULL;
 
-	if ((schannel != NULL) && (text != NULL)) {
+	if ((schannel != NULL) && (content != NULL)  && (content_type != NULL)) {
 		if (schannel->mutex != NULL)
 			apr_thread_mutex_lock(schannel->mutex);
 
@@ -596,8 +596,7 @@ static int synth_channel_speak(speech_channel_t *schannel, const char *text)
 			return -1;
 		}
 
-		/* Good enough way of determining SSML or plain text body. */
-		apt_string_assign(&generic_header->content_type, get_synth_content_type(schannel,text), mrcp_message->pool);
+		apt_string_assign(&generic_header->content_type, content_type, mrcp_message->pool);
 		mrcp_generic_header_property_add(mrcp_message, GENERIC_HEADER_CONTENT_TYPE);
 
 		/* Set synthesizer header fields (voice, rate, etc.). */
@@ -612,7 +611,7 @@ static int synth_channel_speak(speech_channel_t *schannel, const char *text)
 		synth_channel_set_params(schannel, mrcp_message, generic_header, synth_header);
 
 		/* Set body (plain text or SSML). */
-		apt_string_assign(&mrcp_message->body, text, schannel->pool);
+		apt_string_assign(&mrcp_message->body, content, schannel->pool);
 
 		/* Empty audio queue and send SPEAK to MRCP server. */
 		audio_queue_clear(schannel->audio_queue);
@@ -844,7 +843,6 @@ static int app_synth_exec(struct ast_channel *chan, ast_app_data data)
 	apr_snprintf(name, sizeof(name) - 1, "TTS-%lu", (unsigned long int)speech_channel_number);
 	name[sizeof(name) - 1] = '\0';
 
-
 	/* if (speech_channel_create(&schannel, name, SPEECH_CHANNEL_SYNTHESIZER, &globals.synth, "L16", samplerate, chan) != 0) { */
 	if (speech_channel_create(&schannel, name, SPEECH_CHANNEL_SYNTHESIZER, mrcpsynth, format_to_str(&nwriteformat), samplerate, chan) != 0) {
 		res = -1;
@@ -898,7 +896,17 @@ static int app_synth_exec(struct ast_channel *chan, ast_app_data data)
 		goto done;
 	}
 
-	if (synth_channel_speak(schannel, args.text) == 0) {
+	const char *content = NULL;
+	const char *content_type = NULL;
+	if (determine_synth_content_type(schannel, args.text, &content, &content_type) != 0) {
+		ast_log(LOG_WARNING, "Unable to determine synthesis content type\n");
+		res = -1;
+		speech_channel_stop(schannel);
+		speech_channel_destroy(schannel);
+		goto done;
+	}
+
+	if (synth_channel_speak(schannel, content, content_type) == 0) {
 		rres = 0;
 		res = 0;
 

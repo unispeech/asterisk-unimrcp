@@ -41,7 +41,6 @@
 #include "audio_queue.h"
 #include "speech_channel.h"
 
-#define MIME_TYPE_SSML_XML						"application/ssml+xml"
 #define MIME_TYPE_PLAIN_TEXT					"text/plain"
 
 #define XML_ID									"<?xml"
@@ -351,8 +350,8 @@ mpf_termination_t *speech_channel_create_mpf_termination(speech_channel_t *schan
 	termination = mrcp_application_audio_termination_create(
 					schannel->unimrcp_session,                        /* Session, termination belongs to. */
 					&schannel->application->audio_stream_vtable,      /* Virtual methods table of audio stream. */
-                    capabilities,                                     /* Capabilities of audio stream. */
-                    schannel);                                        /* Object to associate. */
+					capabilities,                                     /* Capabilities of audio stream. */
+					schannel);                                        /* Object to associate. */
 
 	if (termination == NULL)
 		ast_log(LOG_ERROR, "(%s) Unable to create termination\n", schannel->name);
@@ -749,33 +748,108 @@ int speech_channel_write(speech_channel_t *schannel, void *data, apr_size_t *len
 	return res;
 }
 
-const char* get_synth_content_type(speech_channel_t *schannel, const char *text)
+/* Inspect text to determine if its first non-whitespace text matches "match". */
+static int text_starts_with(const char *text, const char *match)
 {
-	/* Good enough way of determining SSML or plain text body. */
-	if (text_starts_with(text, XML_ID) || text_starts_with(text, SSML_ID))
-		return schannel->profile->ssml_mime_type;
+	int result = 0;
+
+	if ((text != NULL) && (strlen(text) > 0) && (match != NULL)) {
+		apr_size_t matchlen;
+		apr_size_t textlen;
+
+		/* Find first non-space character. */
+		while (isspace(*text))
+			text++;
+
+		textlen = strlen(text);
+		matchlen = strlen(match);
+
+		/* Is there a match? */
+		result = (textlen > matchlen) && (strncmp(match, text, matchlen) == 0);
+	}
 	
-	return MIME_TYPE_PLAIN_TEXT;
+	return result;
 }
 
-const char* get_grammar_type(speech_channel_t *schannel, const char *grammar_data, grammar_type_t *grammar_type)
+/* Load content from file. */
+static const char *speech_channel_load_content(speech_channel_t *schannel, const char *path)
+{
+	char *content;
+	apr_file_t *file;
+	apr_finfo_t finfo;
+
+	if (apr_file_open(&file, path, APR_FOPEN_READ, 0, schannel->pool) != APR_SUCCESS) {
+		ast_log(LOG_WARNING, "Could not open file to read: %s\n", path);
+		return NULL;
+	}
+
+	if (apr_file_info_get(&finfo, APR_FINFO_SIZE, file) == APR_SUCCESS) {
+		content = apr_palloc(schannel->pool, finfo.size+1);
+		apr_size_t length = (apr_size_t)finfo.size;
+		if (apr_file_read(file, content, &length) == APR_SUCCESS) {
+			content[length] = '\0';
+		}
+		else {
+			ast_log(LOG_WARNING, "Failed to read content from file: %s, size: %"APR_OFF_T_FMT"\n", path, finfo.size);
+			content = NULL;
+		}
+	}
+	else {
+		ast_log(LOG_WARNING, "Failed to get file info: %s\n", path);
+		content = NULL;
+	}
+	apr_file_close(file);
+	return content;
+}
+
+/* Determine synthesis content type by specified text. */
+int determine_synth_content_type(speech_channel_t *schannel, const char *text, const char **content, const char **content_type)
+{
+	if (text_starts_with(text, "/")) {
+		/* Content stored in a file */
+		text = speech_channel_load_content(schannel, text);
+		if (!text) {
+			return -1;
+		}
+	}
+
+	if (content)
+		*content = text;
+
+	if (content_type) {
+		/* Good enough way of determining SSML or plain text body. */
+		if (text_starts_with(text, XML_ID) || text_starts_with(text, SSML_ID))
+			*content_type = schannel->profile->ssml_mime_type;
+		else
+			*content_type = MIME_TYPE_PLAIN_TEXT;
+	}
+
+	return 0;
+}
+
+/* Determine grammar type by specified grammar data. */
+int determine_grammar_type(speech_channel_t *schannel, const char *grammar_data, const char **grammar_content, grammar_type_t *grammar_type)
 {
 	grammar_type_t tmp_grammar = GRAMMAR_TYPE_UNKNOWN;
+
+	if (text_starts_with(grammar_data, "/")) {
+		/* Grammar stored in a file */
+		grammar_data = speech_channel_load_content(schannel, grammar_data);
+		if (!grammar_data) {
+			return -1;
+		}
+	}
+
 	if ((text_starts_with(grammar_data, HTTP_ID)) || (text_starts_with(grammar_data, HTTPS_ID)) || (text_starts_with(grammar_data, BUILTIN_ID)) || (text_starts_with(grammar_data, FILE_ID)) || (text_starts_with(grammar_data, SESSION_ID))) {
 		tmp_grammar = GRAMMAR_TYPE_URI;
 	} else if (text_starts_with(grammar_data, INLINE_ID)) {
 		grammar_data = grammar_data + strlen(INLINE_ID);
-	} else if (text_starts_with(grammar_data, ABNF_ID)) {
-		tmp_grammar = GRAMMAR_TYPE_SRGS;
 	} else {
-		/* TO DO : Instead of assuming SRGS+XML, assume it is a file and MRCP server can't get to file, so read it and let the content decide the grammar type. */
-		tmp_grammar = GRAMMAR_TYPE_SRGS_XML;
+		/* Grammar type is not identified yet */
 	}
 
 	if (tmp_grammar == GRAMMAR_TYPE_UNKNOWN) {
-		if ((text_starts_with(grammar_data, HTTP_ID)) || (text_starts_with(grammar_data, HTTPS_ID)) || (text_starts_with(grammar_data, BUILTIN_ID)) || (text_starts_with(grammar_data, FILE_ID)) || (text_starts_with(grammar_data, SESSION_ID))) {
-			tmp_grammar = GRAMMAR_TYPE_URI;
-		} else if ((text_starts_with(grammar_data, XML_ID) || (text_starts_with(grammar_data, SRGS_ID)))) {
+		if ((text_starts_with(grammar_data, XML_ID) || (text_starts_with(grammar_data, SRGS_ID)))) {
 			tmp_grammar = GRAMMAR_TYPE_SRGS_XML;
 		} else if (text_starts_with(grammar_data, GSL_ID)) {
 			tmp_grammar = GRAMMAR_TYPE_NUANCE_GSL;
@@ -784,13 +858,18 @@ const char* get_grammar_type(speech_channel_t *schannel, const char *grammar_dat
 		} else if (text_starts_with(grammar_data, JSGF_ID)) {
 			tmp_grammar = GRAMMAR_TYPE_JSGF;
 		} else {
-			// Unable to determine grammar type
+			/* Unable to determine grammar type. For backward compatibility, assume it's SRGS+XML */
+			tmp_grammar = GRAMMAR_TYPE_SRGS_XML;
 		}
 	}
 
+	if(grammar_content)
+		*grammar_content = grammar_data;
+	
 	if(grammar_type)
 		*grammar_type = tmp_grammar;
-	return grammar_data;
+	
+	return 0;
 }
 
 /* Create a grammar object to reference in recognition requests. */
@@ -945,27 +1024,4 @@ void trimstr(char* input)
 				input[j] = '\0';
 		}
 	}
-}
-
-/* Inspect text to determine if its first non-whitespace text matches "match". */
-int text_starts_with(const char *text, const char *match)
-{
-	int result = 0;
-
-	if ((text != NULL) && (strlen(text) > 0) && (match != NULL)) {
-		apr_size_t matchlen;
-		apr_size_t textlen;
-
-		/* Find first non-space character. */
-		while (isspace(*text))
-			text++;
-
-		textlen = strlen(text);
-		matchlen = strlen(match);
-
-		/* Is there a match? */
-		result = (textlen > matchlen) && (strncmp(match, text, matchlen) == 0);
-	}
-	
-	return result;
 }

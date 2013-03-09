@@ -136,7 +136,7 @@ static apt_bool_t speech_on_session_terminate(mrcp_application_t *application, m
 			ast_log(LOG_NOTICE, "(%s) DTMF generator destroyed\n", schannel->name);
 			mpf_dtmf_generator_destroy(schannel->dtmf_generator);
 			schannel->dtmf_generator = NULL;
-        }
+		}
 
 		ast_log(LOG_DEBUG, "(%s) Destroying MRCP session\n", schannel->name);
 
@@ -398,14 +398,14 @@ static apt_bool_t synth_stream_write(mpf_audio_stream_t *stream, const mpf_frame
 }
 
 /* Send SPEAK request to synthesizer. */
-static int synth_channel_speak(speech_channel_t *schannel, const char *text, apr_hash_t *header_fields)
+static int synth_channel_speak(speech_channel_t *schannel, const char *content, const char *content_type, apr_hash_t *header_fields)
 {
 	int status = 0;
 	mrcp_message_t *mrcp_message = NULL;
 	mrcp_generic_header_t *generic_header = NULL;
 	mrcp_synth_header_t *synth_header = NULL;
 
-	if ((schannel != NULL) && (text != NULL)) {
+	if ((schannel != NULL) && (content != NULL)  && (content_type != NULL)) {
 		if (schannel->mutex != NULL)
 			apr_thread_mutex_lock(schannel->mutex);
 
@@ -432,7 +432,7 @@ static int synth_channel_speak(speech_channel_t *schannel, const char *text, apr
 			return -1;
 		}
 
-		apt_string_assign(&generic_header->content_type, get_synth_content_type(schannel,text), mrcp_message->pool);
+		apt_string_assign(&generic_header->content_type, content_type, mrcp_message->pool);
 		mrcp_generic_header_property_add(mrcp_message, GENERIC_HEADER_CONTENT_TYPE);
 
 		/* Set synthesizer header fields (voice, rate, etc.). */
@@ -447,7 +447,7 @@ static int synth_channel_speak(speech_channel_t *schannel, const char *text, apr
 		speech_channel_set_params(schannel, mrcp_message, header_fields);
 
 		/* Set body (plain text or SSML). */
-		apt_string_assign(&mrcp_message->body, text, schannel->pool);
+		apt_string_assign(&mrcp_message->body, content, schannel->pool);
 
 		/* Empty audio queue and send SPEAK to MRCP server. */
 		audio_queue_clear(schannel->audio_queue);
@@ -495,7 +495,7 @@ int synth_channel_bargein_occurred(speech_channel_t *schannel)
 		mrcp_method_id method;
 		mrcp_message_t *mrcp_message;
 
-#if 1   /* Use STOP instead of BARGE-IN-OCCURRED for now. */
+#if 1	/* Use STOP instead of BARGE-IN-OCCURRED for now. */
 		method = SYNTHESIZER_STOP;
 #else
 		method = SYNTHESIZER_BARGE_IN_OCCURRED;
@@ -1441,18 +1441,30 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 		return synthandrecog_exit(&sar_session, res);
 	}
 
-	grammar_type_t tmp_grammar = GRAMMAR_TYPE_UNKNOWN;
-	const char *grammar_data = args.grammar;
-	grammar_data = get_grammar_type(sar_session.recog_channel,grammar_data,&tmp_grammar);
-	ast_log(LOG_DEBUG, "Grammar type is: %i\n", tmp_grammar);
+	const char *grammar_content = NULL;
+	grammar_type_t grammar_type = GRAMMAR_TYPE_UNKNOWN;
+	if (determine_grammar_type(sar_session.recog_channel, args.grammar, &grammar_content, &grammar_type) != 0) {
+		ast_log(LOG_WARNING, "Unable to determine grammar type\n");
+		res = -1;
+		return synthandrecog_exit(&sar_session, res);
+	}
+	ast_log(LOG_DEBUG, "Grammar type is: %i\n", grammar_type);
 
-	if (recog_channel_load_grammar(sar_session.recog_channel, recog_name, tmp_grammar, grammar_data) != 0) {
+	if (recog_channel_load_grammar(sar_session.recog_channel, recog_name, grammar_type, grammar_content) != 0) {
 		ast_log(LOG_ERROR, "Unable to load grammar\n");
 		res = -1;
 		return synthandrecog_exit(&sar_session, res);
 	}
 
-	if (synth_channel_speak(sar_session.synth_channel, args.text, sar_options.synth_hfs) != 0) {
+	const char *content = NULL;
+	const char *content_type = NULL;
+	if (determine_synth_content_type(sar_session.synth_channel, args.text, &content, &content_type) != 0) {
+		ast_log(LOG_WARNING, "Unable to determine synthesis content type\n");
+		res = -1;
+		return synthandrecog_exit(&sar_session, res);
+	}
+
+	if (synth_channel_speak(sar_session.synth_channel, content, content_type, sar_options.synth_hfs) != 0) {
 		ast_log(LOG_ERROR, "Unable to send SPEAK request\n");
 		res = -1;
 		return synthandrecog_exit(&sar_session, res);
