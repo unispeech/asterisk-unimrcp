@@ -303,7 +303,7 @@ static int uni_recog_stop(struct ast_speech *speech)
 	if(!uni_speech->is_inprogress) {
 		return 0;
 	}
- 
+
 	ast_log(LOG_NOTICE, "Stop recognition '%s'\n",uni_speech_id_get(uni_speech));
 	mrcp_message = mrcp_application_message_create(
 								uni_speech->session,
@@ -663,7 +663,7 @@ static int uni_recog_change(struct ast_speech *speech, ast_compat_const char *na
 	if(uni_speech->is_inprogress) {
 		uni_recog_stop(speech);
 	}
-  	
+
 	ast_log(LOG_NOTICE, "Change setting '%s'\n",uni_speech_id_get(uni_speech));
 	return 0;
 }
@@ -676,7 +676,7 @@ static int uni_recog_change_results_type(struct ast_speech *speech,enum ast_spee
 	if(uni_speech->is_inprogress) {
 		uni_recog_stop(speech);
 	}
-  	
+
 	ast_log(LOG_NOTICE, "Change result type '%s'\n",uni_speech_id_get(uni_speech));
 	return -1;
 }
@@ -720,7 +720,7 @@ static struct ast_speech_result* uni_recog_speech_result_build(const apt_str_t *
 	elem = input->first_child;
 	if(elem && strcmp(elem->name,"input") == 0) {
 		input = elem;
-	}		
+	}
 	
 	speech_result = ast_calloc(sizeof(struct ast_speech_result), 1);
 	speech_result->text = NULL;
@@ -762,10 +762,10 @@ static struct ast_speech_result* uni_recog_speech_result_build(const apt_str_t *
 				skip = strdup(skip);
 				free(speech_result->text);
 				speech_result->text = skip;    
-			}     
+			}
 		}
 	}
-		
+
 	confidence = nlsml_input_attrib_get(instance,"confidence",TRUE);
 	if(!confidence) {
 		confidence = nlsml_input_attrib_get(input,"confidence",TRUE);
@@ -808,7 +808,7 @@ struct ast_speech_result* uni_recog_get(struct ast_speech *speech)
 	if(uni_speech->is_inprogress) {
 		uni_recog_stop(speech);
 	}
-  
+
 	ast_log(LOG_NOTICE, "Get result '%s'\n",uni_speech_id_get(uni_speech));
 	if(!uni_speech->mrcp_event) {
 		ast_log(LOG_WARNING, "No RECOGNITION-COMPLETE message received\n");
@@ -1266,7 +1266,7 @@ static apt_bool_t uni_engine_config_load(apr_pool_t *pool)
 	if((value = ast_variable_retrieve(cfg, "general", "unimrcp-profile")) != NULL) {
 		ast_log(LOG_DEBUG, "general.unimrcp-profile=%s\n", value);
 		uni_engine.profile = apr_pstrdup(uni_engine.pool, value);
-	} 
+	}
 
 	if((value = ast_variable_retrieve(cfg, "general", "log-level")) != NULL) {
 		ast_log(LOG_DEBUG, "general.log-level=%s\n", value);
@@ -1351,7 +1351,6 @@ static apt_bool_t uni_engine_load()
 	apt_log_instance_create(uni_engine.log_output, uni_engine.log_level, pool);
 	/* Open the log file */
 	apt_log_file_open(dir_layout->log_dir_path,"astuni",MAX_LOG_FILE_SIZE,MAX_LOG_FILE_COUNT,TRUE,pool);
-
 
 	uni_engine.client = unimrcp_client_create(dir_layout);
 	if(uni_engine.client) {
