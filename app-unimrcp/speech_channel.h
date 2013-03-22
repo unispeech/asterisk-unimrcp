@@ -153,6 +153,9 @@ int speech_channel_open(speech_channel_t *schannel, ast_mrcp_profile_t *profile)
 /* Stop SPEAK/RECOGNIZE request on speech channel. */
 int speech_channel_stop(speech_channel_t *schannel);
 
+/* Set parameters in an MRCP header. */
+int speech_channel_set_params(speech_channel_t *schannel, mrcp_message_t *msg, apr_hash_t *header_fields);
+
 /* Read synthesized speech / speech to be recognized. */
 int speech_channel_read(speech_channel_t *schannel, void *data, apr_size_t *len, int block);
 

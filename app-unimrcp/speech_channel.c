@@ -658,6 +658,39 @@ int speech_channel_stop(speech_channel_t *schannel)
 	return status;
 }
 
+/* Set parameters in an MRCP header. */
+int speech_channel_set_params(speech_channel_t *schannel, mrcp_message_t *msg, apr_hash_t *header_fields)
+{
+	if (schannel && msg && header_fields) {
+		/* Loop through each param and add to the message. */
+		apr_hash_index_t *hi = NULL;
+
+		for (hi = apr_hash_first(NULL, header_fields); hi; hi = apr_hash_next(hi)) {
+			char *param_name = NULL;
+			char *param_val = NULL;
+			const void *key;
+			void *val;
+
+			apr_hash_this(hi, &key, NULL, &val);
+
+			param_name = (char *)key;
+			param_val = (char *)val;
+
+			if (param_name && (strlen(param_name) > 0) && param_val && (strlen(param_val) > 0)) {
+				ast_log(LOG_DEBUG, "(%s) %s: %s\n", schannel->name, param_name, param_val);
+				apt_header_field_t *header_field = apt_header_field_create_c(param_name, param_val, msg->pool);
+				if(header_field) {
+					if(mrcp_message_header_field_add(msg, header_field) == FALSE) {
+						ast_log(LOG_WARNING, "Error setting MRCP header %s=%s\n", param_name, param_val);
+					}
+				}
+			}
+		}
+	}
+
+	return 0;
+}
+
 /* Read synthesized speech / speech to be recognized. */
 int speech_channel_read(speech_channel_t *schannel, void *data, apr_size_t *len, int block)
 {
