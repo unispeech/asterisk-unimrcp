@@ -201,7 +201,4 @@ int get_recog_format(struct ast_channel *chan, ast_format_compat *format);
 const char* format_to_str(const ast_format_compat *format);
 int format_to_bytes_per_sample(const ast_format_compat *format);
 
-/* --- GENERIC FUNCTIONS --- */
-void trimstr(char* input);
-
 #endif /* SPEECH_CHANNEL_H */

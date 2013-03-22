@@ -1000,28 +1000,3 @@ int format_to_bytes_per_sample(const ast_format_compat *format)
 	}
 	return 2;
 }
-
-/* --- GENERIC FUNCTIONS --- */
-void trimstr(char* input) 
-{
-	unsigned long int i;
-	unsigned long int j;
-
-	if (input != NULL) {
-		for (i = 0; i < strlen(input); i++) {
-			if ((input[i] != ' ') && (input[i] != '\t'))
-				break;
-		}
-
-		for (j = i; j < strlen(input); j++)
-			input[j - i] = input[j];
-		for (j = (strlen(input) - i); j < strlen(input); j++)
-			input[j] = '\0';
-		for (j = strlen(input) - 1; j >= 0; j--) {
-			if ((input[j] != ' ') && (input[j] != '\t'))
-				break;
-			else
-				input[j] = '\0';
-		}
-	}
-}
