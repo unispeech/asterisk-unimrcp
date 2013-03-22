@@ -18,7 +18,7 @@ AC_DEFUN([FIND_ASTERISK], [
         [asterisk_version=$withval],
         [asterisk_version=""])
 
-    dnl Test and set Asterisk directory
+    dnl Test and set Asterisk directory.
     if test "${asterisk_dir}" = ""; then
         asterisk_dir="/usr"
         if test "${asterisk_conf_dir}" = ""; then
@@ -32,7 +32,7 @@ AC_DEFUN([FIND_ASTERISK], [
         asterisk_xmldoc_dir="${asterisk_dir}/var/lib/asterisk/documentation/thirdparty"
     fi
 
-    dnl Determine Asterisk version
+    dnl Determine Asterisk version.
     if test "${asterisk_version}" = ""; then
         if test -f "$asterisk_dir/sbin/asterisk"; then
             asterisk_version=$($asterisk_dir/sbin/asterisk -V | grep Asterisk | cut -d' ' -f2)
@@ -55,7 +55,7 @@ AC_DEFUN([FIND_ASTERISK], [
             ;;
     esac
 
-    dnl Set major, minor, and patch version numbers
+    dnl Set major, minor, and patch version numbers.
     ASTERISK_MAJOR_VERSION=$(echo $asterisk_version | cut -d. -f1)
     ASTERISK_MINOR_VERSION=$(echo $asterisk_version | cut -d. -f2)
     ASTERISK_PATCH_VERSION=$(echo $asterisk_version | cut -d. -f3)
@@ -64,62 +64,7 @@ AC_DEFUN([FIND_ASTERISK], [
     AC_DEFINE_UNQUOTED(ASTERISK_MINOR_VERSION, $ASTERISK_MINOR_VERSION)
     AC_DEFINE_UNQUOTED(ASTERISK_PATCH_VERSION, $ASTERISK_PATCH_VERSION)
 
-    dnl Original (legacy) definitions
-    case $asterisk_version in
-        SVN-*1.2*)
-            dnl AC_DEFINE_UNQUOTED(ASTERISK12)
-            AC_DEFINE([ASTERISK12], [], [Asterisk 1.2])
-            ;;
-        1.2*)
-            dnl AC_DEFINE_UNQUOTED(ASTERISK12)
-            AC_DEFINE([ASTERISK12], [], [Asterisk 1.2])
-            ;;
-        SVN-*1.4*)
-            dnl AC_DEFINE_UNQUOTED(ASTERISK14)
-            AC_DEFINE([ASTERISK14], [], [Asterisk 1.4])
-            ;;
-        1.4*)
-            dnl AC_DEFINE_UNQUOTED(ASTERISK14)
-            AC_DEFINE([ASTERISK14], [], [Asterisk 1.4])
-            ;;
-        SVN-*1.6.0.*)
-            dnl AC_DEFINE_UNQUOTED(ASTERISK160)
-            AC_DEFINE([ASTERISK160], [], [Asterisk 1.6.0])
-            ;;
-        1.6.0.*)
-            dnl AC_DEFINE_UNQUOTED(ASTERISK160)
-            AC_DEFINE([ASTERISK160], [], [Asterisk 1.6.0])
-            ;;
-        SVN-*1.6.1.*)
-            dnl AC_DEFINE_UNQUOTED(ASTERISK161)
-            AC_DEFINE([ASTERISK161], [], [Asterisk 1.6.1])
-            ;;
-        1.6.1.*)
-            dnl AC_DEFINE_UNQUOTED(ASTERISK161)
-            AC_DEFINE([ASTERISK161], [], [Asterisk 1.6.1])
-            ;;
-        SVN-*1.6.2.*)
-            dnl AC_DEFINE_UNQUOTED(ASTERISK162)
-            AC_DEFINE([ASTERISK162], [], [Asterisk 1.6.2])
-            ;;
-        1.6.2.*)
-            dnl AC_DEFINE_UNQUOTED(ASTERISK162)
-            AC_DEFINE([ASTERISK162], [], [Asterisk 1.6.2])
-            ;;
-        SVN-trunk*)
-            dnl AC_DEFINE_UNQUOTED(ASTERISKSVN)
-            AC_DEFINE([ASTERISKSVN], [], [Asterisk SVN])
-            ;;
-        SVN*)
-            dnl AC_DEFINE_UNQUOTED(ASTERISKSVN)
-            AC_DEFINE([ASTERISKSVN], [], [Asterisk SVN])
-            ;;
-        *)
-            dnl AC_DEFINE_UNQUOTED(ASTERISKOTHER)
-            AC_DEFINE([ASTERISKOTHER], [], [Asterisk Other])
-            ;;
-    esac
-
+    dnl Set Asterisk includes, conf and xmldoc directories.
     ASTERISK_INCLUDES="-I$asterisk_dir/include"
     AC_SUBST(ASTERISK_INCLUDES)
     AC_SUBST(asterisk_conf_dir)
