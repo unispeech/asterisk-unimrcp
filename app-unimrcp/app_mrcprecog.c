@@ -116,15 +116,34 @@ static char *recogdescrip =
 
 static ast_mrcp_application_t *mrcprecog = NULL;
 
-/* Maps MRCP header to unimrcp header handler function. */
-static apr_hash_t *param_id_map;
-
-/* UniMRCP parameter ID container. */
-struct unimrcp_param_id {
-	/* The parameter ID. */
-	int id;
+/* The enumeration of application options (excluding the MRCP params). */
+enum mrcprecog_option_flags {
+	MRCPRECOG_PROFILE        = (1 << 0),
+	MRCPRECOG_INTERRUPT      = (2 << 0),
+	MRCPRECOG_FILENAME       = (3 << 0),
+	MRCPRECOG_BARGEIN        = (4 << 0)
 };
-typedef struct unimrcp_param_id unimrcp_param_id_t;
+
+/* The enumeration of option arguments. */
+enum mrcprecog_option_args {
+	OPT_ARG_PROFILE    = 0,
+	OPT_ARG_INTERRUPT  = 1,
+	OPT_ARG_FILENAME   = 2,
+	OPT_ARG_BARGEIN    = 3,
+
+	/* This MUST be the last value in this enum! */
+	OPT_ARG_ARRAY_SIZE = 4
+};
+
+/* The structure which holds the application options (including the MRCP params). */
+struct mrcprecog_options_t {
+	apr_hash_t *recog_hfs;
+
+	int         flags;
+	const char *params[OPT_ARG_ARRAY_SIZE];
+};
+
+typedef struct mrcprecog_options_t mrcprecog_options_t;
 
 #define DSP_FRAME_ARRAY_SIZE					1024
 
@@ -465,209 +484,14 @@ static int recog_channel_get_results(speech_channel_t *schannel, const char **re
 	return status;
 }
 
-/* Set parameter in a recognizer MRCP header. */
-static int recog_channel_set_header(speech_channel_t *schannel, int id, char *val, mrcp_message_t *msg, mrcp_recog_header_t *recog_hdr)
-{
-	if ((schannel == NULL) || (msg == NULL) || (recog_hdr == NULL))
-		return -1;
-
-	switch (id) {
-		case RECOGNIZER_HEADER_CONFIDENCE_THRESHOLD:
-			recog_hdr->confidence_threshold = (float)atof(val);
-			mrcp_resource_header_property_add(msg, RECOGNIZER_HEADER_CONFIDENCE_THRESHOLD);
-			break;
-
-		case RECOGNIZER_HEADER_SENSITIVITY_LEVEL:
-			recog_hdr->sensitivity_level = (float)atof(val);
-			mrcp_resource_header_property_add(msg, RECOGNIZER_HEADER_SENSITIVITY_LEVEL);
-			break;
-
-		case RECOGNIZER_HEADER_SPEED_VS_ACCURACY:
-			recog_hdr->speed_vs_accuracy = (float)atof(val);
-			mrcp_resource_header_property_add(msg, RECOGNIZER_HEADER_SPEED_VS_ACCURACY);
-			break;
-
-		case RECOGNIZER_HEADER_N_BEST_LIST_LENGTH: {
-			int n_best_list_length = atoi(val);
-			if (n_best_list_length > 0) {
-				recog_hdr->n_best_list_length = n_best_list_length;
-				mrcp_resource_header_property_add(msg, RECOGNIZER_HEADER_N_BEST_LIST_LENGTH);
-			} else
-				ast_log(LOG_WARNING, "(%s) Ignoring invalid n best list length, \"%s\"\n", schannel->name, val);
-			break;
-		}
-
-		case RECOGNIZER_HEADER_NO_INPUT_TIMEOUT: {
-			int no_input_timeout = atoi(val);
-			if (no_input_timeout >= 0) {
-				recog_hdr->no_input_timeout = no_input_timeout;
-				mrcp_resource_header_property_add(msg, RECOGNIZER_HEADER_NO_INPUT_TIMEOUT);
-			} else
-				ast_log(LOG_WARNING, "(%s) Ignoring invalid no input timeout, \"%s\"\n", schannel->name, val);
-			break;
-		}
-
-		case RECOGNIZER_HEADER_RECOGNITION_TIMEOUT: {
-			int recognition_timeout = atoi(val);
-			if (recognition_timeout >= 0) {
-				recog_hdr->recognition_timeout = recognition_timeout;
-				mrcp_resource_header_property_add(msg, RECOGNIZER_HEADER_RECOGNITION_TIMEOUT);
-			} else
-				ast_log(LOG_WARNING, "(%s) Ignoring invalid recognition timeout, \"%s\"\n", schannel->name, val);
-			break;
-		}
-
-		case RECOGNIZER_HEADER_START_INPUT_TIMERS:
-			recog_hdr->start_input_timers = !strcasecmp("true", val);
-			mrcp_resource_header_property_add(msg, RECOGNIZER_HEADER_START_INPUT_TIMERS);
-			break;
-
-		case RECOGNIZER_HEADER_SPEECH_COMPLETE_TIMEOUT: {
-			int speech_complete_timeout = atoi(val);
-			if (speech_complete_timeout >= 0) {
-				recog_hdr->speech_complete_timeout = speech_complete_timeout;
-				mrcp_resource_header_property_add(msg, RECOGNIZER_HEADER_SPEECH_COMPLETE_TIMEOUT);
-			} else
-				ast_log(LOG_WARNING, "(%s) Ignoring invalid speech complete timeout, \"%s\"\n", schannel->name, val);
-			break;
-		}
-
-		case RECOGNIZER_HEADER_SPEECH_INCOMPLETE_TIMEOUT: {
-			int speech_incomplete_timeout = atoi(val);
-			if (speech_incomplete_timeout >= 0) {
-				recog_hdr->speech_incomplete_timeout = speech_incomplete_timeout;
-				mrcp_resource_header_property_add(msg, RECOGNIZER_HEADER_SPEECH_INCOMPLETE_TIMEOUT);
-			} else
-				ast_log(LOG_WARNING, "(%s) Ignoring invalid speech incomplete timeout, \"%s\"\n", schannel->name, val);
-			break;
-		}
-
-		case RECOGNIZER_HEADER_DTMF_INTERDIGIT_TIMEOUT: {
-			int dtmf_interdigit_timeout = atoi(val);
-			if (dtmf_interdigit_timeout >= 0) {
-				recog_hdr->dtmf_interdigit_timeout = dtmf_interdigit_timeout;
-				mrcp_resource_header_property_add(msg, RECOGNIZER_HEADER_DTMF_INTERDIGIT_TIMEOUT);
-			} else
-				ast_log(LOG_WARNING, "(%s) Ignoring invalid dtmf interdigit timeout, \"%s\"\n", schannel->name, val);
-			break;
-		}
-
-		case RECOGNIZER_HEADER_DTMF_TERM_TIMEOUT: {
-			int dtmf_term_timeout = atoi(val);
-			if (dtmf_term_timeout >= 0) {
-				recog_hdr->dtmf_term_timeout = dtmf_term_timeout;
-				mrcp_resource_header_property_add(msg, RECOGNIZER_HEADER_DTMF_TERM_TIMEOUT);
-			} else
-				ast_log(LOG_WARNING, "(%s) Ignoring invalid dtmf term timeout, \"%s\"\n", schannel->name, val);
-			break;
-		}
-
-		case RECOGNIZER_HEADER_DTMF_TERM_CHAR:
-			if (strlen(val) == 1) {
-				recog_hdr->dtmf_term_char = *val;
-				mrcp_resource_header_property_add(msg, RECOGNIZER_HEADER_DTMF_TERM_CHAR);
-			} else
-				ast_log(LOG_WARNING, "(%s) Ignoring invalid dtmf term char, \"%s\"\n", schannel->name, val);
-			break;
-
-		case RECOGNIZER_HEADER_SAVE_WAVEFORM:
-			recog_hdr->save_waveform = !strcasecmp("true", val);
-			mrcp_resource_header_property_add(msg, RECOGNIZER_HEADER_SAVE_WAVEFORM);
-			break;
-
-		case RECOGNIZER_HEADER_NEW_AUDIO_CHANNEL:
-			recog_hdr->new_audio_channel = !strcasecmp("true", val);
-			mrcp_resource_header_property_add(msg, RECOGNIZER_HEADER_NEW_AUDIO_CHANNEL);
-			break;
-
-		case RECOGNIZER_HEADER_SPEECH_LANGUAGE:
-			apt_string_assign(&recog_hdr->speech_language, val, msg->pool);
-			mrcp_resource_header_property_add(msg, RECOGNIZER_HEADER_SPEECH_LANGUAGE);
-			break;
-
-		case RECOGNIZER_HEADER_RECOGNITION_MODE:
-			apt_string_assign(&recog_hdr->recognition_mode, val, msg->pool);
-			mrcp_resource_header_property_add(msg, RECOGNIZER_HEADER_RECOGNITION_MODE);
-			break;
-
-		case RECOGNIZER_HEADER_HOTWORD_MAX_DURATION: {
-			int hotword_max_duration = atoi(val);
-			if (hotword_max_duration >= 0) {
-				recog_hdr->hotword_max_duration = hotword_max_duration;
-				mrcp_resource_header_property_add(msg, RECOGNIZER_HEADER_HOTWORD_MAX_DURATION);
-			} else
-				ast_log(LOG_WARNING, "(%s) Ignoring invalid hotword max duration, \"%s\"\n", schannel->name, val);
-			break;
-		}
-
-		case RECOGNIZER_HEADER_HOTWORD_MIN_DURATION: {
-			int hotword_min_duration = atoi(val);
-			if (hotword_min_duration >= 0) {
-				recog_hdr->hotword_min_duration = hotword_min_duration;
-				mrcp_resource_header_property_add(msg, RECOGNIZER_HEADER_HOTWORD_MIN_DURATION);
-			} else
-				ast_log(LOG_WARNING, "(%s) Ignoring invalid hotword min duration, \"%s\"\n", schannel->name, val);
-			break;
-		}
-
-		case RECOGNIZER_HEADER_CLEAR_DTMF_BUFFER:
-			recog_hdr->clear_dtmf_buffer = !strcasecmp("true", val);
-			mrcp_resource_header_property_add(msg, RECOGNIZER_HEADER_CLEAR_DTMF_BUFFER);
-			break;
-
-		case RECOGNIZER_HEADER_EARLY_NO_MATCH:
-			recog_hdr->early_no_match = !strcasecmp("true", val);
-			mrcp_resource_header_property_add(msg, RECOGNIZER_HEADER_EARLY_NO_MATCH);
-			break;
-
-		case RECOGNIZER_HEADER_INPUT_WAVEFORM_URI:
-			apt_string_assign(&recog_hdr->input_waveform_uri, val, msg->pool);
-			mrcp_resource_header_property_add(msg, RECOGNIZER_HEADER_INPUT_WAVEFORM_URI);
-			break;
-
-		case RECOGNIZER_HEADER_MEDIA_TYPE:
-			apt_string_assign(&recog_hdr->media_type, val, msg->pool);
-			mrcp_resource_header_property_add(msg, RECOGNIZER_HEADER_MEDIA_TYPE);
-			break;
-
-		/* Unsupported headers. */
-
-		/* MRCP server headers. */
-		case RECOGNIZER_HEADER_WAVEFORM_URI:
-		case RECOGNIZER_HEADER_COMPLETION_CAUSE:
-		case RECOGNIZER_HEADER_FAILED_URI:
-		case RECOGNIZER_HEADER_FAILED_URI_CAUSE:
-		case RECOGNIZER_HEADER_INPUT_TYPE:
-		case RECOGNIZER_HEADER_COMPLETION_REASON:
-
-		/* Module handles this automatically. */
-		case RECOGNIZER_HEADER_CANCEL_IF_QUEUE:
-
-		/* GET-PARAMS method only. */
-		case RECOGNIZER_HEADER_RECOGNIZER_CONTEXT_BLOCK:
-		case RECOGNIZER_HEADER_DTMF_BUFFER_TIME:
-
-		/* INTERPRET method only. */
-		case RECOGNIZER_HEADER_INTERPRET_TEXT:
-
-		/* Unknown. */
-		case RECOGNIZER_HEADER_VER_BUFFER_UTTERANCE:
-		default:
-			ast_log(LOG_WARNING, "(%s) unsupported RECOGNIZER header( in this module )\n", schannel->name);
-			break;
-	}
-
-	return 0;
-}
-
 /* Set parameters in a recognizer MRCP header. */
-static int recog_channel_set_params(speech_channel_t *schannel, mrcp_message_t *msg, mrcp_generic_header_t *gen_hdr, mrcp_recog_header_t *recog_hdr)
+static int recog_channel_set_params(speech_channel_t *schannel, mrcp_message_t *msg, apr_hash_t *header_fields)
 {
-	if ((schannel != NULL) && (msg != NULL) && (gen_hdr != NULL) && (recog_hdr != NULL)) {
-		/* Loop through each param and add to recog header or vendor-specific-params. */
+	if (schannel && msg && header_fields) {
+		/* Loop through each param and add to the message. */
 		apr_hash_index_t *hi = NULL;
 
-		for (hi = apr_hash_first(NULL, schannel->params); hi; hi = apr_hash_next(hi)) {
+		for (hi = apr_hash_first(NULL, header_fields); hi; hi = apr_hash_next(hi)) {
 			char *param_name = NULL;
 			char *param_val = NULL;
 			const void *key;
@@ -679,38 +503,16 @@ static int recog_channel_set_params(speech_channel_t *schannel, mrcp_message_t *
 			param_val = (char *)val;
 
 			if (param_name && (strlen(param_name) > 0) && param_val && (strlen(param_val) > 0)) {
-				unimrcp_param_id_t *id = NULL;
-
-				if (param_id_map != NULL)
-					id = (unimrcp_param_id_t *)apr_hash_get(param_id_map, param_name, APR_HASH_KEY_STRING);
-
-				if (id) {
-					ast_log(LOG_DEBUG, "(%s) %s: %s\n", schannel->name, param_name, param_val);
-					recog_channel_set_header(schannel, id->id, param_val, msg, recog_hdr);
-				} else {
-					apt_str_t apt_param_name = { 0 };
-					apt_str_t apt_param_val = { 0 };
-
-					/* This is probably a vendor-specific MRCP param. */
-					ast_log(LOG_DEBUG, "(%s) (vendor-specific value) %s: %s\n", schannel->name, param_name, param_val);
-					apt_string_set(&apt_param_name, param_name); /* Copy isn't necessary since apt_pair_array_append will do it. */
-					apt_string_set(&apt_param_val, param_val);
-
-					if (!gen_hdr->vendor_specific_params) {
-						ast_log(LOG_DEBUG, "(%s) creating vendor specific pair array\n", schannel->name);
-						gen_hdr->vendor_specific_params = apt_pair_array_create(10, msg->pool);
+				ast_log(LOG_DEBUG, "(%s) %s: %s\n", schannel->name, param_name, param_val);
+				apt_header_field_t *header_field = apt_header_field_create_c(param_name, param_val, msg->pool);
+				if(header_field) {
+					if(mrcp_message_header_field_add(msg, header_field) == FALSE) {
+						ast_log(LOG_WARNING, "Error setting MRCP header %s=%s\n", param_name, param_val);
 					}
-
-					apt_pair_array_append(gen_hdr->vendor_specific_params, &apt_param_name, &apt_param_val, msg->pool);
 				}
 			}
 		}
-	
-		if (gen_hdr->vendor_specific_params) {
-			mrcp_generic_header_property_add(msg, GENERIC_HEADER_VENDOR_SPECIFIC_PARAMS);
-		}
-	} else
-		ast_log(LOG_ERROR, "(unknown) [recog_channel_set_params] channel error!\n");
+	}
 
 	return 0;
 }
@@ -746,7 +548,7 @@ static int recog_channel_set_timers_started(speech_channel_t *schannel)
 }
 
 /* Start RECOGNIZE request. */
-static int recog_channel_start(speech_channel_t *schannel, const char *name)
+static int recog_channel_start(speech_channel_t *schannel, const char *name, apr_hash_t *header_fields)
 {
 	int status = 0;
 	mrcp_message_t *mrcp_message = NULL;
@@ -859,7 +661,7 @@ static int recog_channel_start(speech_channel_t *schannel, const char *name)
 		}
 
 		/* Set parameters. */
-		recog_channel_set_params(schannel, mrcp_message, generic_header, recog_header);
+		recog_channel_set_params(schannel, mrcp_message, header_fields);
 
 		/* Set message body. */
 		apt_string_assign(&mrcp_message->body, grammar->data, mrcp_message->pool);
@@ -1222,6 +1024,121 @@ static apt_bool_t recog_stream_read(mpf_audio_stream_t *stream, mpf_frame_t *fra
 	return TRUE;
 }
 
+/* Apply application options. */
+static int mrcprecog_option_apply(mrcprecog_options_t *options, const char *key, const char *value)
+{
+	if (strcasecmp(key, "ct") == 0) {
+		apr_hash_set(options->recog_hfs, "Confidence-Threshold", APR_HASH_KEY_STRING, value);
+	} else if (strcasecmp(key, "sva") == 0) {
+		apr_hash_set(options->recog_hfs, "Speed-vs-Accuracy", APR_HASH_KEY_STRING, value);
+	} else if (strcasecmp(key, "nb") == 0) {
+		apr_hash_set(options->recog_hfs, "N-Best-List-Length", APR_HASH_KEY_STRING, value);
+	} else if (strcasecmp(key, "nit") == 0) {
+		apr_hash_set(options->recog_hfs, "No-Input-Timeout", APR_HASH_KEY_STRING, value);
+	} else if (strcasecmp(key, "sit") == 0) {
+		apr_hash_set(options->recog_hfs, "Start-Input-Timers", APR_HASH_KEY_STRING, value);
+	} else if (strcasecmp(key, "sct") == 0) {
+		apr_hash_set(options->recog_hfs, "Speech-Complete-Timeout", APR_HASH_KEY_STRING, value);
+	} else if (strcasecmp(key, "sint") == 0) {
+		apr_hash_set(options->recog_hfs, "Speech-Incomplete-Timeout", APR_HASH_KEY_STRING, value);
+	} else if (strcasecmp(key, "dit") == 0) {
+		apr_hash_set(options->recog_hfs, "Dtmf-Interdigit-Timeout", APR_HASH_KEY_STRING, value);
+	} else if (strcasecmp(key, "dtt") == 0) {
+		apr_hash_set(options->recog_hfs, "Dtmf-Term-Timeout", APR_HASH_KEY_STRING, value);
+	} else if (strcasecmp(key, "dttc") == 0) {
+		apr_hash_set(options->recog_hfs, "Dtmf-Term-Char", APR_HASH_KEY_STRING, value);
+	} else if (strcasecmp(key, "sw") == 0) {
+		apr_hash_set(options->recog_hfs, "Save-Waveform", APR_HASH_KEY_STRING, value);
+	} else if (strcasecmp(key, "nac") == 0) {
+		apr_hash_set(options->recog_hfs, "New-Audio-Channel", APR_HASH_KEY_STRING, value);
+	} else if (strcasecmp(key, "rm") == 0) {
+		apr_hash_set(options->recog_hfs, "Recognition-Mode", APR_HASH_KEY_STRING, value);
+	} else if (strcasecmp(key, "hmaxd") == 0) {
+		apr_hash_set(options->recog_hfs, "Hotword-Max-Duration", APR_HASH_KEY_STRING, value);
+	} else if (strcasecmp(key, "hmind") == 0) {
+		apr_hash_set(options->recog_hfs, "Hotword-Min-Duration", APR_HASH_KEY_STRING, value);
+	} else if (strcasecmp(key, "cdb") == 0) {
+		apr_hash_set(options->recog_hfs, "Clear-Dtmf-Buffer", APR_HASH_KEY_STRING, value);
+	} else if (strcasecmp(key, "enm") == 0) {
+		apr_hash_set(options->recog_hfs, "Early-No-Match", APR_HASH_KEY_STRING, value);
+	} else if (strcasecmp(key, "iwu") == 0) {
+		apr_hash_set(options->recog_hfs, "Input-Waveform-URI", APR_HASH_KEY_STRING, value);
+	} else if (strcasecmp(key, "sl") == 0) {
+		apr_hash_set(options->recog_hfs, "Sensitivity-Level", APR_HASH_KEY_STRING, value);
+	} else if (strcasecmp(key, "spl") == 0) {
+		apr_hash_set(options->recog_hfs, "Speech-Language", APR_HASH_KEY_STRING, value);
+	} else if (strcasecmp(key, "mt") == 0) {
+		apr_hash_set(options->recog_hfs, "Media-Type", APR_HASH_KEY_STRING, value);
+	} else if (strcasecmp(key, "p") == 0) {
+		options->flags |= MRCPRECOG_PROFILE;
+		options->params[OPT_ARG_PROFILE] = value;
+	} else if (strcasecmp(key, "i") == 0) {
+		options->flags |= MRCPRECOG_INTERRUPT;
+		options->params[OPT_ARG_INTERRUPT] = value;
+	} else if (strcasecmp(key, "f") == 0) {
+		options->flags |= MRCPRECOG_FILENAME;
+		options->params[OPT_ARG_FILENAME] = value;
+	} else if (strcasecmp(key, "t") == 0) {
+		apr_hash_set(options->recog_hfs, "Recognition-Timeout", APR_HASH_KEY_STRING, value);
+	} else if (strcasecmp(key, "b") == 0) {
+		options->flags |= MRCPRECOG_BARGEIN;
+		options->params[OPT_ARG_BARGEIN] = value;
+	}
+	else {
+		ast_log(LOG_WARNING, "Unknown option: %s\n", key);
+	}
+	return 0;
+}
+
+/* Parse application options. */
+static int mrcprecog_options_parse(char *str, mrcprecog_options_t *options, apr_pool_t *pool)
+{
+	char *s;
+	char *name, *value;
+	
+	if (!str) {
+		return 0;
+	}
+
+	ast_log(LOG_NOTICE, "Parse options: %s\n", str);
+	if ((options->recog_hfs = apr_hash_make(pool)) == NULL) {
+		return -1;
+	}
+
+	while ((s = strsep(&str, "&"))) {
+		value = s;
+		if ((name = strsep(&value, "=")) && value) {
+			ast_log(LOG_NOTICE, "Apply option: %s: %s\n", name, value);
+			mrcprecog_option_apply(options, name, value);
+		}
+	}
+	return 0;
+}
+
+/* Exit the application. */
+static int mrcprecog_exit(struct ast_channel *chan, speech_channel_t *schannel, apr_pool_t *pool, int res)
+{
+	if (!pool)
+		return -1;
+
+	if (schannel) {
+		speech_channel_destroy(schannel);
+		schannel = NULL;
+	}
+
+	if (res < 0)
+		pbx_builtin_setvar_helper(chan, "RECOGSTATUS", "ERROR");
+	else
+		pbx_builtin_setvar_helper(chan, "RECOGSTATUS", "OK");
+
+	if ((res < 0) && (!ast_check_hangup(chan)))
+		res = 0;
+
+	apr_pool_destroy(pool);
+	return res;
+}
+
+/* The entry point of the application. */
 static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 {
 	int samplerate = 8000;
@@ -1230,13 +1147,15 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 	apr_size_t len;
 	int rres = 0;
 	speech_channel_t *schannel = NULL;
-	const char *profile_name = NULL;
 	ast_mrcp_profile_t *profile = NULL;
 	apr_uint32_t speech_channel_number = get_next_speech_channel_number();
-	char name[200] = { 0 };
+	const char *name;
 	int waitres = 0;
 	int res = 0;
 	char *parse;
+	apr_pool_t *pool;
+	int i;
+	mrcprecog_options_t mrcprecog_options;
 
 	AST_DECLARE_APP_ARGS(args,
 		AST_APP_ARG(grammar);
@@ -1249,266 +1168,51 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 		return -1;
 	}
 
+	if ((pool = apt_pool_create()) == NULL) {
+		ast_log(LOG_ERROR, "Unable to create memory pool for channel\n");
+		pbx_builtin_setvar_helper(chan, "RECOGSTATUS", "ERROR");
+		return -1;
+	}
+
 	/* We need to make a copy of the input string if we are going to modify it! */
 	parse = ast_strdupa(data);
 
 	AST_STANDARD_APP_ARGS(args, parse);
-	char option_confidencethresh[64] = { 0 };
-	char option_senselevel[64] = { 0 };
-	char option_speechlanguage[64] = { 0 };
-	char option_profile[256] = { 0 };
-	char option_interrupt[64] = { 0 };
-	char option_filename[384] = { 0 };
-	char option_timeout[64] = { 0 };
-	char option_bargein[32] = { 0 };
-	char option_inputwaveuri[384] = { 0 };
-	char option_earlynomatch[16] = { 0 };
-	char option_cleardtmfbuf[16] = { 0 };
-	char option_hotwordmin[64] = { 0 };
-	char option_hotwordmax[64] = { 0 };
-	char option_recogmode[128] = { 0 };
-	char option_newaudioc[16] = { 0 };
-	char option_savewave[16] = { 0 };
-	char option_dtmftermc[16] = { 0 };
-	char option_dtmftermt[64] = { 0 };
-	char option_dtmfdigitt[64] = { 0 };
-	char option_speechit[64] = { 0 };
-	char option_speechct[64] = { 0 };
-	char option_startinputt[16] = { 0 };
-	char option_noinputt[64] = { 0 };
-	char option_nbest[64] = { 0 };
-	char option_speedvsa[64] = { 0 };
-	char option_mediatype[64] = { 0 };
+
+	mrcprecog_options.recog_hfs = NULL;
+	mrcprecog_options.flags = 0;
+	for (i=0; i<OPT_ARG_ARRAY_SIZE; i++)
+		mrcprecog_options.params[i] = NULL;
+
+	if (!ast_strlen_zero(args.options)) {
+		char *options_buf = ast_strdupa(args.options);
+		mrcprecog_options_parse(options_buf, &mrcprecog_options, pool);
+	}
+
 	int speech = 0;
 	struct timeval start = { 0, 0 };
 	struct timeval detection_start = { 0, 0 };
 	int min = 100;
 	struct ast_dsp *dsp = NULL;
 
-	if (!ast_strlen_zero(args.options)) {
-		char tempstr[1024];
-		char* token;
-
-		strncpy(tempstr, args.options, sizeof(tempstr) - 1);
-		tempstr[sizeof(tempstr) - 1] = '\0';
-
-		trimstr(tempstr);
-
-		do {
-			token = strstr(tempstr, "&");
-
-			if (token != NULL)
-				tempstr[token - tempstr] = '\0';
-
-			char* pos;
-
-			char tempstr2[1024];
-			strncpy(tempstr2, tempstr, sizeof(tempstr2) - 1);
-			tempstr2[sizeof(tempstr2) - 1] = '\0';			
-			trimstr(tempstr2);
-
-			ast_log(LOG_NOTICE, "Option=|%s|\n", tempstr2);
-
-			if ((pos = strstr(tempstr2, "=")) != NULL) {
-				*pos = '\0';
-
-				char* key = tempstr2;
-				char* value = pos + 1;
-
-				char tempstr3[1024];
-				char tempstr4[1024];
-
-				strncpy(tempstr3, key, sizeof(tempstr3) - 1);
-				tempstr3[sizeof(tempstr3) - 1] = '\0';			
-				trimstr(tempstr3);
-
-				strncpy(tempstr4, value, sizeof(tempstr4) - 1);
-				tempstr4[sizeof(tempstr4) - 1] = '\0';
-				trimstr(tempstr4);
-
-				key = tempstr3;
-				value = tempstr4;
-				if (strcasecmp(key, "ct") == 0) {
-					strncpy(option_confidencethresh, value, sizeof(option_confidencethresh) - 1);
-					option_confidencethresh[sizeof(option_confidencethresh) - 1] = '\0';
-				} else if (strcasecmp(key, "sva") == 0) {
-					strncpy(option_speedvsa, value, sizeof(option_speedvsa) - 1);
-					option_speedvsa[sizeof(option_speedvsa) - 1] = '\0';
-				} else if (strcasecmp(key, "nb") == 0) {
-					strncpy(option_nbest, value, sizeof(option_nbest) - 1);
-					option_nbest[sizeof(option_nbest) - 1] = '\0';
-				} else if (strcasecmp(key, "nit") == 0) {
-					strncpy(option_noinputt, value, sizeof(option_noinputt) - 1);
-					option_noinputt[sizeof(option_noinputt) - 1] = '\0';
-				} else if (strcasecmp(key, "sit") == 0) {
-					strncpy(option_startinputt, value, sizeof(option_startinputt) - 1);
-					option_startinputt[sizeof(option_startinputt) - 1] = '\0';
-				} else if (strcasecmp(key, "sct") == 0) {
-					strncpy(option_speechct, value, sizeof(option_speechct) - 1);
-					option_speechct[sizeof(option_speechct) - 1] = '\0';
-				} else if (strcasecmp(key, "sint") == 0) {
-					strncpy(option_speechit, value, sizeof(option_speechit) - 1);
-					option_speechit[sizeof(option_speechit) - 1] = '\0';
-				} else if (strcasecmp(key, "dit") == 0) {
-					strncpy(option_dtmfdigitt, value, sizeof(option_dtmfdigitt) - 1);
-					option_dtmfdigitt[sizeof(option_dtmfdigitt) - 1] = '\0';
-				} else if (strcasecmp(key, "dtt") == 0) {
-					strncpy(option_dtmftermt, value, sizeof(option_dtmftermt) - 1);
-					option_dtmftermt[sizeof(option_dtmftermt) - 1] = '\0';
-				} else if (strcasecmp(key, "dttc") == 0) {
-					strncpy(option_dtmftermc, value, sizeof(option_dtmftermc) - 1);
-					option_dtmftermc[sizeof(option_dtmftermc) - 1] = '\0';
-				} else if (strcasecmp(key, "sw") == 0) {
-					strncpy(option_savewave, value, sizeof(option_savewave) - 1);
-					option_savewave[sizeof(option_savewave) - 1] = '\0';
-				} else if (strcasecmp(key, "nac") == 0) {
-					strncpy(option_newaudioc, value, sizeof(option_newaudioc) - 1);
-					option_newaudioc[sizeof(option_newaudioc) - 1] = '\0';
-				} else if (strcasecmp(key, "rm") == 0) {
-					strncpy(option_recogmode, value, sizeof(option_recogmode) - 1);
-					option_recogmode[sizeof(option_recogmode) - 1] = '\0';
-				} else if (strcasecmp(key, "hmaxd") == 0) {
-					strncpy(option_hotwordmax, value, sizeof(option_hotwordmax) - 1);
-					option_hotwordmax[sizeof(option_hotwordmax) - 1] = '\0';
-				} else if (strcasecmp(key, "hmind") == 0) {
-					strncpy(option_hotwordmin, value, sizeof(option_hotwordmin) - 1);
-					option_hotwordmin[sizeof(option_hotwordmin) - 1] = '\0';
-				} else if (strcasecmp(key, "cdb") == 0) {
-					strncpy(option_cleardtmfbuf, value, sizeof(option_cleardtmfbuf) - 1);
-					option_cleardtmfbuf[sizeof(option_cleardtmfbuf) - 1] = '\0';
-				} else if (strcasecmp(key, "enm") == 0) {
-					strncpy(option_earlynomatch, value, sizeof(option_earlynomatch) - 1);
-					option_earlynomatch[sizeof(option_earlynomatch) - 1] = '\0';
-				} else if (strcasecmp(key, "iwu") == 0) {
-					strncpy(option_inputwaveuri, value, sizeof(option_inputwaveuri) - 1);
-					option_inputwaveuri[sizeof(option_inputwaveuri) - 1] = '\0';
-				} else if (strcasecmp(key, "sl") == 0) {
-					strncpy(option_senselevel, value, sizeof(option_senselevel) - 1);
-					option_senselevel[sizeof(option_senselevel) - 1] = '\0';
-				} else if (strcasecmp(key, "spl") == 0) {
-					strncpy(option_speechlanguage, value, sizeof(option_speechlanguage) - 1);
-					option_speechlanguage[sizeof(option_speechlanguage) - 1] = '\0';
-				} else if (strcasecmp(key, "mt") == 0) {
-					strncpy(option_mediatype, value, sizeof(option_mediatype) - 1);
-					option_mediatype[sizeof(option_mediatype) - 1] = '\0';
-				} else if (strcasecmp(key, "p") == 0) {
-					strncpy(option_profile, value, sizeof(option_profile) - 1);
-					option_profile[sizeof(option_profile) - 1] = '\0';
-				} else if (strcasecmp(key, "i") == 0) {
-					strncpy(option_interrupt, value, sizeof(option_interrupt) - 1);
-					option_interrupt[sizeof(option_interrupt) - 1] = '\0';
-				} else if (strcasecmp(key, "f") == 0) {
-					strncpy(option_filename, value, sizeof(option_filename) - 1);
-					option_filename[sizeof(option_filename) - 1] = '\0';
-				} else if (strcasecmp(key, "t") == 0) {
-					strncpy(option_timeout, value, sizeof(option_timeout) - 1);
-					option_timeout[sizeof(option_timeout) - 1] = '\0';
-				} else if (strcasecmp(key, "b") == 0) {
-					strncpy(option_bargein, value, sizeof(option_bargein) - 1);
-					option_bargein[sizeof(option_bargein) - 1] = '\0';
-				}
-			}
-			if (token != NULL) {
-				strncpy(tempstr, token + 1, sizeof(tempstr) - 1);
-				tempstr[sizeof(tempstr) - 1] = '\0';
-			}
-		} while (token != NULL);
-	}
-
 	int bargein = 1;
-	if (!ast_strlen_zero(option_bargein)) {
-		bargein = atoi(option_bargein);
-		if ((bargein < 0) || (bargein > 2))
-			bargein = 1;
+	if ((mrcprecog_options.flags & MRCPRECOG_BARGEIN) == MRCPRECOG_BARGEIN) {
+		if (!ast_strlen_zero(mrcprecog_options.params[OPT_ARG_BARGEIN])) {
+			bargein = atoi(mrcprecog_options.params[OPT_ARG_BARGEIN]);
+			if ((bargein < 0) || (bargein > 2))
+				bargein = 1;
+		}
 	}
+	
+	if ((mrcprecog_options.flags & MRCPRECOG_INTERRUPT) == MRCPRECOG_INTERRUPT) {
+		if (!ast_strlen_zero(mrcprecog_options.params[OPT_ARG_INTERRUPT])) {
+			dtmf_enable = 1;
 
-	if (!ast_strlen_zero(option_profile)) {
-		ast_log(LOG_NOTICE, "Profile to use: %s\n", option_profile);
-	}
-	if (!ast_strlen_zero(args.grammar)) {
-		ast_log(LOG_NOTICE, "Grammar to recognize with: %s\n", args.grammar);
-	}
-	if (!ast_strlen_zero(option_filename)) {
-		ast_log(LOG_NOTICE, "Filename to play: %s\n", option_filename);
-	}
-	if (!ast_strlen_zero(option_timeout)) {
-		ast_log(LOG_NOTICE, "Recognition timeout: %s\n", option_timeout);
-	}
-	if (!ast_strlen_zero(option_bargein)) {
-		ast_log(LOG_NOTICE, "Barge-in: %s\n", option_bargein);
-	}
-	if (!ast_strlen_zero(option_confidencethresh)) {
-		ast_log(LOG_NOTICE, "Confidence threshold: %s\n", option_confidencethresh);
-	}
-	if (!ast_strlen_zero(option_senselevel)) {
-		ast_log(LOG_NOTICE, "Sensitivity-level: %s\n", option_senselevel);
-	}
-	if (!ast_strlen_zero(option_speechlanguage)) {
-		ast_log(LOG_NOTICE, "Speech-language: %s\n", option_speechlanguage);
-	}
-	if (!ast_strlen_zero(option_inputwaveuri)) {
-		ast_log(LOG_NOTICE, "Input wave URI: %s\n", option_inputwaveuri);
-	}
-	if (!ast_strlen_zero(option_earlynomatch)) {
-		ast_log(LOG_NOTICE, "Early-no-match: %s\n", option_earlynomatch);
-	}
-	if (!ast_strlen_zero(option_cleardtmfbuf)) {
-		ast_log(LOG_NOTICE, "Clear DTMF buffer: %s\n", option_cleardtmfbuf);
-	}
-	if (!ast_strlen_zero(option_hotwordmin)) {
-		ast_log(LOG_NOTICE, "Hotword min delay: %s\n", option_hotwordmin);
-	}
-	if (!ast_strlen_zero(option_hotwordmax)) {
-		ast_log(LOG_NOTICE, "Hotword max delay: %s\n", option_hotwordmax);
-	}
-	if (!ast_strlen_zero(option_recogmode)) {
-		ast_log(LOG_NOTICE, "Recognition Mode: %s\n", option_recogmode);
-	}
-	if (!ast_strlen_zero(option_newaudioc)) {
-		ast_log(LOG_NOTICE, "New-audio-channel: %s\n", option_newaudioc);
-	}
-	if (!ast_strlen_zero(option_savewave)) {
-		ast_log(LOG_NOTICE, "Save waveform: %s\n", option_savewave);
-	}
-	if (!ast_strlen_zero(option_dtmftermc)) {
-		ast_log(LOG_NOTICE, "DTMF term char: %s\n", option_dtmftermc);
-	}
-	if (!ast_strlen_zero(option_dtmftermt)) {
-		ast_log(LOG_NOTICE, "DTMF terminate timeout: %s\n", option_dtmftermt);
-	}
-	if (!ast_strlen_zero(option_dtmfdigitt)) {
-		ast_log(LOG_NOTICE, "DTMF digit terminate timeout: %s\n", option_dtmfdigitt);
-	}
-	if (!ast_strlen_zero(option_speechit)) {
-		ast_log(LOG_NOTICE, "Speech incomplete timeout : %s\n", option_speechit);
-	}
-	if (!ast_strlen_zero(option_speechct)) {
-		ast_log(LOG_NOTICE, "Speech complete timeout: %s\n", option_speechct);
-	}
-	if (!ast_strlen_zero(option_startinputt)) {
-		ast_log(LOG_NOTICE, "Start-input timeout: %s\n", option_startinputt);
-	}
-	if (!ast_strlen_zero(option_noinputt)) {
-		ast_log(LOG_NOTICE, "No-input timeout: %s\n", option_noinputt);
-	}
-	if (!ast_strlen_zero(option_nbest)) {
-		ast_log(LOG_NOTICE, "N-best list length: %s\n", option_nbest);
-	}
-	if (!ast_strlen_zero(option_speedvsa)) {
-		ast_log(LOG_NOTICE, "Speed vs accuracy: %s\n", option_speedvsa);
-	}
-	if (!ast_strlen_zero(option_mediatype)) {
-		ast_log(LOG_NOTICE, "Media Type: %s\n", option_mediatype);
-	}
-
-	if (strlen(option_interrupt) > 0) {
-		dtmf_enable = 1;
-
-		if (strcasecmp(option_interrupt, "any") == 0) {
-			strncpy(option_interrupt, AST_DIGIT_ANY, sizeof(option_interrupt) - 1);
-			option_interrupt[sizeof(option_interrupt) - 1] = '\0';
-		} else if (strcasecmp(option_interrupt, "none") == 0)
-			dtmf_enable = 2;
+			if (strcasecmp(mrcprecog_options.params[OPT_ARG_INTERRUPT], "any") == 0) {
+				mrcprecog_options.params[OPT_ARG_INTERRUPT] = AST_DIGIT_ANY;
+			} else if (strcasecmp(mrcprecog_options.params[OPT_ARG_INTERRUPT], "none") == 0)
+				dtmf_enable = 2;
+		}
 	}
 	ast_log(LOG_NOTICE, "DTMF enable: %d\n", dtmf_enable);
 
@@ -1517,8 +1221,7 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 		ast_answer(chan);
 	ast_stopstream(chan);
 
-	apr_snprintf(name, sizeof(name) - 1, "ASR-%lu", (unsigned long int)speech_channel_number);
-	name[sizeof(name) - 1] = '\0';
+	name = apr_psprintf(pool, "ASR-%lu", (unsigned long int)speech_channel_number);
 
 	ast_format_compat nreadformat;
 	ast_format_clear(&nreadformat);
@@ -1527,67 +1230,27 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 	/* if (speech_channel_create(&schannel, name, SPEECH_CHANNEL_RECOGNIZER, &globals.recog, "L16", samplerate, chan) != 0) { */
 	if (speech_channel_create(&schannel, name, SPEECH_CHANNEL_RECOGNIZER, mrcprecog, format_to_str(&nreadformat), samplerate, chan) != 0) {
 		res = -1;
-		goto done;
+		return mrcprecog_exit(chan, NULL, pool, res);
 	}
 
-	profile = get_recog_profile(option_profile);
+	const char *profile_name = NULL;
+	if ((mrcprecog_options.flags & MRCPRECOG_PROFILE) == MRCPRECOG_PROFILE) {
+		if (!ast_strlen_zero(mrcprecog_options.params[OPT_ARG_PROFILE])) {
+			profile_name = mrcprecog_options.params[OPT_ARG_PROFILE];
+		}
+	}
+	
+	profile = get_recog_profile(profile_name);
 	if (!profile) {
 		ast_log(LOG_ERROR, "(%s) Can't find profile, %s\n", name, profile_name);
 		res = -1;
-		speech_channel_destroy(schannel);
-		goto done;
+		return mrcprecog_exit(chan, schannel, pool, res);
 	}
 
 	if (speech_channel_open(schannel, profile) != 0) {
 		res = -1;
-		speech_channel_destroy(schannel);
-		goto done;
+		return mrcprecog_exit(chan, schannel, pool, res);
 	}
-
-	if (!ast_strlen_zero(option_timeout))
-		speech_channel_set_param(schannel, "recognition-timeout", option_timeout);
-	if (!ast_strlen_zero(option_confidencethresh))
-		speech_channel_set_param(schannel, "confidence-threshold", option_confidencethresh);
-	if (!ast_strlen_zero(option_inputwaveuri))
-		speech_channel_set_param(schannel, "input-waveform-uri", option_inputwaveuri);
-	if (!ast_strlen_zero(option_earlynomatch))
-		speech_channel_set_param(schannel, "earlynomatch",option_earlynomatch);
-	if (!ast_strlen_zero(option_cleardtmfbuf))
-		speech_channel_set_param(schannel, "clear-dtmf-buffer", option_cleardtmfbuf);
-	if (!ast_strlen_zero(option_hotwordmin))
-		speech_channel_set_param(schannel, "hotword-min-duration", option_hotwordmin);
-	if (!ast_strlen_zero(option_hotwordmax))
-		speech_channel_set_param(schannel, "hotword-max-duration", option_hotwordmax);
-	if (!ast_strlen_zero(option_recogmode))
-		speech_channel_set_param(schannel, "recognition-mode", option_recogmode);
-	if (!ast_strlen_zero(option_newaudioc))
-		speech_channel_set_param(schannel, "new-audio-channel", option_newaudioc);
-	if (!ast_strlen_zero(option_savewave))
-		speech_channel_set_param(schannel, "save-waveform", option_savewave);
-	if (!ast_strlen_zero(option_dtmftermc))
-		speech_channel_set_param(schannel, "dtmf-term-char", option_dtmftermc);
-	if (!ast_strlen_zero(option_dtmftermt))
-		speech_channel_set_param(schannel, "dtmf-term-timeout", option_dtmftermt);
-	if (!ast_strlen_zero(option_dtmfdigitt))
-		speech_channel_set_param(schannel, "dtmf-interdigit-timeout", option_dtmfdigitt);
-	if (!ast_strlen_zero(option_speechit))
-		speech_channel_set_param(schannel, "speech-incomplete-timeout", option_speechit);
-	if (!ast_strlen_zero(option_speechct))
-		speech_channel_set_param(schannel, "speech-complete-timeout", option_speechct);
-	if (!ast_strlen_zero(option_startinputt))
-		speech_channel_set_param(schannel, "start-input-timers", option_startinputt);
-	if (!ast_strlen_zero(option_noinputt))
-		speech_channel_set_param(schannel, "no-input-timeout", option_noinputt);
-	if (!ast_strlen_zero(option_nbest))
-		speech_channel_set_param(schannel, "n-best-list-length", option_nbest);
-	if (!ast_strlen_zero(option_speedvsa))
-		speech_channel_set_param(schannel, "speed-vs-accuracy", option_speedvsa);
-	if (!ast_strlen_zero(option_mediatype))
-		speech_channel_set_param(schannel, "media-type", option_mediatype);
-	if (!ast_strlen_zero(option_senselevel))
-		speech_channel_set_param(schannel, "sensitivity-level", option_senselevel);
-	if (!ast_strlen_zero(option_speechlanguage))
-		speech_channel_set_param(schannel, "speech-language", option_speechlanguage);
 
 	ast_format_compat oreadformat;
 	ast_format_clear(&oreadformat);
@@ -1597,8 +1260,7 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 		ast_log(LOG_WARNING, "Unable to set read format to signed linear\n");
 		res = -1;
 		speech_channel_stop(schannel);
-		speech_channel_destroy(schannel);
-		goto done;
+		return mrcprecog_exit(chan, schannel, pool, res);
 	}
 	
 	const char *grammar_content = NULL;
@@ -1607,8 +1269,7 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 		ast_log(LOG_WARNING, "Unable to determine grammar type\n");
 		res = -1;
 		speech_channel_stop(schannel);
-		speech_channel_destroy(schannel);
-		goto done;
+		return mrcprecog_exit(chan, schannel, pool, res);
 	}
 	ast_log(LOG_DEBUG, "Grammar type is: %i\n", grammar_type);
 
@@ -1616,8 +1277,7 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 		ast_log(LOG_ERROR, "Unable to load grammar\n");
 		res = -1;
 		speech_channel_stop(schannel);
-		speech_channel_destroy(schannel);
-		goto done;
+		return mrcprecog_exit(chan, schannel, pool, res);
 	}
 
 	struct ast_filestream* fs = NULL;
@@ -1626,28 +1286,31 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 	ast_stopstream(chan);
 
 	/* Open file, get file length, seek to begin, apply and play. */ 
-	if (!ast_strlen_zero(option_filename)) {
-		if ((fs = ast_openstream(chan, option_filename, ast_channel_language(chan))) == NULL) {
-			ast_log(LOG_WARNING, "ast_openstream failed on %s for %s\n", ast_channel_name(chan), option_filename);
-		} else {
-			if (ast_seekstream(fs, -1, SEEK_END) == -1) {
-				ast_log(LOG_WARNING, "ast_seekstream failed on %s for %s\n", ast_channel_name(chan), option_filename);
+	if ((mrcprecog_options.flags & MRCPRECOG_FILENAME) == MRCPRECOG_FILENAME) {
+		if (!ast_strlen_zero(mrcprecog_options.params[OPT_ARG_FILENAME])) {
+			const char *filename = mrcprecog_options.params[OPT_ARG_FILENAME];
+			if ((fs = ast_openstream(chan, filename, ast_channel_language(chan))) == NULL) {
+				ast_log(LOG_WARNING, "ast_openstream failed on %s for %s\n", ast_channel_name(chan), filename);
 			} else {
-				filelength = ast_tellstream(fs);
-				ast_log(LOG_NOTICE, "file length:%"APR_OFF_T_FMT"\n", filelength);
+				if (ast_seekstream(fs, -1, SEEK_END) == -1) {
+					ast_log(LOG_WARNING, "ast_seekstream failed on %s for %s\n", ast_channel_name(chan), filename);
+				} else {
+					filelength = ast_tellstream(fs);
+					ast_log(LOG_NOTICE, "file length:%"APR_OFF_T_FMT"\n", filelength);
+				}
+
+				if (ast_seekstream(fs, 0, SEEK_SET) == -1) {
+					ast_log(LOG_WARNING, "ast_seekstream failed on %s for %s\n", ast_channel_name(chan), filename);
+				} else if (ast_applystream(chan, fs) == -1) {
+					ast_log(LOG_WARNING, "ast_applystream failed on %s for %s\n", ast_channel_name(chan), filename);
+				} else if (ast_playstream(fs) == -1) {
+					ast_log(LOG_WARNING, "ast_playstream failed on %s for %s\n", ast_channel_name(chan), filename);
+				}
 			}
 
-			if (ast_seekstream(fs, 0, SEEK_SET) == -1) {
-				ast_log(LOG_WARNING, "ast_seekstream failed on %s for %s\n", ast_channel_name(chan), option_filename);
-			} else if (ast_applystream(chan, fs) == -1) {
-				ast_log(LOG_WARNING, "ast_applystream failed on %s for %s\n", ast_channel_name(chan), option_filename);
-			} else if (ast_playstream(fs) == -1) {
-				ast_log(LOG_WARNING, "ast_playstream failed on %s for %s\n", ast_channel_name(chan), option_filename);
+			if (bargein == 0) {
+				res = ast_waitstream(chan, "");
 			}
-		}
-
-		if (bargein == 0) {
-			res = ast_waitstream(chan, "");
 		}
 	}
 
@@ -1801,13 +1464,13 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 	}
 	/* End of speech detection. */
 
-	int i = 0;
+	i = 0;
 	if (((dtmf_enable == 1) && (dtmfkey != -1)) || (waitres < 0)) {
 		/* Skip as we have to return to specific dialplan extension, or a error occurred on the channel */
 	} else {
 		ast_log(LOG_NOTICE, "Recognizing\n");
 
-		if (recog_channel_start(schannel, name) == 0) {
+		if (recog_channel_start(schannel, name, mrcprecog_options.recog_hfs) == 0) {
 			if ((dtmfkey != -1) && (schannel->dtmf_generator != NULL)) {
 				char digits[2];
 
@@ -1903,7 +1566,7 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 							dtmfkey = -1;
 						}
 					} else if (dtmf_enable == 1) { /* Stop streaming and return DTMF value to the dialplan if within i chars. */
-						if (strchr(option_interrupt, dtmfkey) || (strcmp(option_interrupt,"any")))
+						if (strchr(mrcprecog_options.params[OPT_ARG_INTERRUPT], dtmfkey) || (strcmp(mrcprecog_options.params[OPT_ARG_INTERRUPT],"any")))
 							break ; 
 
 						/* Continue if not an i-key. */
@@ -1949,37 +1612,15 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 		ast_log(LOG_ERROR, "Unable to unload grammar\n");
 		res = -1;
 		speech_channel_stop(schannel);
-		speech_channel_destroy(schannel);
-		goto done;
+		return mrcprecog_exit(chan, schannel, pool, res);
 	}
 
 	ast_channel_set_readformat(chan, &oreadformat);
 
 	speech_channel_stop(schannel);
-	speech_channel_destroy(schannel);
 	ast_stopstream(chan);
 	
-done:
-	if (res < 0)
-		pbx_builtin_setvar_helper(chan, "RECOGSTATUS", "ERROR");
-	else
-		pbx_builtin_setvar_helper(chan, "RECOGSTATUS", "OK");
-
-	if ((res < 0) && (!ast_check_hangup(chan)))
-		res = 0;
-
-	return res;
-}
-
-/* Create a parameter ID. */
-static unimrcp_param_id_t *unimrcp_param_id_create(int id, apr_pool_t *pool)
-{   
-	unimrcp_param_id_t *param = (unimrcp_param_id_t *)apr_palloc(pool, sizeof(unimrcp_param_id_t));
-
-	if (param != NULL)
-		param->id = id;
-
-	return param;
+	return mrcprecog_exit(chan, schannel, pool, res);
 }
 
 int load_mrcprecog_app()
@@ -2032,45 +1673,6 @@ int load_mrcprecog_app()
 		return -1;
 	}
 
-	/* Create a hash for the recognizer parameter map. */
-	param_id_map = apr_hash_make(pool);
-
-	if (param_id_map != NULL) {
-		apr_hash_set(param_id_map, apr_pstrdup(pool, "confidence-threshold"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_CONFIDENCE_THRESHOLD, pool));
-		apr_hash_set(param_id_map, apr_pstrdup(pool, "sensitivity-level"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_SENSITIVITY_LEVEL, pool));
-		apr_hash_set(param_id_map, apr_pstrdup(pool, "speed-vs-accuracy"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_SPEED_VS_ACCURACY, pool));
-		apr_hash_set(param_id_map, apr_pstrdup(pool, "n-best-list-length"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_N_BEST_LIST_LENGTH, pool));
-		apr_hash_set(param_id_map, apr_pstrdup(pool, "no-input-timeout"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_NO_INPUT_TIMEOUT, pool));
-		apr_hash_set(param_id_map, apr_pstrdup(pool, "recognition-timeout"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_RECOGNITION_TIMEOUT, pool));
-		apr_hash_set(param_id_map, apr_pstrdup(pool, "waveform-url"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_WAVEFORM_URI, pool));
-		apr_hash_set(param_id_map, apr_pstrdup(pool, "completion-cause"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_COMPLETION_CAUSE, pool));
-		apr_hash_set(param_id_map, apr_pstrdup(pool, "recognizer-context-block"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_RECOGNIZER_CONTEXT_BLOCK, pool));
-		apr_hash_set(param_id_map, apr_pstrdup(pool, "start-input-timers"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_START_INPUT_TIMERS, pool));
-		apr_hash_set(param_id_map, apr_pstrdup(pool, "speech-complete-timeout"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_SPEECH_COMPLETE_TIMEOUT, pool));
-		apr_hash_set(param_id_map, apr_pstrdup(pool, "speech-incomplete-timeout"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_SPEECH_INCOMPLETE_TIMEOUT, pool));
-		apr_hash_set(param_id_map, apr_pstrdup(pool, "dtmf-interdigit-timeout"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_DTMF_INTERDIGIT_TIMEOUT, pool));
-		apr_hash_set(param_id_map, apr_pstrdup(pool, "dtmf-term-timeout"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_DTMF_TERM_TIMEOUT, pool));
-		apr_hash_set(param_id_map, apr_pstrdup(pool, "dtmf-term-char"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_DTMF_TERM_CHAR, pool));
-		apr_hash_set(param_id_map, apr_pstrdup(pool, "failed-uri"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_FAILED_URI, pool));
-		apr_hash_set(param_id_map, apr_pstrdup(pool, "failed-uri-cause"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_FAILED_URI_CAUSE, pool));
-		apr_hash_set(param_id_map, apr_pstrdup(pool, "save-waveform"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_SAVE_WAVEFORM, pool));
-		apr_hash_set(param_id_map, apr_pstrdup(pool, "new-audio-channel"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_NEW_AUDIO_CHANNEL, pool));
-		apr_hash_set(param_id_map, apr_pstrdup(pool, "speech-language"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_SPEECH_LANGUAGE, pool));
-		apr_hash_set(param_id_map, apr_pstrdup(pool, "input-type"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_INPUT_TYPE, pool));
-		apr_hash_set(param_id_map, apr_pstrdup(pool, "input-waveform-uri"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_INPUT_WAVEFORM_URI, pool));
-		apr_hash_set(param_id_map, apr_pstrdup(pool, "completion-reason"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_COMPLETION_REASON, pool));
-		apr_hash_set(param_id_map, apr_pstrdup(pool, "media-type"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_MEDIA_TYPE, pool));
-		apr_hash_set(param_id_map, apr_pstrdup(pool, "ver-buffer-utterance"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_VER_BUFFER_UTTERANCE, pool));
-		apr_hash_set(param_id_map, apr_pstrdup(pool, "recognition-mode"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_RECOGNITION_MODE, pool));
-		apr_hash_set(param_id_map, apr_pstrdup(pool, "cancel-if-queue"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_CANCEL_IF_QUEUE, pool));
-		apr_hash_set(param_id_map, apr_pstrdup(pool, "hotword-max-duration"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_HOTWORD_MAX_DURATION, pool));
-		apr_hash_set(param_id_map, apr_pstrdup(pool, "hotword-min-duration"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_HOTWORD_MIN_DURATION, pool));
-		apr_hash_set(param_id_map, apr_pstrdup(pool, "interpret-text"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_INTERPRET_TEXT, pool));
-		apr_hash_set(param_id_map, apr_pstrdup(pool, "dtmf-buffer-time"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_DTMF_BUFFER_TIME, pool));
-		apr_hash_set(param_id_map, apr_pstrdup(pool, "clear-dtmf-buffer"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_CLEAR_DTMF_BUFFER, pool));
-		apr_hash_set(param_id_map, apr_pstrdup(pool, "early-no-match"), APR_HASH_KEY_STRING, unimrcp_param_id_create(RECOGNIZER_HEADER_EARLY_NO_MATCH, pool));
-	}
-
 	apr_hash_set(globals.apps, app_recog, APR_HASH_KEY_STRING, mrcprecog);
 
 	return 0;
@@ -2082,10 +1684,6 @@ int unload_mrcprecog_app()
 		ast_log(LOG_ERROR, "Application %s doesn't exist\n", app_recog);
 		return -1;
 	}
-
-	/* Clear parameter ID map. */
-	if (param_id_map != NULL)
-		apr_hash_clear(param_id_map);
 
 	apr_hash_set(globals.apps, app_recog, APR_HASH_KEY_STRING, NULL);
 	mrcprecog = NULL;

@@ -109,15 +109,32 @@ static char *synthdescrip =
 
 static ast_mrcp_application_t *mrcpsynth = NULL;
 
-/* Maps MRCP header to unimrcp header handler function. */
-static apr_hash_t *param_id_map;
-
-/* UniMRCP parameter ID container. */
-struct unimrcp_param_id {
-	/* The parameter ID. */
-	int id;
+/* The enumeration of application options (excluding the MRCP params). */
+enum mrcpsynth_option_flags {
+	MRCPSYNTH_PROFILE        = (1 << 0),
+	MRCPSYNTH_INTERRUPT      = (2 << 0),
+	MRCPSYNTH_FILENAME       = (3 << 0)
 };
-typedef struct unimrcp_param_id unimrcp_param_id_t;
+
+/* The enumeration of option arguments. */
+enum mrcpsynth_option_args {
+	OPT_ARG_PROFILE    = 0,
+	OPT_ARG_INTERRUPT  = 1,
+	OPT_ARG_FILENAME   = 2,
+
+	/* This MUST be the last value in this enum! */
+	OPT_ARG_ARRAY_SIZE = 3
+};
+
+/* The structure which holds the application options (including the MRCP params). */
+struct mrcpsynth_options_t {
+	apr_hash_t *synth_hfs;
+
+	int         flags;
+	const char *params[OPT_ARG_ARRAY_SIZE];
+};
+
+typedef struct mrcpsynth_options_t mrcpsynth_options_t;
 
 /* Default frame size:
  *
@@ -361,160 +378,14 @@ static apt_bool_t synth_stream_write(mpf_audio_stream_t *stream, const mpf_frame
 	return TRUE;
 }
 
-/* Set parameter in a synthesizer MRCP header. */
-static int synth_channel_set_header(speech_channel_t *schannel, int id, char *val, mrcp_message_t *msg, mrcp_synth_header_t *synth_hdr)
-{
-	if ((schannel == NULL) || (msg == NULL) || (synth_hdr == NULL))
-		return -1;
-
-	switch (id) {
-		case SYNTHESIZER_HEADER_VOICE_GENDER:
-			if (strcasecmp("male", val) == 0)
-				synth_hdr->voice_param.gender = VOICE_GENDER_MALE;
-			else if (strcasecmp("female", val) == 0)
-				synth_hdr->voice_param.gender = VOICE_GENDER_FEMALE;
-			else if (strcasecmp("neutral", val) == 0)
-				synth_hdr->voice_param.gender = VOICE_GENDER_NEUTRAL;
-			else {
-				ast_log(LOG_WARNING, "(%s) ignoring invalid voice gender, %s\n", schannel->name, val);
-				break;
-			}
-			mrcp_resource_header_property_add(msg, SYNTHESIZER_HEADER_VOICE_GENDER);
-			break;
-
-		case SYNTHESIZER_HEADER_VOICE_AGE: {
-			int age = atoi(val);
-			if ((age > 0) && (age < 1000)) {
-				synth_hdr->voice_param.age = age;
-				mrcp_resource_header_property_add(msg, SYNTHESIZER_HEADER_VOICE_AGE);
-			} else
-				ast_log(LOG_WARNING, "(%s) ignoring invalid voice age, %s\n", schannel->name, val);
-			break;
-		}
-
-		case SYNTHESIZER_HEADER_VOICE_VARIANT: {
-			int variant = atoi(val);
-			if (variant > 0) {
-				synth_hdr->voice_param.variant = variant;
-				mrcp_resource_header_property_add(msg, SYNTHESIZER_HEADER_VOICE_VARIANT);
-			} else
-				ast_log(LOG_WARNING, "(%s) ignoring invalid voice variant, %s\n", schannel->name, val);
-			break;
-		}
-
-		case SYNTHESIZER_HEADER_VOICE_NAME:
-			apt_string_assign(&synth_hdr->voice_param.name, val, msg->pool);
-			mrcp_resource_header_property_add(msg, SYNTHESIZER_HEADER_VOICE_NAME);
-			break;
-
-		case SYNTHESIZER_HEADER_KILL_ON_BARGE_IN:
-			synth_hdr->kill_on_barge_in = (strcasecmp("true", val) == 0);
-			mrcp_resource_header_property_add(msg, SYNTHESIZER_HEADER_KILL_ON_BARGE_IN);
-			break;
-
-		case SYNTHESIZER_HEADER_PROSODY_VOLUME:
-			if ((isdigit(*val)) || (*val == '.')) {
-				synth_hdr->prosody_param.volume.type = PROSODY_VOLUME_TYPE_NUMERIC;
-				synth_hdr->prosody_param.volume.value.numeric = (float)atof(val);
-			} else if (*val == '+' || *val == '-') {
-				synth_hdr->prosody_param.volume.type = PROSODY_VOLUME_TYPE_RELATIVE_CHANGE;
-				synth_hdr->prosody_param.volume.value.relative = (float)atof(val);
-			} else if (strcasecmp("silent", val) == 0) {
-				synth_hdr->prosody_param.volume.type = PROSODY_VOLUME_TYPE_LABEL;
-				synth_hdr->prosody_param.volume.value.label = PROSODY_VOLUME_SILENT;
-			} else if (strcasecmp("x-soft", val) == 0) {
-				synth_hdr->prosody_param.volume.type = PROSODY_VOLUME_TYPE_LABEL;
-				synth_hdr->prosody_param.volume.value.label = PROSODY_VOLUME_XSOFT;
-			} else if (strcasecmp("soft", val) == 0) {
-				synth_hdr->prosody_param.volume.type = PROSODY_VOLUME_TYPE_LABEL;
-				synth_hdr->prosody_param.volume.value.label = PROSODY_VOLUME_SOFT;
-			} else if (strcasecmp("medium", val) == 0) {
-				synth_hdr->prosody_param.volume.type = PROSODY_VOLUME_TYPE_LABEL;
-				synth_hdr->prosody_param.volume.value.label = PROSODY_VOLUME_MEDIUM;
-			} else if (strcasecmp("loud", val) == 0) {
-				synth_hdr->prosody_param.volume.type = PROSODY_VOLUME_TYPE_LABEL;
-				synth_hdr->prosody_param.volume.value.label = PROSODY_VOLUME_LOUD;
-			} else if (strcasecmp("x-loud", val) == 0) {
-				synth_hdr->prosody_param.volume.type = PROSODY_VOLUME_TYPE_LABEL;
-				synth_hdr->prosody_param.volume.value.label = PROSODY_VOLUME_XLOUD;
-			} else if (strcasecmp("default", val) == 0) {
-				synth_hdr->prosody_param.volume.type = PROSODY_VOLUME_TYPE_LABEL;
-				synth_hdr->prosody_param.volume.value.label = PROSODY_VOLUME_DEFAULT;
-			} else {
-				ast_log(LOG_WARNING, "(%s) ignoring invalid prosody volume, %s\n", schannel->name, val);
-				break;
-			}
-			mrcp_resource_header_property_add(msg, SYNTHESIZER_HEADER_PROSODY_VOLUME);
-			break;
-
-		case SYNTHESIZER_HEADER_PROSODY_RATE:
-			if ((isdigit(*val)) || (*val == '.')) {
-				synth_hdr->prosody_param.rate.type = PROSODY_RATE_TYPE_RELATIVE_CHANGE;
-				synth_hdr->prosody_param.rate.value.relative = (float)atof(val);
-			} else if (strcasecmp("x-slow", val) == 0) {
-				synth_hdr->prosody_param.rate.type = PROSODY_RATE_TYPE_LABEL;
-				synth_hdr->prosody_param.rate.value.label = PROSODY_RATE_XSLOW;
-			} else if (strcasecmp("slow", val) == 0) {
-				synth_hdr->prosody_param.rate.type = PROSODY_RATE_TYPE_LABEL;
-				synth_hdr->prosody_param.rate.value.label = PROSODY_RATE_SLOW;
-			} else if (strcasecmp("medium", val) == 0) {
-				synth_hdr->prosody_param.rate.type = PROSODY_RATE_TYPE_LABEL;
-				synth_hdr->prosody_param.rate.value.label = PROSODY_RATE_MEDIUM;
-			} else if (strcasecmp("fast", val) == 0) {
-				synth_hdr->prosody_param.rate.type = PROSODY_RATE_TYPE_LABEL;
-				synth_hdr->prosody_param.rate.value.label = PROSODY_RATE_FAST;
-			} else if (strcasecmp("x-fast", val) == 0) {
-				synth_hdr->prosody_param.rate.type = PROSODY_RATE_TYPE_LABEL;
-				synth_hdr->prosody_param.rate.value.label = PROSODY_RATE_XFAST;
-			} else if (strcasecmp("default", val) == 0) {
-				synth_hdr->prosody_param.rate.type = PROSODY_RATE_TYPE_LABEL;
-				synth_hdr->prosody_param.rate.value.label = PROSODY_RATE_DEFAULT;
-			} else {
-				ast_log(LOG_WARNING, "(%s) ignoring invalid prosody rate, %s\n", schannel->name, val);
-				break;
-			}
-			mrcp_resource_header_property_add(msg, SYNTHESIZER_HEADER_PROSODY_RATE);
-			break;
-
-		case SYNTHESIZER_HEADER_SPEECH_LANGUAGE:
-			apt_string_assign(&synth_hdr->speech_language, val, msg->pool);
-			mrcp_resource_header_property_add(msg, SYNTHESIZER_HEADER_SPEECH_LANGUAGE);
-			break;
-		
-		case SYNTHESIZER_HEADER_LOAD_LEXICON:
-			synth_hdr->load_lexicon = (strcasecmp("true", val) == 0);
-			mrcp_resource_header_property_add(msg, SYNTHESIZER_HEADER_LOAD_LEXICON);
-			break;
-
-		/* Unsupported by this module. */
-		case SYNTHESIZER_HEADER_JUMP_SIZE:
-		case SYNTHESIZER_HEADER_SPEAKER_PROFILE:
-		case SYNTHESIZER_HEADER_COMPLETION_CAUSE:
-		case SYNTHESIZER_HEADER_COMPLETION_REASON:
-		case SYNTHESIZER_HEADER_SPEECH_MARKER:
-		case SYNTHESIZER_HEADER_FETCH_HINT:
-		case SYNTHESIZER_HEADER_AUDIO_FETCH_HINT:
-		case SYNTHESIZER_HEADER_FAILED_URI:
-		case SYNTHESIZER_HEADER_FAILED_URI_CAUSE:
-		case SYNTHESIZER_HEADER_SPEAK_RESTART:
-		case SYNTHESIZER_HEADER_SPEAK_LENGTH:
-		case SYNTHESIZER_HEADER_LEXICON_SEARCH_ORDER:
-		default:
-			ast_log(LOG_ERROR, "(%s) unsupported SYNTHESIZER_HEADER type (unsupported in this module)\n", schannel->name);
-			break;
-	}
-	
-	return 0;
-}
-
 /* Set parameters in a synthesizer MRCP header. */
-static int synth_channel_set_params(speech_channel_t *schannel, mrcp_message_t *msg, mrcp_generic_header_t *gen_hdr, mrcp_synth_header_t *synth_hdr)
+static int synth_channel_set_params(speech_channel_t *schannel, mrcp_message_t *msg, apr_hash_t *header_fields)
 {
-	if ((schannel != NULL) && (msg != NULL) && (gen_hdr != NULL) && (synth_hdr != NULL)) {
-		/* Loop through each param and add to synth header or vendor-specific-params. */
+	if (schannel && msg && header_fields) {
+		/* Loop through each param and add to the message. */
 		apr_hash_index_t *hi = NULL;
 
-		for (hi = apr_hash_first(NULL, schannel->params); hi; hi = apr_hash_next(hi)) {
+		for (hi = apr_hash_first(NULL, header_fields); hi; hi = apr_hash_next(hi)) {
 			char *param_name = NULL;
 			char *param_val = NULL;
 			const void *key;
@@ -526,43 +397,22 @@ static int synth_channel_set_params(speech_channel_t *schannel, mrcp_message_t *
 			param_val = (char *)val;
 
 			if (param_name && (strlen(param_name) > 0) && param_val && (strlen(param_val) > 0)) {
-				unimrcp_param_id_t *id = NULL;
-
-				if (param_id_map != NULL)
-					id = (unimrcp_param_id_t *)apr_hash_get(param_id_map, param_name, APR_HASH_KEY_STRING);
-
-				if (id) {
-					ast_log(LOG_DEBUG, "(%s) %s: %s\n", schannel->name, param_name, param_val);
-					synth_channel_set_header(schannel, id->id, param_val, msg, synth_hdr);
-				} else {
-					apt_str_t apt_param_name = { 0 };
-					apt_str_t apt_param_val = { 0 };
-
-					/* This is probably a vendor-specific MRCP param. */
-					ast_log(LOG_DEBUG, "(%s) (vendor-specific value) %s: %s\n", schannel->name, param_name, param_val);
-					apt_string_set(&apt_param_name, param_name); /* Copy isn't necessary since apt_pair_array_append will do it. */
-					apt_string_set(&apt_param_val, param_val);
-
-					if (gen_hdr->vendor_specific_params == NULL) {
-						ast_log(LOG_DEBUG, "(%s) creating vendor specific pair array\n", schannel->name);
-						gen_hdr->vendor_specific_params = apt_pair_array_create(10, msg->pool);
+				ast_log(LOG_DEBUG, "(%s) %s: %s\n", schannel->name, param_name, param_val);
+				apt_header_field_t *header_field = apt_header_field_create_c(param_name, param_val, msg->pool);
+				if(header_field) {
+					if(mrcp_message_header_field_add(msg, header_field) == FALSE) {
+						ast_log(LOG_WARNING, "Error setting MRCP header %s=%s\n", param_name, param_val);
 					}
-
-					apt_pair_array_append(gen_hdr->vendor_specific_params, &apt_param_name, &apt_param_val, msg->pool);
 				}
 			}
 		}
-	
-		if (gen_hdr->vendor_specific_params != NULL)
-			mrcp_generic_header_property_add(msg, GENERIC_HEADER_VENDOR_SPECIFIC_PARAMS);
-	} else
-		ast_log(LOG_ERROR, "(unknown) channel error!\n");
+	}
 
 	return 0;
 }
 
 /* Send SPEAK request to synthesizer. */
-static int synth_channel_speak(speech_channel_t *schannel, const char *content, const char *content_type)
+static int synth_channel_speak(speech_channel_t *schannel, const char *content, const char *content_type, apr_hash_t *header_fields)
 {
 	int status = 0;
 	mrcp_message_t *mrcp_message = NULL;
@@ -608,7 +458,7 @@ static int synth_channel_speak(speech_channel_t *schannel, const char *content, 
 		}
 
 		/* Add params to MRCP message. */
-		synth_channel_set_params(schannel, mrcp_message, generic_header, synth_header);
+		synth_channel_set_params(schannel, mrcp_message, header_fields);
 
 		/* Set body (plain text or SSML). */
 		apt_string_assign(&mrcp_message->body, content, schannel->pool);
@@ -644,6 +494,90 @@ static int synth_channel_speak(speech_channel_t *schannel, const char *content, 
 	return status;
 }
 
+/* Apply application options. */
+static int mrcpsynth_option_apply(mrcpsynth_options_t *options, const char *key, const char *value)
+{
+	if (strcasecmp(key, "p") == 0) {
+		options->flags |= MRCPSYNTH_PROFILE;
+		options->params[OPT_ARG_PROFILE] = value;
+	} else if (strcasecmp(key, "i") == 0) {
+		options->flags |= MRCPSYNTH_INTERRUPT;
+		options->params[OPT_ARG_INTERRUPT] = value;
+	} else if (strcasecmp(key, "f") == 0) {
+		options->flags |= MRCPSYNTH_FILENAME;
+		options->params[OPT_ARG_FILENAME] = value;
+	} else if (strcasecmp(key, "l") == 0) {
+		apr_hash_set(options->synth_hfs, "Speech-Language", APR_HASH_KEY_STRING, value);
+	} else if (strcasecmp(key, "ll") == 0) {
+		apr_hash_set(options->synth_hfs, "Load-Lexicon", APR_HASH_KEY_STRING, value);
+	} else if (strcasecmp(key, "pv") == 0) {
+		apr_hash_set(options->synth_hfs, "Prosody-Volume", APR_HASH_KEY_STRING, value);
+	} else if (strcasecmp(key, "pr") == 0) {
+		apr_hash_set(options->synth_hfs, "Prosody-Rate", APR_HASH_KEY_STRING, value);
+	} else if (strcasecmp(key, "v") == 0) {
+		apr_hash_set(options->synth_hfs, "Voice-Name", APR_HASH_KEY_STRING, value);
+	} else if (strcasecmp(key, "vv") == 0) {
+		apr_hash_set(options->synth_hfs, "Voice-Variant", APR_HASH_KEY_STRING, value);
+	} else if (strcasecmp(key, "g") == 0) {
+		apr_hash_set(options->synth_hfs, "Voice-Gender", APR_HASH_KEY_STRING, value);
+	} else if (strcasecmp(key, "a") == 0) {
+		apr_hash_set(options->synth_hfs, "Voice-Age", APR_HASH_KEY_STRING, value);
+	}
+	else {
+		ast_log(LOG_WARNING, "Unknown option: %s\n", key);
+	}
+	return 0;
+}
+
+/* Parse application options. */
+static int mrcpsynth_options_parse(char *str, mrcpsynth_options_t *options, apr_pool_t *pool)
+{
+	char *s;
+	char *name, *value;
+	
+	if (!str) {
+		return 0;
+	}
+
+	ast_log(LOG_NOTICE, "Parse options: %s\n", str);
+	if ((options->synth_hfs = apr_hash_make(pool)) == NULL) {
+		return -1;
+	}
+
+	while ((s = strsep(&str, "&"))) {
+		value = s;
+		if ((name = strsep(&value, "=")) && value) {
+			ast_log(LOG_NOTICE, "Apply option: %s: %s\n", name, value);
+			mrcpsynth_option_apply(options, name, value);
+		}
+	}
+	return 0;
+}
+
+/* Exit the application. */
+static int mrcpsynth_exit(struct ast_channel *chan, speech_channel_t *schannel, apr_pool_t *pool, int res)
+{
+	if (!pool)
+		return -1;
+
+	if (schannel) {
+		speech_channel_destroy(schannel);
+		schannel = NULL;
+	}
+
+	if (res < 0)
+		pbx_builtin_setvar_helper(chan, "SYNTHSTATUS", "ERROR");
+	else
+		pbx_builtin_setvar_helper(chan, "SYNTHSTATUS", "OK");
+
+	if ((res < 0) && (!ast_check_hangup(chan)))
+		res = 0;
+
+	apr_pool_destroy(pool);
+	return res;
+}
+
+/* The entry point of the application. */
 static int app_synth_exec(struct ast_channel *chan, ast_app_data data)
 {
 	ast_format_compat nwriteformat;
@@ -662,15 +596,17 @@ static int app_synth_exec(struct ast_channel *chan, ast_app_data data)
 	apr_size_t len;
 	int rres = 0;
 	speech_channel_t *schannel = NULL;
-	const char *profile_name = NULL;
 	ast_mrcp_profile_t *profile = NULL;
 	apr_uint32_t speech_channel_number = get_next_speech_channel_number();
-	char name[200] = { 0 };
+	const char *name;
 	FILE* fp = NULL;
 	char buffer[framesize];
 	int dtmfkey = -1;
 	int res = 0;
 	char *parse;
+	apr_pool_t *pool;
+	int i;
+	mrcpsynth_options_t mrcpsynth_options;
 
 	AST_DECLARE_APP_ARGS(args,
 		AST_APP_ARG(text);
@@ -683,152 +619,36 @@ static int app_synth_exec(struct ast_channel *chan, ast_app_data data)
 		return -1;
 	}
 
+	if ((pool = apt_pool_create()) == NULL) {
+		ast_log(LOG_ERROR, "Unable to create memory pool for channel\n");
+		pbx_builtin_setvar_helper(chan, "RECOGSTATUS", "ERROR");
+		return -1;
+	}
+
 	/* We need to make a copy of the input string if we are going to modify it! */
 	parse = ast_strdupa(data);
 
 	AST_STANDARD_APP_ARGS(args, parse);
 
-	char option_profile[256] = { 0 };
-	char option_prate[32]= { 0 };
-	char option_pvolume[32]= { 0 };
-	char option_interrupt[64] = { 0 };
-	char option_filename[384] = { 0 };
-	char option_language[16] = { 0 }; 
-	char option_loadlexicon[16] = { 0 }; 
-	char option_voicename[128] = { 0 };
-	char option_voicegender[16] = { 0 }; 
-	char option_voiceage[32] = { 0 }; 
-	char option_voicevariant[128] = { 0 }; 
+	mrcpsynth_options.synth_hfs = NULL;
+	mrcpsynth_options.flags = 0;
+	for (i=0; i<OPT_ARG_ARRAY_SIZE; i++)
+		mrcpsynth_options.params[i] = NULL;
 
 	if (!ast_strlen_zero(args.options)) {
-		char tempstr[1024];
-		char* token;
-
-		strncpy(tempstr, args.options, sizeof(tempstr) - 1);
-		tempstr[sizeof(tempstr) - 1] = '\0';
-
-		trimstr(tempstr);
-
-		do {
-			token = strstr(tempstr, "&");
-
-			if (token != NULL)
-				tempstr[token - tempstr] = '\0';
-
-			char* pos;
-
-			char tempstr2[1024];
-			strncpy(tempstr2, tempstr, sizeof(tempstr2) - 1);
-			tempstr2[sizeof(tempstr2) - 1] = '\0';			
-			trimstr(tempstr2);
-
-			ast_log(LOG_NOTICE, "Option=|%s|\n", tempstr2);
-
-			if ((pos = strstr(tempstr2, "=")) != NULL) {
-				*pos = '\0';
-
-				char* key = tempstr2;
-				char* value = pos + 1;
-
-				char tempstr3[1024];
-				char tempstr4[1024];
-
-				strncpy(tempstr3, key, sizeof(tempstr3) - 1);
-				tempstr3[sizeof(tempstr3) - 1] = '\0';			
-				trimstr(tempstr3);
-
-				strncpy(tempstr4, value, sizeof(tempstr4) - 1);
-				tempstr4[sizeof(tempstr4) - 1] = '\0';
-				trimstr(tempstr4);
-
-				key = tempstr3;
-				value = tempstr4;
-
-				if (strcasecmp(key, "p") == 0) {
-					strncpy(option_profile, value, sizeof(option_profile) - 1);
-					option_profile[sizeof(option_profile) - 1] = '\0';
-				} else if (strcasecmp(key, "i") == 0) {
-					strncpy(option_interrupt, value, sizeof(option_interrupt) - 1);
-					option_interrupt[sizeof(option_interrupt) - 1] = '\0';
-				} else if (strcasecmp(key, "f") == 0) {
-					strncpy(option_filename, value, sizeof(option_filename) - 1);
-					option_filename[sizeof(option_filename) - 1] = '\0';
-				} else if (strcasecmp(key, "l") == 0) {
-					strncpy(option_language, value, sizeof(option_language) - 1);
-					option_language[sizeof(option_language) - 1] = '\0';
-				} else if (strcasecmp(key, "ll") == 0) {
-					strncpy(option_loadlexicon, value, sizeof(option_loadlexicon) - 1);
-					option_loadlexicon[sizeof(option_loadlexicon) - 1] = '\0';
-				} else if (strcasecmp(key, "pv") == 0) {
-					strncpy(option_pvolume, value, sizeof(option_pvolume) - 1);
-					option_pvolume[sizeof(option_pvolume) - 1] = '\0';
-				} else if (strcasecmp(key, "pr") == 0) {
-					strncpy(option_prate, value, sizeof(option_prate) - 1);
-					option_prate[sizeof(option_prate) - 1] = '\0';
-				} else if (strcasecmp(key, "v") == 0) {
-					strncpy(option_voicename, value, sizeof(option_voicename) - 1);
-					option_voicename[sizeof(option_voicename) - 1] = '\0';
-				} else if (strcasecmp(key, "vv") == 0) {
-					strncpy(option_voicevariant, value, sizeof(option_voicevariant) - 1);
-					option_voicevariant[sizeof(option_voicevariant) - 1] = '\0';
-				} else if (strcasecmp(key, "g") == 0) {
-					strncpy(option_voicegender, value, sizeof(option_voicegender) - 1);
-					option_voicegender[sizeof(option_voicegender) - 1] = '\0';
-				} else if (strcasecmp(key, "a") == 0) {
-					strncpy(option_voiceage, value, sizeof(option_voiceage) - 1);
-					option_voiceage[sizeof(option_voiceage) - 1] = '\0';
-				}	
-			}
-
-			if (token != NULL) {
-				strncpy(tempstr, token + 1, sizeof(tempstr) - 1);
-				tempstr[sizeof(tempstr) - 1] = '\0';
-			}
-		} while (token != NULL);
-	}
-	
-	if (!ast_strlen_zero(option_profile)) {
-		ast_log(LOG_NOTICE, "Profile to use: %s\n", option_profile);
-	}
-	if (!ast_strlen_zero(args.text)) {
-		ast_log(LOG_NOTICE, "Text to synthesize is: %s\n", args.text);
-	}
-	if (!ast_strlen_zero(option_filename)) {
-		ast_log(LOG_NOTICE, "Filename to save to: %s\n", option_filename);
-	}
-	if (!ast_strlen_zero(option_language)) {
-		ast_log(LOG_NOTICE, "Language to use: %s\n", option_language);
-	}
-	if (!ast_strlen_zero(option_loadlexicon)) {
-		ast_log(LOG_NOTICE, "Load-Lexicon: %s\n", option_loadlexicon);
-	}
-	if (!ast_strlen_zero(option_voicename)) {
-		ast_log(LOG_NOTICE, "Prosody volume use: %s\n", option_pvolume);
-	}
-	if (!ast_strlen_zero(option_voicename)) {
-		ast_log(LOG_NOTICE, "Prosody rate use: %s\n", option_prate);
-	}
-	if (!ast_strlen_zero(option_voicename)) {
-		ast_log(LOG_NOTICE, "Voice name to use: %s\n", option_voicename);
-	}
-	if (!ast_strlen_zero(option_voicegender)) {
-		ast_log(LOG_NOTICE, "Voice gender to use: %s\n", option_voicegender);
-	}
-	if (!ast_strlen_zero(option_voiceage)) {
-		ast_log(LOG_NOTICE, "Voice age to use: %s\n", option_voiceage);
-	}
-	if (!ast_strlen_zero(option_voicevariant)) {
-		ast_log(LOG_NOTICE, "Voice variant to use: %s\n", option_voicevariant);
+		char *options_buf = ast_strdupa(args.options);
+		mrcpsynth_options_parse(options_buf, &mrcpsynth_options, pool);
 	}
 
-	if (strlen(option_interrupt) > 0) {
-		dtmf_enable = 1;
+	if ((mrcpsynth_options.flags & MRCPSYNTH_INTERRUPT) == MRCPSYNTH_INTERRUPT) {
+		if (!ast_strlen_zero(mrcpsynth_options.params[OPT_ARG_INTERRUPT])) {
+			dtmf_enable = 1;
 
-		if (strcasecmp(option_interrupt, "any") == 0) {
-			strncpy(option_interrupt, AST_DIGIT_ANY, sizeof(option_interrupt) - 1);
-			option_interrupt[sizeof(option_interrupt) - 1] = '\0';
-		} else if (strcasecmp(option_interrupt, "none") == 0)
-			dtmf_enable = 0;
+			if (strcasecmp(mrcpsynth_options.params[OPT_ARG_INTERRUPT], "any") == 0) {
+				mrcpsynth_options.params[OPT_ARG_INTERRUPT] = AST_DIGIT_ANY;
+			} else if (strcasecmp(mrcpsynth_options.params[OPT_ARG_INTERRUPT], "none") == 0)
+				dtmf_enable = 0;
+		}
 	}
 	ast_log(LOG_NOTICE, "DTMF enable: %d\n", dtmf_enable);
 
@@ -837,52 +657,38 @@ static int app_synth_exec(struct ast_channel *chan, ast_app_data data)
 		ast_answer(chan);
 	ast_stopstream(chan);
 
-	if (!ast_strlen_zero(option_filename))
-		fp = fopen(option_filename, "wb");
+	if ((mrcpsynth_options.flags & MRCPSYNTH_FILENAME) == MRCPSYNTH_FILENAME) {
+		const char *filename = mrcpsynth_options.params[OPT_ARG_FILENAME];
+		if (!ast_strlen_zero(filename))
+			fp = fopen(filename, "wb");
+	}
 
-	apr_snprintf(name, sizeof(name) - 1, "TTS-%lu", (unsigned long int)speech_channel_number);
-	name[sizeof(name) - 1] = '\0';
+	name = apr_psprintf(pool, "TTS-%lu", (unsigned long int)speech_channel_number);
 
 	/* if (speech_channel_create(&schannel, name, SPEECH_CHANNEL_SYNTHESIZER, &globals.synth, "L16", samplerate, chan) != 0) { */
 	if (speech_channel_create(&schannel, name, SPEECH_CHANNEL_SYNTHESIZER, mrcpsynth, format_to_str(&nwriteformat), samplerate, chan) != 0) {
 		res = -1;
-		goto done;
+		return mrcpsynth_exit(chan, NULL, pool, res);
 	}
 
-	profile = get_synth_profile(option_profile);
+	const char *profile_name = NULL;
+	if ((mrcpsynth_options.flags & MRCPSYNTH_PROFILE) == MRCPSYNTH_PROFILE) {
+		if (!ast_strlen_zero(mrcpsynth_options.params[OPT_ARG_PROFILE])) {
+			profile_name = mrcpsynth_options.params[OPT_ARG_PROFILE];
+		}
+	}
+	
+	profile = get_synth_profile(profile_name);
 	if (!profile) {
 		ast_log(LOG_ERROR, "(%s) Can't find profile, %s\n", name, profile_name);
 		res = -1;
-		speech_channel_destroy(schannel);
-		goto done;
+		return mrcpsynth_exit(chan, schannel, pool, res);
 	}
 
 	if (speech_channel_open(schannel, profile) != 0) {
 		res = -1;
-		speech_channel_destroy(schannel);
-		goto done;
+		return mrcpsynth_exit(chan, schannel, pool, res);
 	}
-
-	if (!ast_strlen_zero(option_language))
-		speech_channel_set_param(schannel, "speech-language", option_language);
-	if (!ast_strlen_zero(option_voicename))
-		speech_channel_set_param(schannel, "voice-name", option_voicename);
-	if (!ast_strlen_zero(option_voicegender))
-		speech_channel_set_param(schannel, "voice-gender", option_voicegender);
-	if (!ast_strlen_zero(option_voiceage))
-		speech_channel_set_param(schannel, "voice-age", option_voiceage);
-	if (!ast_strlen_zero(option_voicevariant))
-		speech_channel_set_param(schannel, "voice-variant", option_voicevariant);
-	if (!ast_strlen_zero(option_loadlexicon))
-		speech_channel_set_param(schannel, "load-lexicon", option_loadlexicon);
-	if (dtmf_enable)
-		speech_channel_set_param(schannel, "kill-on-barge-in", "true");
-	else
-		speech_channel_set_param(schannel, "kill-on-barge-in", "false");
-	if (!ast_strlen_zero(option_pvolume))
-		speech_channel_set_param(schannel, "prosody-volume", option_pvolume);
-	if (!ast_strlen_zero(option_prate))
-		speech_channel_set_param(schannel, "prosody-rate", option_prate);
 
 	ast_format_compat owriteformat;
 	ast_format_clear(&owriteformat);
@@ -892,8 +698,7 @@ static int app_synth_exec(struct ast_channel *chan, ast_app_data data)
 		ast_log(LOG_WARNING, "Unable to set write format to signed linear\n");
 		res = -1;
 		speech_channel_stop(schannel);
-		speech_channel_destroy(schannel);
-		goto done;
+		return mrcpsynth_exit(chan, schannel, pool, res);
 	}
 
 	const char *content = NULL;
@@ -902,11 +707,10 @@ static int app_synth_exec(struct ast_channel *chan, ast_app_data data)
 		ast_log(LOG_WARNING, "Unable to determine synthesis content type\n");
 		res = -1;
 		speech_channel_stop(schannel);
-		speech_channel_destroy(schannel);
-		goto done;
+		return mrcpsynth_exit(chan, schannel, pool, res);
 	}
 
-	if (synth_channel_speak(schannel, content, content_type) == 0) {
+	if (synth_channel_speak(schannel, content, content_type, mrcpsynth_options.synth_hfs) == 0) {
 		rres = 0;
 		res = 0;
 
@@ -969,7 +773,7 @@ static int app_synth_exec(struct ast_channel *chan, ast_app_data data)
 						dtmfkey = ast_frame_get_dtmfkey(f);
 
 						ast_log(LOG_DEBUG, "User pressed a key (%d)\n", dtmfkey);
-						if (option_interrupt && strchr(option_interrupt, dtmfkey)) {
+						if (mrcpsynth_options.params[OPT_ARG_INTERRUPT] && strchr(mrcpsynth_options.params[OPT_ARG_INTERRUPT], dtmfkey)) {
 							res = dtmfkey;
 							dobreak = 0;
 						}
@@ -998,29 +802,8 @@ static int app_synth_exec(struct ast_channel *chan, ast_app_data data)
 		fclose(fp);
 
 	speech_channel_stop(schannel);
-	speech_channel_destroy(schannel);
 
-done:
-	if (res < 0)
-		pbx_builtin_setvar_helper(chan, "SYNTHSTATUS", "ERROR");
-	else
-		pbx_builtin_setvar_helper(chan, "SYNTHSTATUS", "OK");
-
-	if ((res < 0) && (!ast_check_hangup(chan)))
-		res = 0;
-
-	return res;
-}
-
-/* Create a parameter ID. */
-static unimrcp_param_id_t *unimrcp_param_id_create(int id, apr_pool_t *pool)
-{   
-	unimrcp_param_id_t *param = (unimrcp_param_id_t *)apr_palloc(pool, sizeof(unimrcp_param_id_t));
-
-	if (param != NULL)
-		param->id = id;
-
-	return param;
+	return mrcpsynth_exit(chan, schannel, pool, res);
 }
 
 int load_mrcpsynth_app()
@@ -1045,7 +828,7 @@ int load_mrcpsynth_app()
 	mrcpsynth->description = synthdescrip;
 #endif
 
-	/* Create the recognizer application and link its callbacks */
+	/* Create the synthesizer application and link its callbacks */
 	if ((mrcpsynth->app = mrcp_application_create(synth_message_handler, (void *)0, pool)) == NULL) {
 		ast_log(LOG_ERROR, "Unable to create synthesizer MRCP application %s\n", app_synth);
 		mrcpsynth = NULL;
@@ -1074,33 +857,6 @@ int load_mrcpsynth_app()
 		return -1;
 	}
 
-	/* Create a hash for the synthesizer parameter map. */
-	param_id_map = apr_hash_make(pool);
-
-	if (param_id_map != NULL) {
-		apr_hash_set(param_id_map, apr_pstrdup(pool, "jump-size"), APR_HASH_KEY_STRING, unimrcp_param_id_create(SYNTHESIZER_HEADER_JUMP_SIZE, pool));
-		apr_hash_set(param_id_map, apr_pstrdup(pool, "kill-on-barge-in"), APR_HASH_KEY_STRING, unimrcp_param_id_create(SYNTHESIZER_HEADER_KILL_ON_BARGE_IN, pool));
-		apr_hash_set(param_id_map, apr_pstrdup(pool, "speaker-profile"), APR_HASH_KEY_STRING, unimrcp_param_id_create(SYNTHESIZER_HEADER_SPEAKER_PROFILE, pool));
-		apr_hash_set(param_id_map, apr_pstrdup(pool, "completion-cause"), APR_HASH_KEY_STRING, unimrcp_param_id_create(SYNTHESIZER_HEADER_COMPLETION_CAUSE, pool));
-		apr_hash_set(param_id_map, apr_pstrdup(pool, "completion-reason"), APR_HASH_KEY_STRING, unimrcp_param_id_create(SYNTHESIZER_HEADER_COMPLETION_REASON, pool));
-		apr_hash_set(param_id_map, apr_pstrdup(pool, "voice-gender"), APR_HASH_KEY_STRING, unimrcp_param_id_create(SYNTHESIZER_HEADER_VOICE_GENDER, pool));
-		apr_hash_set(param_id_map, apr_pstrdup(pool, "voice-age"), APR_HASH_KEY_STRING, unimrcp_param_id_create(SYNTHESIZER_HEADER_VOICE_AGE, pool));
-		apr_hash_set(param_id_map, apr_pstrdup(pool, "voice-variant"), APR_HASH_KEY_STRING, unimrcp_param_id_create(SYNTHESIZER_HEADER_VOICE_VARIANT, pool));
-		apr_hash_set(param_id_map, apr_pstrdup(pool, "voice-name"), APR_HASH_KEY_STRING, unimrcp_param_id_create(SYNTHESIZER_HEADER_VOICE_NAME, pool));
-		apr_hash_set(param_id_map, apr_pstrdup(pool, "prosody-volume"), APR_HASH_KEY_STRING, unimrcp_param_id_create(SYNTHESIZER_HEADER_PROSODY_VOLUME, pool));
-		apr_hash_set(param_id_map, apr_pstrdup(pool, "prosody-rate"), APR_HASH_KEY_STRING, unimrcp_param_id_create(SYNTHESIZER_HEADER_PROSODY_RATE, pool));
-		apr_hash_set(param_id_map, apr_pstrdup(pool, "speech-marker"), APR_HASH_KEY_STRING, unimrcp_param_id_create(SYNTHESIZER_HEADER_SPEECH_MARKER, pool));
-		apr_hash_set(param_id_map, apr_pstrdup(pool, "speech-language"), APR_HASH_KEY_STRING, unimrcp_param_id_create(SYNTHESIZER_HEADER_SPEECH_LANGUAGE, pool));
-		apr_hash_set(param_id_map, apr_pstrdup(pool, "fetch-hint"), APR_HASH_KEY_STRING, unimrcp_param_id_create(SYNTHESIZER_HEADER_FETCH_HINT, pool));
-		apr_hash_set(param_id_map, apr_pstrdup(pool, "audio-fetch-hint"), APR_HASH_KEY_STRING, unimrcp_param_id_create(SYNTHESIZER_HEADER_AUDIO_FETCH_HINT, pool));
-		apr_hash_set(param_id_map, apr_pstrdup(pool, "failed-uri"), APR_HASH_KEY_STRING, unimrcp_param_id_create(SYNTHESIZER_HEADER_FAILED_URI, pool));
-		apr_hash_set(param_id_map, apr_pstrdup(pool, "failed-uri-cause"), APR_HASH_KEY_STRING, unimrcp_param_id_create(SYNTHESIZER_HEADER_FAILED_URI_CAUSE, pool));
-		apr_hash_set(param_id_map, apr_pstrdup(pool, "speak-restart"), APR_HASH_KEY_STRING, unimrcp_param_id_create(SYNTHESIZER_HEADER_SPEAK_RESTART, pool));
-		apr_hash_set(param_id_map, apr_pstrdup(pool, "speak-length"), APR_HASH_KEY_STRING, unimrcp_param_id_create(SYNTHESIZER_HEADER_SPEAK_LENGTH, pool));
-		apr_hash_set(param_id_map, apr_pstrdup(pool, "load-lexicon"), APR_HASH_KEY_STRING, unimrcp_param_id_create(SYNTHESIZER_HEADER_LOAD_LEXICON, pool));
-		apr_hash_set(param_id_map, apr_pstrdup(pool, "lexicon-search-order"), APR_HASH_KEY_STRING, unimrcp_param_id_create(SYNTHESIZER_HEADER_LEXICON_SEARCH_ORDER, pool));
-	}
-
 	apr_hash_set(globals.apps, app_synth, APR_HASH_KEY_STRING, mrcpsynth);
 
 	return 0;
@@ -1112,10 +868,6 @@ int unload_mrcpsynth_app()
 		ast_log(LOG_ERROR, "Application %s doesn't exist\n", app_synth);
 		return -1;
 	}
-
-	/* Clear parameter ID map. */
-	if (param_id_map != NULL)
-		apr_hash_clear(param_id_map);
 
 	apr_hash_set(globals.apps, app_synth, APR_HASH_KEY_STRING, NULL);
 	mrcpsynth = NULL;
