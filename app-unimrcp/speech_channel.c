@@ -81,25 +81,6 @@ const char *speech_channel_type_to_string(speech_channel_type_t type)
 	}
 }
 
-/* Set parameter. */
-int speech_channel_set_param(speech_channel_t *schannel, const char *param, const char *val)
-{
-	if ((schannel != NULL) && (param != NULL) && (strlen(param) > 0)) {
-		if (schannel->mutex != NULL)
-			apr_thread_mutex_lock(schannel->mutex);
-
-		ast_log(LOG_DEBUG, "(%s) param = %s, val = %s\n", schannel->name, param, val);
-
-		if (schannel->params != NULL)
-			apr_hash_set(schannel->params, apr_pstrdup(schannel->pool, param), APR_HASH_KEY_STRING, apr_pstrdup(schannel->pool, val));
-
-		if (schannel->mutex != NULL)
-			apr_thread_mutex_unlock(schannel->mutex);
-	}
-
-	return 0;
-}
-
 /* Use this function to set the current channel state without locking the 
  * speech channel.  Do this if you already have the speech channel locked.
  */
@@ -242,7 +223,6 @@ int speech_channel_create(speech_channel_t **schannel, const char *name, speech_
 		schan->state = SPEECH_CHANNEL_CLOSED;
 		schan->audio_queue = NULL;
 		schan->rate = rate;
-		schan->params = apr_hash_make(pool);
 		schan->data = NULL;
 		schan->chan = chan;
 
@@ -253,10 +233,7 @@ int speech_channel_create(speech_channel_t **schannel, const char *name, speech_
 			schan->silence = 128;
 		}
 
-		if (schan->params == NULL) {
-			ast_log(LOG_ERROR, "(%s) Unable to allocate hash for channel parameters\n",schan->name);
-			status = -1;
-		} else if ((apr_thread_mutex_create(&schan->mutex, APR_THREAD_MUTEX_UNNESTED, pool) != APR_SUCCESS) || (schan->mutex == NULL)) {
+		if ((apr_thread_mutex_create(&schan->mutex, APR_THREAD_MUTEX_UNNESTED, pool) != APR_SUCCESS) || (schan->mutex == NULL)) {
 			ast_log(LOG_ERROR, "(%s) Unable to create channel mutex\n", schan->name);
 			status = -1;
 		} else if ((apr_thread_cond_create(&schan->cond, pool) != APR_SUCCESS) || (schan->cond == NULL)) {
@@ -302,7 +279,6 @@ int speech_channel_create(speech_channel_t **schannel, const char *name, speech_
 			schan->cond = NULL;
 			schan->audio_queue = NULL;
 			schan->codec = NULL;
-			schan->params = NULL;
 			schan->data = NULL;
 			schan->chan = NULL;
 		}
@@ -456,9 +432,6 @@ int speech_channel_destroy(speech_channel_t *schannel)
 				ast_log(LOG_NOTICE, "(%s) Audio queue destroyed\n", schannel->name);
 		}
 
-		if (schannel->params != NULL)
-			apr_hash_clear(schannel->params);
-
 		if (schannel->mutex != NULL)
 			apr_thread_mutex_unlock(schannel->mutex);
 
@@ -484,7 +457,6 @@ int speech_channel_destroy(speech_channel_t *schannel)
 		schannel->cond = NULL;
 		schannel->audio_queue = NULL;
 		schannel->codec = NULL;
-		schannel->params = NULL;
 		schannel->data = NULL;
 		schannel->chan = NULL;
 

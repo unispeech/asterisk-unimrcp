@@ -590,7 +590,7 @@ static int recog_channel_start(speech_channel_t *schannel, const char *name, apr
 		r->start_of_input = 0;
 
 		/* Input timers are started by default unless the start-input-timers=false param is set. */
-		start_input_timers = (char *)apr_hash_get(schannel->params, "start-input-timers", APR_HASH_KEY_STRING);
+		start_input_timers = (char *)apr_hash_get(header_fields, "Start-Input-Timers", APR_HASH_KEY_STRING);
 		r->timers_started = (start_input_timers == NULL) || (strlen(start_input_timers) == 0) || (strcasecmp(start_input_timers, "false"));
 
 		/* Get the cached grammar. */

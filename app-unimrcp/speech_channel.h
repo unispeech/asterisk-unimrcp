@@ -75,8 +75,6 @@ struct speech_channel_t {
 	apr_uint16_t rate;
 	/* Silence byte. */
 	apr_byte_t silence;
-	/* Speech channel params. */
-	apr_hash_t *params;
 	/* App specific data. */
 	void *data;
 	/* Asterisk channel. Needed to stop playback on barge-in. */
@@ -130,9 +128,6 @@ struct recognizer_data_t {
 };
 typedef struct recognizer_data_t recognizer_data_t;
 
-
-/* Set parameter. */
-int speech_channel_set_param(speech_channel_t *schannel, const char *param, const char *val);
 
 /* Use this function to set the current channel state without locking the 
  * speech channel.  Do this if you already have the speech channel locked.
