@@ -201,8 +201,7 @@ static apt_bool_t speech_on_channel_add(mrcp_application_t *application, mrcp_se
 					ast_log(LOG_NOTICE, "(%s) Unable to create DTMF generator\n", schannel->name);
 			}
 
-#if UNI_VERSION_AT_LEAST(0,8,0)
-			char codec_name[60] = { 0 };
+			const char *codec_name = NULL;
 			const mpf_codec_descriptor_t *descriptor = NULL;
 
 			/* What sample rate did we negotiate? */
@@ -218,16 +217,14 @@ static apt_bool_t speech_on_channel_add(mrcp_application_t *application, mrcp_se
 				return FALSE;
 			}
 
-			if (descriptor->name.length > 0) {
-				strncpy(codec_name, descriptor->name.buf, sizeof(codec_name) - 1);
-				codec_name[sizeof(codec_name) - 1] = '\0';
-			} else
-				codec_name[0] = '\0';
+			if (descriptor->name.length > 0)
+				codec_name = descriptor->name.buf;
 
-			ast_log(LOG_DEBUG, "(%s) %s channel is ready, codec = %s, sample rate = %d\n", schannel->name, speech_channel_type_to_string(schannel->type), codec_name, schannel->rate);
-#else
-			ast_log(LOG_NOTICE, "(%s) %s channel is ready\n", schannel->name, speech_channel_type_to_string(schannel->type));
-#endif
+			ast_log(LOG_DEBUG, "(%s) %s channel is ready, codec = %s, sample rate = %d\n",
+				schannel->name,
+				speech_channel_type_to_string(schannel->type),
+				codec_name ? codec_name : "",
+				schannel->rate);
 			speech_channel_set_state(schannel, SPEECH_CHANNEL_READY);
 		} else {
 			ast_log(LOG_ERROR, "(%s) %s channel error!\n", schannel->name, speech_channel_type_to_string(schannel->type));

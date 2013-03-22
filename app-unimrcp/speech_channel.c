@@ -290,7 +290,6 @@ int speech_channel_create(speech_channel_t **schannel, const char *name, speech_
 	return status;
 }
 
-#if UNI_VERSION_AT_LEAST(0,8,0)
 mpf_termination_t *speech_channel_create_mpf_termination(speech_channel_t *schannel)
 {   
 	mpf_termination_t *termination = NULL;
@@ -334,52 +333,6 @@ mpf_termination_t *speech_channel_create_mpf_termination(speech_channel_t *schan
 
 	return termination;
 }
-#else
-mpf_termination_t *speech_channel_create_mpf_termination(speech_channel_t *schannel)
-{
-	mpf_termination_t *termination = NULL;
-	mpf_codec_descriptor_t *codec = NULL;
-
-	/* Create RTP endpoint and link to session channel. */
-	if ((codec = (mpf_codec_descriptor_t *)apr_palloc(schannel->unimrcp_session->pool, sizeof(mpf_codec_descriptor_t))) == NULL) {
-		ast_log(LOG_ERROR, "(%s) Unable to create codec\n", schannel->name);
-
-		if (!mrcp_application_session_destroy(schannel->unimrcp_session))
-			ast_log(LOG_WARNING, "(%s) Unable to destroy application session\n", schannel->name);
-
-		if (schannel->mutex != NULL)
-			apr_thread_mutex_unlock(schannel->mutex);
-
-		return NULL;
-	}
-
-	mpf_codec_descriptor_init(codec);
-	codec->channel_count = 1;
-	codec->payload_type = 96;
-	codec->sampling_rate = schannel->rate;
-
-	/* "LPCM" is UniMRCP's name for L16 host byte ordered */
-	if (strcasecmp(schannel->codec, "L16") == 0)
-		apt_string_set(&codec->name, "LPCM");
-	else
-		apt_string_set(&codec->name, schannel->codec);
-
-	/* See RFC 1890 for payload types. */
-	if ((strcasecmp(schannel->codec, "PCMU") == 0) && (schannel->rate == 8000))
-		codec->payload_type = 0;
-	else if ((strcasecmp(schannel->codec, "PCMA") == 0) && (schannel->rate == 8000))
-		codec->payload_type = 8;
-
-	ast_log(LOG_DEBUG, "(%s) requesting codec %s/%d/%d\n", schannel->name, schannel->codec, codec->payload_type, codec->sampling_rate);
-
-	if (schannel->type == SPEECH_CHANNEL_SYNTHESIZER)
-		termination = mrcp_application_sink_termination_create(schannel->unimrcp_session, &schannel->application->audio_stream_vtable, codec, schannel);
-	else
-		termination = mrcp_application_source_termination_create(schannel->unimrcp_session, &schannel->application->audio_stream_vtable, codec, schannel);
-
-	return termination;
-}
-#endif
 
 /* Destroy the speech channel. */
 int speech_channel_destroy(speech_channel_t *schannel)

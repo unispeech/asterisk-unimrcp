@@ -82,10 +82,8 @@ struct ast_mrcp_globals_t {
 	char *unimrcp_rx_buffer_size;
 	/* The tx-buffer-size configuration. */
 	char *unimrcp_tx_buffer_size;
-#if UNI_VERSION_AT_LEAST(0,10,0)
 	/* The reqest timeout configuration. */
 	char *unimrcp_request_timeout;
-#endif
 	/* The default text-to-speech profile to use. */
 	char *unimrcp_default_synth_profile;
 	/* The default speech recognition profile to use. */
