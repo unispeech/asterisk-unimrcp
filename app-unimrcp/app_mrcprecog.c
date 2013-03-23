@@ -1191,10 +1191,10 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 	ast_format_clear(&nreadformat);
 	get_recog_format(chan, &nreadformat);
 
-	/* if (speech_channel_create(&schannel, name, SPEECH_CHANNEL_RECOGNIZER, &globals.recog, "L16", samplerate, chan) != 0) { */
-	if (speech_channel_create(&schannel, name, SPEECH_CHANNEL_RECOGNIZER, mrcprecog, format_to_str(&nreadformat), samplerate, chan) != 0) {
+	schannel = speech_channel_create(pool, name, SPEECH_CHANNEL_RECOGNIZER, mrcprecog, format_to_str(&nreadformat), samplerate, chan);
+	if (schannel == NULL) {
 		res = -1;
-		return mrcprecog_exit(chan, NULL, pool, res);
+		return mrcprecog_exit(chan, schannel, pool, res);
 	}
 
 	const char *profile_name = NULL;

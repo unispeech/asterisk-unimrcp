@@ -629,10 +629,10 @@ static int app_synth_exec(struct ast_channel *chan, ast_app_data data)
 
 	name = apr_psprintf(pool, "TTS-%lu", (unsigned long int)speech_channel_number);
 
-	/* if (speech_channel_create(&schannel, name, SPEECH_CHANNEL_SYNTHESIZER, &globals.synth, "L16", samplerate, chan) != 0) { */
-	if (speech_channel_create(&schannel, name, SPEECH_CHANNEL_SYNTHESIZER, mrcpsynth, format_to_str(&nwriteformat), samplerate, chan) != 0) {
+	schannel = speech_channel_create(pool, name, SPEECH_CHANNEL_SYNTHESIZER, mrcpsynth, format_to_str(&nwriteformat), samplerate, chan);
+	if (schannel == NULL) {
 		res = -1;
-		return mrcpsynth_exit(chan, NULL, pool, res);
+		return mrcpsynth_exit(chan, schannel, pool, res);
 	}
 
 	const char *profile_name = NULL;

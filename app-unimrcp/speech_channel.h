@@ -140,7 +140,7 @@ void speech_channel_set_state(speech_channel_t *schannel, speech_channel_state_t
 /* Send BARGE-IN-OCCURRED. */
 int speech_channel_bargeinoccurred(speech_channel_t *schannel);
 
-int speech_channel_create(speech_channel_t **schannel, const char *name, speech_channel_type_t type, ast_mrcp_application_t *app, const char *codec, apr_uint16_t rate, struct ast_channel *chan);
+speech_channel_t *speech_channel_create(apr_pool_t *pool, const char *name, speech_channel_type_t type, ast_mrcp_application_t *app, const char *codec, apr_uint16_t rate, struct ast_channel *chan);
 
 mpf_termination_t *speech_channel_create_mpf_termination(speech_channel_t *schannel);
 

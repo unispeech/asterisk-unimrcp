@@ -1327,7 +1327,8 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 
 	recog_name = apr_psprintf(sar_session.pool, "ASR-%lu", (unsigned long int)speech_channel_number);
 
-	if (speech_channel_create(&sar_session.recog_channel, recog_name, SPEECH_CHANNEL_RECOGNIZER, synthandrecog, format_to_str(&nreadformat), samplerate, chan) != 0) {
+	sar_session.recog_channel = speech_channel_create(sar_session.pool, recog_name, SPEECH_CHANNEL_RECOGNIZER, synthandrecog, format_to_str(&nreadformat), samplerate, chan);
+	if (sar_session.recog_channel == NULL) {
 		res = -1;
 		return synthandrecog_exit(&sar_session, res);
 	}
@@ -1357,7 +1358,8 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 
 	synth_name = apr_psprintf(sar_session.pool, "TTS-%lu", (unsigned long int)speech_channel_number);
 
-	if (speech_channel_create(&sar_session.synth_channel, synth_name, SPEECH_CHANNEL_SYNTHESIZER, synthandrecog, format_to_str(&nwriteformat), samplerate, chan) != 0) {
+	sar_session.synth_channel = speech_channel_create(sar_session.pool, synth_name, SPEECH_CHANNEL_SYNTHESIZER, synthandrecog, format_to_str(&nwriteformat), samplerate, chan);
+	if (sar_session.synth_channel == NULL) {
 		res = -1;
 		return synthandrecog_exit(&sar_session, res);
 	}

@@ -168,23 +168,16 @@ int speech_channel_bargeinoccurred(speech_channel_t *schannel)
 	return status;
 }
 
-int speech_channel_create(speech_channel_t **schannel, const char *name, speech_channel_type_t type, ast_mrcp_application_t *app, const char *codec, apr_uint16_t rate, struct ast_channel *chan)
+speech_channel_t *speech_channel_create(apr_pool_t *pool, const char *name, speech_channel_type_t type, ast_mrcp_application_t *app, const char *codec, apr_uint16_t rate, struct ast_channel *chan)
 {
-	apr_pool_t *pool = NULL;
 	speech_channel_t *schan = NULL;
 	int status = 0;
 
-	if (schannel != NULL)
-		*schannel = NULL;
-
-	if (schannel == NULL) {
-		ast_log(LOG_ERROR, "Speech channel structure pointer is NULL\n");
-		status = -1;
-	} else if (app == NULL) {
+	if (app == NULL) {
 		ast_log(LOG_ERROR, "MRCP application is NULL\n");
 		status = -1;
-	} else if ((pool = apt_pool_create()) == NULL) {
-		ast_log(LOG_ERROR, "Unable to create memory pool for channel\n");
+	} else if (pool == NULL) {
+		ast_log(LOG_ERROR, "Memory pool is NULL\n");
 		status = -1;
 	} else if ((schan = (speech_channel_t *)apr_palloc(pool, sizeof(speech_channel_t))) == NULL) {
 		ast_log(LOG_ERROR, "Unable to allocate speech channel structure\n");
@@ -244,7 +237,6 @@ int speech_channel_create(speech_channel_t **schannel, const char *name, speech_
 			status = -1;
 		} else {
 			ast_log(LOG_DEBUG, "Created speech channel: Name=%s, Type=%s, Codec=%s, Rate=%u\n", schan->name, speech_channel_type_to_string(schan->type), schan->codec, schan->rate);
-			*schannel = schan;
 		}
 	}
 
@@ -267,27 +259,11 @@ int speech_channel_create(speech_channel_t **schannel, const char *name, speech_
 					ast_log(LOG_WARNING, "(%s) Unable to destroy channel mutex variable\n", schan->name);
 			}
 
-			schan->name = NULL;
-			schan->profile = NULL;
-			schan->application = NULL;
-			schan->unimrcp_session = NULL;
-			schan->unimrcp_channel = NULL;
-			schan->stream = NULL;
-			schan->dtmf_generator = NULL;
-			schan->pool = NULL;
-			schan->mutex = NULL;
-			schan->cond = NULL;
-			schan->audio_queue = NULL;
-			schan->codec = NULL;
-			schan->data = NULL;
-			schan->chan = NULL;
+			schan = NULL;
 		}
-
-		if (pool != NULL)
-			apr_pool_destroy(pool);
 	}
 
-	return status;
+	return schan;
 }
 
 mpf_termination_t *speech_channel_create_mpf_termination(speech_channel_t *schannel)
@@ -338,7 +314,6 @@ mpf_termination_t *speech_channel_create_mpf_termination(speech_channel_t *schan
 int speech_channel_destroy(speech_channel_t *schannel)
 {
 	if (schannel != NULL) {
-		apr_pool_t *pool = schannel->pool;
 		ast_log(LOG_DEBUG, "Destroying speech channel: Name=%s, Type=%s, Codec=%s, Rate=%u\n", schannel->name, speech_channel_type_to_string(schannel->type), schannel->codec, schannel->rate);
 
 		if (schannel->mutex)
@@ -412,9 +387,6 @@ int speech_channel_destroy(speech_channel_t *schannel)
 		schannel->codec = NULL;
 		schannel->data = NULL;
 		schannel->chan = NULL;
-
-		if (pool != NULL)
-			apr_pool_destroy(pool);
 	} else {
 		ast_log(LOG_ERROR, "Speech channel structure pointer is NULL\n");
 		return -1;
