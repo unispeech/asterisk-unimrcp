@@ -161,8 +161,8 @@ static apt_bool_t speech_on_session_terminate(mrcp_application_t *application, m
 	if (schannel != NULL) {
 		if (schannel->dtmf_generator != NULL) {
 			ast_log(LOG_NOTICE, "(%s) DTMF generator destroyed\n", schannel->name);
-                        mpf_dtmf_generator_destroy(schannel->dtmf_generator);
-                        schannel->dtmf_generator = NULL;
+			mpf_dtmf_generator_destroy(schannel->dtmf_generator);
+			schannel->dtmf_generator = NULL;
 		}
 
 		ast_log(LOG_DEBUG, "(%s) Destroying MRCP session\n", schannel->name);
@@ -591,7 +591,6 @@ static int app_synth_exec(struct ast_channel *chan, ast_app_data data)
 
 	/* We need to make a copy of the input string if we are going to modify it! */
 	parse = ast_strdupa(data);
-
 	AST_STANDARD_APP_ARGS(args, parse);
 
 	mrcpsynth_options.synth_hfs = NULL;
@@ -600,7 +599,7 @@ static int app_synth_exec(struct ast_channel *chan, ast_app_data data)
 		mrcpsynth_options.params[i] = NULL;
 
 	if (!ast_strlen_zero(args.options)) {
-		char *options_buf = ast_strdupa(args.options);
+		char *options_buf = apr_pstrdup(pool, args.options);
 		mrcpsynth_options_parse(options_buf, &mrcpsynth_options, pool);
 	}
 
