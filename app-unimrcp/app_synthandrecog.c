@@ -58,14 +58,14 @@
 			</parameter>
 		</syntax>
 		<description>
-			<para>This application establishes two MRCP sessions: one for speech synthesis and the other for speech recognition. 
-			Once the user starts speaking (barge-in occurred), the synthesis session is stopped, and the recognition engine 
-			starts processing the input. Once recognition completes, the application exits and return results to the dialplan.</para>
-			<para>If recognition successfully started, the variable ${RECOG_STATUS} is set to "OK"; otherwise, if recognition 
-			terminated prematurely, the variable ${RECOG_STATUS} is set to "ERROR".</para> 
+			<para>This application establishes two MRCP sessions: one for speech synthesis and the other for speech recognition.
+			Once the user starts speaking (barge-in occurred), the synthesis session is stopped, and the recognition engine
+			starts processing the input. Once recognition completes, the application exits and returns results to the dialplan.</para>
+			<para>If recognition successfully started, the variable ${RECOG_STATUS} is set to "OK"; otherwise, if recognition
+			terminated prematurely, the variable ${RECOG_STATUS} is set to "ERROR".</para>
 			<para>The variable ${RECOG_COMPLETION_CAUSE} indicates whether recognition completed successfully with a match or
-			an error occurred. ("000" - success, "001" - nomatch, "002" - noinput) </para> 
-			<para>If recognition completed successfully, the variable ${RECOG_RESULT} is set to an NLSML result received from 
+			an error occurred. ("000" - success, "001" - nomatch, "002" - noinput) </para>
+			<para>If recognition completed successfully, the variable ${RECOG_RESULT} is set to an NLSML result received from
 			the MRCP server.</para>
 		</description>
 	</application>
@@ -79,19 +79,21 @@ static ast_mrcp_application_t *synthandrecog = NULL;
 
 /* The enumeration of application options (excluding the MRCP params). */
 enum sar_option_flags {
-	SAR_RECOG_PROFILE        = (1 << 0),
-	SAR_SYNTH_PROFILE        = (2 << 0),
-	SAR_BARGEIN              = (3 << 0)
+	SAR_RECOG_PROFILE          = (1 << 0),
+	SAR_SYNTH_PROFILE          = (2 << 0),
+	SAR_BARGEIN                = (3 << 0),
+	SAR_GRAMMAR_DELIMITERS     = (4 << 0)
 };
 
 /* The enumeration of option arguments. */
 enum sar_option_args {
-	OPT_ARG_RECOG_PROFILE    = 0,
-	OPT_ARG_SYNTH_PROFILE    = 1,
-	OPT_ARG_BARGEIN          = 2,
+	OPT_ARG_RECOG_PROFILE      = 0,
+	OPT_ARG_SYNTH_PROFILE      = 1,
+	OPT_ARG_BARGEIN            = 2,
+	OPT_ARG_GRAMMAR_DELIMITERS = 3,
 
 	/* This MUST be the last value in this enum! */
-	OPT_ARG_ARRAY_SIZE       = 3
+	OPT_ARG_ARRAY_SIZE         = 4
 };
 
 /* The structure which holds the application options (including the MRCP params). */
@@ -748,25 +750,36 @@ static int recog_channel_start(speech_channel_t *schannel, const char *name, int
 
 		r->timers_started = start_input_timers;
 
-		/* Get the cached grammar. */
-		if ((name == NULL) || (strlen(name) == 0))
-			grammar = r->last_grammar;
-		else {
-			grammar = (grammar_t *)apr_hash_get(r->grammars, name, APR_HASH_KEY_STRING);
-			r->last_grammar = grammar;
-		}
+		apr_hash_index_t *hi;
+		void *val;
+		int length = 0;
+		char grammar_refs[4096];
+		for (hi = apr_hash_first(schannel->pool, r->grammars); hi; hi = apr_hash_next(hi)) {
+			apr_hash_this(hi, NULL, NULL, &val);
+			grammar = val;
+			if (!grammar) 	continue;
 
-		if (grammar == NULL) {
-			if (name)
-				ast_log(LOG_ERROR, "(%s) Undefined grammar, %s\n", schannel->name, name);
-			else
-				ast_log(LOG_ERROR, "(%s) No grammar specified\n", schannel->name);
+			int grammar_len = strlen(grammar->data);
+			if (length + grammar_len + 2 > sizeof(grammar_refs) - 1) {
+				break;
+			}
+
+			if (length) {
+				grammar_refs[length++] = '\r';
+				grammar_refs[length++] = '\n';
+			}
+			memcpy(grammar_refs + length, grammar->data, grammar_len);
+			length += grammar_len;
+		}
+		if (length == 0) {
+			ast_log(LOG_ERROR, "(%s) No grammars specified\n", schannel->name);
 
 			if (schannel->mutex != NULL)
 				apr_thread_mutex_unlock(schannel->mutex);
 
 			return -1;
 		}
+		grammar_refs[length] = '\0';
 
 		/* Create MRCP message. */
 		if ((mrcp_message = mrcp_application_message_create(schannel->unimrcp_session, schannel->unimrcp_channel, RECOGNIZER_RECOGNIZE)) == NULL) {
@@ -785,21 +798,8 @@ static int recog_channel_start(speech_channel_t *schannel, const char *name, int
 		}
 
 		/* Set Content-Type. */
-		if (((mime_type = grammar_type_to_mime(grammar->type, schannel->profile)) == NULL) || (strlen(mime_type) == 0)) {
-			if (schannel->mutex != NULL)
-				apr_thread_mutex_unlock(schannel->mutex);
-
-			return -1;
-		}
-
-		apt_string_assign(&generic_header->content_type, mime_type, mrcp_message->pool);
+		apt_string_assign(&generic_header->content_type, "text/uri-list", mrcp_message->pool);
 		mrcp_generic_header_property_add(mrcp_message, GENERIC_HEADER_CONTENT_TYPE);
-
-		/* Set Content-ID for inline grammars. */
-		if (grammar->type != GRAMMAR_TYPE_URI) {
-			apt_string_assign(&generic_header->content_id, grammar->name, mrcp_message->pool);
-			mrcp_generic_header_property_add(mrcp_message, GENERIC_HEADER_CONTENT_ID);
-		}
 
 		/* Allocate recognizer-specific header. */
 		if ((recog_header = (mrcp_recog_header_t *)mrcp_resource_header_prepare(mrcp_message)) == NULL) {
@@ -823,7 +823,7 @@ static int recog_channel_start(speech_channel_t *schannel, const char *name, int
 		speech_channel_set_params(schannel, mrcp_message, header_fields);
 
 		/* Set message body. */
-		apt_string_assign(&mrcp_message->body, grammar->data, mrcp_message->pool);
+		apt_string_assign_n(&mrcp_message->body, grammar_refs, length, mrcp_message->pool);
 
 		/* Empty audio queue and send RECOGNIZE to MRCP server. */
 		audio_queue_clear(schannel->audio_queue);
@@ -954,44 +954,7 @@ static int recog_channel_load_grammar(speech_channel_t *schannel, const char *na
 
 	return status;
 }
-#if 0
-/* Unload speech recognition grammar. */
-static int recog_channel_unload_grammar(speech_channel_t *schannel, const char *grammar_name)
-{
-	int status = 0;
 
-	if (schannel == NULL) {
-		ast_log(LOG_ERROR, "(unknown) channel error!\n");
-		return -1;
-	}
-
-	if ((grammar_name == NULL) || (strlen(grammar_name) == 0))
-		status = -1;
-	else {
-		if (schannel->mutex != NULL)
-			apr_thread_mutex_lock(schannel->mutex);
-
-		recognizer_data_t *r = (recognizer_data_t *)schannel->data;
-
-		if (r == NULL) {
-			ast_log(LOG_ERROR, "(%s) Recognizer data struct is NULL\n", schannel->name);
-
-			if (schannel->mutex != NULL)
-				apr_thread_mutex_unlock(schannel->mutex);
-
-			return -1;
-		}
-
-		ast_log(LOG_DEBUG, "(%s) Unloading grammar %s\n", schannel->name, grammar_name);
-		apr_hash_set(r->grammars, grammar_name, APR_HASH_KEY_STRING, NULL);
-
-		if (schannel->mutex != NULL)
-			apr_thread_mutex_unlock(schannel->mutex);
-	}
-
-	return status;
-}
-#endif
 /* Handle the MRCP responses/events. */
 static apt_bool_t recog_on_message_receive(speech_channel_t *schannel, mrcp_message_t *message)
 {
@@ -1195,6 +1158,9 @@ static int synthandrecog_option_apply(sar_options_t *options, const char *key, c
 	} else if (strcasecmp(key, "b") == 0) {
 		options->flags |= SAR_BARGEIN;
 		options->params[OPT_ARG_BARGEIN] = value;
+	} else if (strcasecmp(key, "gd") == 0) {
+		options->flags |= SAR_GRAMMAR_DELIMITERS;
+		options->params[OPT_ARG_GRAMMAR_DELIMITERS] = value;
 	}
 	else {
 		ast_log(LOG_WARNING, "Unknown option: %s\n", key);
@@ -1226,7 +1192,7 @@ static int synthandrecog_options_parse(char *str, sar_options_t *options, apr_po
 			ast_log(LOG_NOTICE, "Apply option: %s: %s\n", name, value);
 			synthandrecog_option_apply(options, name, value);
 		}
-	}	
+	}
 	return 0;
 }
 
@@ -1300,7 +1266,6 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 
 	/* We need to make a copy of the input string if we are going to modify it! */
 	parse = ast_strdupa(data);
-
 	AST_STANDARD_APP_ARGS(args, parse);
 
 	sar_options.recog_hfs = NULL;
@@ -1310,7 +1275,7 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 		sar_options.params[i] = NULL;
 
 	if (!ast_strlen_zero(args.options)) {
-		char *options_buf = ast_strdupa(args.options);
+		char *options_buf = apr_pstrdup(sar_session.pool, args.options);
 		synthandrecog_options_parse(options_buf, &sar_options, sar_session.pool);
 	}
 
@@ -1327,6 +1292,7 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 
 	recog_name = apr_psprintf(sar_session.pool, "ASR-%lu", (unsigned long int)speech_channel_number);
 
+	/* Create speech channel for recognition. */
 	sar_session.recog_channel = speech_channel_create(sar_session.pool, recog_name, SPEECH_CHANNEL_RECOGNIZER, synthandrecog, format_to_str(&nreadformat), samplerate, chan);
 	if (sar_session.recog_channel == NULL) {
 		res = -1;
@@ -1340,6 +1306,7 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 		}
 	}
 
+	/* Get recognition profile. */
 	recog_profile = get_recog_profile(recog_profile_option);
 	if (!recog_profile) {
 		ast_log(LOG_ERROR, "(%s) Can't find profile, %s\n", recog_name, recog_profile_option);
@@ -1347,6 +1314,7 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 		return synthandrecog_exit(&sar_session, res);
 	}
 
+	/* Open recognition channel. */
 	if (speech_channel_open(sar_session.recog_channel, recog_profile) != 0) {
 		res = -1;
 		return synthandrecog_exit(&sar_session, res);
@@ -1358,6 +1326,7 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 
 	synth_name = apr_psprintf(sar_session.pool, "TTS-%lu", (unsigned long int)speech_channel_number);
 
+	/* Create speech channel for synthesis. */
 	sar_session.synth_channel = speech_channel_create(sar_session.pool, synth_name, SPEECH_CHANNEL_SYNTHESIZER, synthandrecog, format_to_str(&nwriteformat), samplerate, chan);
 	if (sar_session.synth_channel == NULL) {
 		res = -1;
@@ -1371,6 +1340,7 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 		}
 	}
 
+	/* Get synthesis profile. */
 	synth_profile = get_synth_profile(synth_profile_option);
 	if (!synth_profile) {
 		ast_log(LOG_ERROR, "(%s) Can't find profile, %s\n", synth_name, synth_profile_option);
@@ -1378,12 +1348,14 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 		return synthandrecog_exit(&sar_session, res);
 	}
 
+	/* Open synthesis channel. */
 	if (speech_channel_open(sar_session.synth_channel, synth_profile) != 0) {
 		res = -1;
 		return synthandrecog_exit(&sar_session, res);
 	}
 
 	int bargein = 1;
+	/* Check if barge-in is allowed. */
 	if ((sar_options.flags & SAR_BARGEIN) == SAR_BARGEIN) {
 		if (!ast_strlen_zero(sar_options.params[OPT_ARG_BARGEIN])) {
 			bargein = (atoi(sar_options.params[OPT_ARG_BARGEIN]) == 0) ? 0 : 1;
@@ -1410,19 +1382,43 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 		return synthandrecog_exit(&sar_session, res);
 	}
 
-	const char *grammar_content = NULL;
-	grammar_type_t grammar_type = GRAMMAR_TYPE_UNKNOWN;
-	if (determine_grammar_type(sar_session.recog_channel, args.grammar, &grammar_content, &grammar_type) != 0) {
-		ast_log(LOG_WARNING, "Unable to determine grammar type\n");
-		res = -1;
-		return synthandrecog_exit(&sar_session, res);
+	const char *grammar_delimiters = ",";
+	/* Get grammar delimiters. */
+	if ((sar_options.flags & SAR_GRAMMAR_DELIMITERS) == SAR_GRAMMAR_DELIMITERS) {
+		if (!ast_strlen_zero(sar_options.params[OPT_ARG_GRAMMAR_DELIMITERS])) {
+			grammar_delimiters = sar_options.params[OPT_ARG_GRAMMAR_DELIMITERS];
+			ast_log(LOG_DEBUG, "Grammar delimiters are: %s\n", grammar_delimiters);
+		}
 	}
-	ast_log(LOG_DEBUG, "Grammar type is: %i\n", grammar_type);
+	/* Parse the grammar argument into a sequence of grammars. */
+	char *grammar_arg = apr_pstrdup(sar_session.pool, args.grammar);
+	char *last;
+	char *grammar_str;
+	char grammar_name[32];
+	int grammar_id = 0;
+	ast_log(LOG_DEBUG, "Tokenize grammar argument: %s\n", grammar_arg);
+	grammar_str = apr_strtok(grammar_arg, grammar_delimiters, &last);
+	while (grammar_str) {
+		const char *grammar_content = NULL;
+		grammar_type_t grammar_type = GRAMMAR_TYPE_UNKNOWN;
+		ast_log(LOG_DEBUG, "Determine grammar type: %s\n", grammar_str);
+		if (determine_grammar_type(sar_session.recog_channel, grammar_str, &grammar_content, &grammar_type) != 0) {
+			ast_log(LOG_WARNING, "Unable to determine grammar type\n");
+			res = -1;
+			return synthandrecog_exit(&sar_session, res);
+		}
+		ast_log(LOG_DEBUG, "Grammar type is: %i\n", grammar_type);
 
-	if (recog_channel_load_grammar(sar_session.recog_channel, recog_name, grammar_type, grammar_content) != 0) {
-		ast_log(LOG_ERROR, "Unable to load grammar\n");
-		res = -1;
-		return synthandrecog_exit(&sar_session, res);
+		apr_snprintf(grammar_name, sizeof(grammar_name) - 1, "grammar-%d", grammar_id++);
+		grammar_name[sizeof(grammar_name) - 1] = '\0';
+		/* Load grammar. */
+		if (recog_channel_load_grammar(sar_session.recog_channel, grammar_name, grammar_type, grammar_content) != 0) {
+			ast_log(LOG_ERROR, "Unable to load grammar\n");
+			res = -1;
+			return synthandrecog_exit(&sar_session, res);
+		}
+
+		grammar_str = apr_strtok(NULL, grammar_delimiters, &last);
 	}
 
 	const char *content = NULL;
@@ -1433,6 +1429,7 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 		return synthandrecog_exit(&sar_session, res);
 	}
 
+	/* Start synthesis. */
 	if (synth_channel_speak(sar_session.synth_channel, content, content_type, sar_options.synth_hfs) != 0) {
 		ast_log(LOG_ERROR, "Unable to send SPEAK request\n");
 		res = -1;
@@ -1468,6 +1465,7 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 	
 	ast_log(LOG_NOTICE, "Recognizing start-input-timers: %d\n", start_input_timers);
 
+	/* Start recognition. */
 	if (recog_channel_start(sar_session.recog_channel, recog_name, start_input_timers, sar_options.recog_hfs) == 0) {
 		int waitres;
 		
@@ -1560,6 +1558,7 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 	const char *result = NULL;
 	const char *waveform_uri = NULL;
 
+	/* Get recognition result. */
 	if (recog_channel_get_results(sar_session.recog_channel, &completion_cause, &result, &waveform_uri) != 0) {
 		ast_log(LOG_WARNING, "Unable to retrieve result\n");
 		res = -1;
@@ -1582,15 +1581,6 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 	/* If Waveform URI is available, pass it further to dialplan. */
 	if (waveform_uri)
 		pbx_builtin_setvar_helper(chan, "RECOG_WAVEFORM_URI", waveform_uri);
-
-
-#if 0 /* Not really needed -> channel is going to be destroyed, anyway. */
-	if (recog_channel_unload_grammar(sar_session.recog_channel, recog_name) != 0) {
-		ast_log(LOG_ERROR, "Unable to unload grammar\n");
-		res = -1;
-		return synthandrecog_exit(&sar_session, res);
-	}
-#endif
 
 	ast_channel_set_readformat(chan, &oreadformat);
 	ast_channel_set_writeformat(chan, &owriteformat);
