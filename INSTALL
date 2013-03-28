@@ -1,0 +1,86 @@
+BUILD REQUIREMENTS
+==================
+
+In order to build the UniMRCP modules for Asterisk, both the UniMRCP and Asterisk projects must be
+installed first.
+
+1. Asterisk
+
+Asterisk is an open source communication platform which can be used as a PBX, an IVR, or a conference
+bridge.
+
+Project website:
+	http://www.asterisk.org
+
+Compatible versions:
+	Asterisk 1.4, 1.6, 1.8, 10, 11
+
+2. UniMRCP
+
+UniMRCP is an open source project compliant with the IETF RFC6787 (MRCPv2) and RFC4463 (MRCPv1)
+specifications.
+
+Project website:
+	http://www.unimrcp.org
+
+Compatible versions:
+	UniMRCP 1.0.0 and above
+
+
+GNU BUILD
+=========
+
+Prerequisites:
+
+	autoconf 2.59 or newer
+	automake
+	libtool 1.4 or newer
+	gcc
+	pkg-config
+
+Procedure:
+
+If the source is checked out from the repository, the "bootstrap" script must be ran first
+in order to generate the "configure" script and other required files.
+
+	./bootstrap
+
+The usual "configure", "make", "make install" sequence of commands should follow in order to build
+and install the modules from source.
+
+	./configure
+	make
+	make install
+
+As a result, the modules res_speech_unimrcp.so and app_unimrcp.so will be installed in the modules
+directory of Asterisk such as /usr/lib/asterisk/modules by default. Similarly, the configuration
+files res-speech-unimrcp.conf and mrcp.conf will be placed in /etc/asterisk.
+
+Configure options:
+
+To explicitly specify where to look for Asterisk, use the option "--with-asterisk=". For example,
+if Asterisk is installed in /usr/local/asterisk-11, use:
+
+	./configure --with-asterisk=/usr/local/asterisk-11
+
+To explicitly specify where the Asterisk configuration files are located, use the option
+"--with-asterisk-conf". For example:
+
+	./configure --with-asterisk-conf=/usr/local/asterisk/conf
+
+To explicitly specify the Asterisk version, use the option "--with-asterisk-version=". For example:
+
+	./configure --with-asterisk-version=11.2.1
+
+To explicitly specify where to look for UniMRCP, use the option "--with-unimrcp=". For example,
+if UniMRCP is installed in /usr/local/unimrcp-1.1, use:
+
+	./configure --with-unimrcp=/usr/local/unimrcp-1.1
+
+To exclude the module res_speech_unimrcp.so from build, use:
+
+	./configure --disable-res-speech-unimrcp
+
+To exclude the module app_unimrcp.so from build, use:
+
+	./configure --disable-app-unimrcp

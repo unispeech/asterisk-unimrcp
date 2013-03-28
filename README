@@ -1,13 +1,31 @@
 INTRODUCTION
 ============
 
-This is the connector bridge for Asterisk and UniMRCP.
+This document provides a brief description of the UniMRCP modules for Asterisk.
+
+* Generic Speech Recognition API
+
+The module res_speech_unimrcp.so is an implementation of the Generic Speech Recognition API of
+Asterisk based on the UniMRCP client library.
+
+* Dialplan Applications
+
+The module app_unimrcp.so is a suite of speech recognition and synthesis applications for Asterisk.
 
 
 INSTALLATION
 ============
 
-See http://code.google.com/p/unimrcp/wiki/asteriskUniMRCP for installation and configuration instructions.
+See the file INSTALL for installation tips.
+
+
+LICENSING
+=========
+
+Since Asterisk is distributed under the GPLv2 license, and the UniMRCP modules are loaded by and
+directly interface with Asterisk, the GPLv2 license applies to the UniMRCP modules too.
+
+See the file COPYING for more information regarding the license.
 
 
 REFERENCES
