@@ -1,0 +1,51 @@
+Changes for Asterisk UniMRCP Modules 1.1.0
+
+1. Generic Speech Recognition API (res_speech_unimrcp.so)
+
+  * Added the ability to implicitly stop an in-progress recognition request. Applied a reworked patch submitted to Issue-105. Thanks Borja.
+  * Added support for loading and activating multiple grammars for a recognition request. Applied a reworked patch submitted to Issue-105. Thanks Borja.
+  * Enhanced parsing of NLSML results. Applied a patch submitted to Issue-105. Thanks Borja.
+  * Fixed support for built-in grammars. Thanks Renato.
+
+2. Dialplan Applications (app_unimrcp.so)
+
+  2.1. MRCPSynth()
+
+    * Added the ability to load a plain text or an SSML content from the specified file. Applied a reworked patch submitted to Issue-151. Thanks Borja.
+
+  2.2. MRCPRecog()
+
+    * Fixed a misspelled name of the 'Input-Waveform-URI' header field.
+    * Use the 'sl' option for the 'Sensitivity-Level' header field and 'spl' for 'Speech-Language'.
+    * Fixed a crash in speech_channel_destroy(). Thanks Evan, Stephen, and Rodolfo.
+    * Fixed a memory leak in processing of recognition results. A recognition result is now allocated from the channel memory pool using apr_pstrdup(). Otherwise, the duplicated string should have been explicitly freed.
+    * Fixed the grammar type detection routine.
+    * Added the ability to load a prompt and/or a grammar from the specified files.
+    * Added support for loading and activating multiple grammars for a recognition request. The grammars can be specified as a comma-separated list of input parameters.
+
+  2.3. SynthAndRecog()
+
+    This is a new diaplan application which plays a synthesized prompt to the user and waits for speech to be recognized. The application supports the following features:
+
+    * Plain text and SSML prompts.
+    * Inline (SRGS XML, SRGS ABNF, JSGF), built-in, and URI grammars. Inline grammars can be loaded from a file. A list of comma-separated grammars can be used for a recognition request.
+    * Barge-in, and an option for non-bargeinable prompts.
+    * Recognition timers.
+    * Recognition results.
+
+3. Miscellaneous
+
+  * Enhanced the version detection routine of Asterisk (asterisk.m4).
+  * Added a new optional parameter to the configure script --with-asterisk-version, which allows to explicitly specify a version string in case the version cannot be determined or retrieved implicitly.
+  * Included asterisk.m4 from acinclude.m4.
+  * Added a new header file ast_compat_def.h, which provides backward compatible macros, definitions, and utility functions for Asterisk.
+  * Added support for Asterisk 1.8, 10, and 11 to the modules res_speech-unimrcp and app_unimrcp. The former versions are also supported.
+  * Added support for auto-generated XML doc files introduced since Asterisk 1.6. The XML doc files are generated from the corresponding tags declared in sources files.
+  * Split the module app_unimrcp into several integral parts. The source file app_unimrcp.c is now the entry point of the module, and the applications reside in separate source files.
+  * Fixed loading of the configuration parameter "offer-new-connection" to accept both boolean "true" or "false" and integer "1" or "0" values.
+  * Added a checking for pkg-config to the configure script.
+  * Added a new sample dialplan applications file mrcp_sample_apps.conf which provides numerous usage examples. Removed the old file say-digit.conf.
+  * For logging purposes, set the name of a UniMRCP session object to schannel->name.
+  * Using transparent header fields to apply application options.
+  * Retained backward compatibility with UniMRCP 1.0.0 and above, but dropped the support for earlier versions.
+  * Updated the README file to include the statement for the GPLv2 license. Added the INSTALL and COPYING files.
