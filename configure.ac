@@ -1,11 +1,11 @@
 dnl 
-dnl Autoconf configuration file for the Asterisk-UniMRCP bridge.
+dnl Autoconf configuration file for the UniMRCP modules for Asterisk.
 dnl 
 dnl Process this file with autoconf to produce a configure script.
 
 AC_PREREQ(2.59)
 
-AC_INIT([asterisk-unimrcp],[0.3.2])
+AC_INIT([asterisk-unimrcp],[1.0.0])
 
 AC_CONFIG_AUX_DIR([build])
 AC_CONFIG_MACRO_DIR([build/acmacros])
