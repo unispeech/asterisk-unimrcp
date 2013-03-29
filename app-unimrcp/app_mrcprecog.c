@@ -122,7 +122,8 @@ enum mrcprecog_option_flags {
 	MRCPRECOG_INTERRUPT          = (2 << 0),
 	MRCPRECOG_FILENAME           = (3 << 0),
 	MRCPRECOG_BARGEIN            = (4 << 0),
-	MRCPRECOG_GRAMMAR_DELIMITERS = (5 << 0)
+	MRCPRECOG_GRAMMAR_DELIMITERS = (5 << 0),
+	MRCPRECOG_EXIT_ON_PLAYERROR  = (6 << 0)
 };
 
 /* The enumeration of option arguments. */
@@ -132,9 +133,10 @@ enum mrcprecog_option_args {
 	OPT_ARG_FILENAME             = 2,
 	OPT_ARG_BARGEIN              = 3,
 	OPT_ARG_GRAMMAR_DELIMITERS   = 4,
+	OPT_ARG_EXIT_ON_PLAYERROR    = 5,
 
 	/* This MUST be the last value in this enum! */
-	OPT_ARG_ARRAY_SIZE           = 5
+	OPT_ARG_ARRAY_SIZE           = 6
 };
 
 /* The structure which holds the application options (including the MRCP params). */
@@ -910,12 +912,12 @@ static apt_bool_t recog_stream_open(mpf_audio_stream_t* stream, mpf_codec_t *cod
 	else
 		schannel = NULL;
 
-    schannel->stream = stream;
+	schannel->stream = stream;
 
 	if ((schannel == NULL) || (stream == NULL))
 		ast_log(LOG_ERROR, "(unknown) channel error opening stream!\n");
 
-        return TRUE;
+	return TRUE;
 }
 
 /* UniMRCP callback requesting next frame for speech recognition. */
@@ -1014,6 +1016,9 @@ static int mrcprecog_option_apply(mrcprecog_options_t *options, const char *key,
 	} else if (strcasecmp(key, "gd") == 0) {
 		options->flags |= MRCPRECOG_GRAMMAR_DELIMITERS;
 		options->params[OPT_ARG_GRAMMAR_DELIMITERS] = value;
+	} else if (strcasecmp(key, "epe") == 0) {
+		options->flags |= MRCPRECOG_EXIT_ON_PLAYERROR;
+		options->params[OPT_ARG_EXIT_ON_PLAYERROR] = value;
 	}
 	else {
 		ast_log(LOG_WARNING, "Unknown option: %s\n", key);
@@ -1133,7 +1138,7 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 				bargein = 1;
 		}
 	}
-	
+
 	if ((mrcprecog_options.flags & MRCPRECOG_INTERRUPT) == MRCPRECOG_INTERRUPT) {
 		if (!ast_strlen_zero(mrcprecog_options.params[OPT_ARG_INTERRUPT])) {
 			dtmf_enable = 1;
@@ -1244,6 +1249,7 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 	/* Open file, get file length, seek to begin, apply and play. */ 
 	if ((mrcprecog_options.flags & MRCPRECOG_FILENAME) == MRCPRECOG_FILENAME) {
 		if (!ast_strlen_zero(mrcprecog_options.params[OPT_ARG_FILENAME])) {
+			int fileplay_started = 0;
 			const char *filename = mrcprecog_options.params[OPT_ARG_FILENAME];
 			if ((fs = ast_openstream(chan, filename, ast_channel_language(chan))) == NULL) {
 				ast_log(LOG_WARNING, "ast_openstream failed on %s for %s\n", ast_channel_name(chan), filename);
@@ -1262,10 +1268,32 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 				} else if (ast_playstream(fs) == -1) {
 					ast_log(LOG_WARNING, "ast_playstream failed on %s for %s\n", ast_channel_name(chan), filename);
 				}
+				else {
+					fileplay_started = 1;
+				}
 			}
 
-			if (bargein == 0) {
-				res = ast_waitstream(chan, "");
+			if (fileplay_started) {
+				if (bargein == 0) {
+					res = ast_waitstream(chan, "");
+				}
+			}
+			else {
+				int exit_on_playerror = 0;
+				if ((mrcprecog_options.flags & MRCPRECOG_EXIT_ON_PLAYERROR) == MRCPRECOG_EXIT_ON_PLAYERROR) {
+					if (!ast_strlen_zero(mrcprecog_options.params[OPT_ARG_EXIT_ON_PLAYERROR])) {
+						exit_on_playerror = atoi(mrcprecog_options.params[OPT_ARG_EXIT_ON_PLAYERROR]);
+						if ((exit_on_playerror < 0) || (exit_on_playerror > 2))
+							exit_on_playerror = 1;
+					}
+				}
+
+				if (exit_on_playerror) {
+					ast_log(LOG_ERROR, "Couldn't play file\n");
+					res = -1;
+					speech_channel_stop(schannel);
+					return mrcprecog_exit(chan, schannel, pool, res);
+				}
 			}
 		}
 	}
@@ -1308,7 +1336,7 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 			int ssdres = 1;	
 			/* Only start to transmit frames as soon as voice has been detected. */
 			detection_start = ast_tvnow();
-	
+
 			while (((waitres = ast_waitfor(chan, 100)) >= 0)) {
 				if (waitres == 0)
 					continue;
@@ -1320,14 +1348,14 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 					ssdres = -1;
 					break;
 				}
-	
+
 				/* Break if prompt has finished - don't care about analysis time which is in effect equal to prompt length. */
 				if ((filelength != 0) && ( ast_tellstream(fs) >= filelength)) {
 					ast_log(LOG_NOTICE, "prompt has finished playing, moving on.\n");
 					ast_frfree(f1);
 					break;
 				}
-	
+
 				if (f1->frametype == AST_FRAME_VOICE) {
 					myFrame = (dsp_frame_data_t*)malloc(sizeof(dsp_frame_data_t));
 
@@ -1436,7 +1464,7 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 				ast_log(LOG_NOTICE, "(%s) DTMF barge-in digit queued (%s)\n", schannel->name, digits);
 				mpf_dtmf_generator_enqueue(schannel->dtmf_generator, digits);
 				dtmfkey = -1;
-			}	
+			}
 
 			/* Playback buffer of frames captured during. */
 			int pres = 0;
