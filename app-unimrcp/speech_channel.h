@@ -113,8 +113,6 @@ typedef struct grammar_t grammar_t;
 struct recognizer_data_t {
 	/* The available grammars. */
 	apr_hash_t *grammars;
-	/* The last grammar used (for pause/resume). */
-	grammar_t *last_grammar;
 	/* Recognition result. */
 	const char *result;
 	/* Completion cause. */
