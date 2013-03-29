@@ -1,7 +1,8 @@
-Changes for Asterisk UniMRCP Modules 1.1.0
+Changes for Asterisk UniMRCP Modules 1.0.0
 
 1. Generic Speech Recognition API (res_speech_unimrcp.so)
 
+  * Handled change to the apt_log_file_open() function. Thanks J.W.F. Thirion.
   * Added the ability to implicitly stop an in-progress recognition request. Applied a reworked patch submitted to Issue-105. Thanks Borja.
   * Added support for loading and activating multiple grammars for a recognition request. Applied a reworked patch submitted to Issue-105. Thanks Borja.
   * Enhanced parsing of NLSML results. Applied a patch submitted to Issue-105. Thanks Borja.
@@ -11,6 +12,7 @@ Changes for Asterisk UniMRCP Modules 1.1.0
 
   2.1. MRCPSynth()
 
+    * Fixed a DTMF generator issue. Thanks J.W.F. Thirion.
     * Added the ability to load a plain text or an SSML content from the specified file. Applied a reworked patch submitted to Issue-151. Thanks Borja.
 
   2.2. MRCPRecog()
@@ -22,6 +24,7 @@ Changes for Asterisk UniMRCP Modules 1.1.0
     * Fixed the grammar type detection routine.
     * Added the ability to load a prompt and/or a grammar from the specified files.
     * Added support for loading and activating multiple grammars for a recognition request. The grammars can be specified as a comma-separated list of input parameters.
+    * Added a new application option: exit-on-play-error "epe". If the option is enabled and the specified prompt file cannot be played, the application exits with the "RECOGSTATUS" variable set to "ERROR".
 
   2.3. SynthAndRecog()
 
@@ -40,7 +43,7 @@ Changes for Asterisk UniMRCP Modules 1.1.0
   * Included asterisk.m4 from acinclude.m4.
   * Added a new header file ast_compat_def.h, which provides backward compatible macros, definitions, and utility functions for Asterisk.
   * Added support for Asterisk 1.8, 10, and 11 to the modules res_speech-unimrcp and app_unimrcp. The former versions are also supported.
-  * Added support for auto-generated XML doc files introduced since Asterisk 1.6. The XML doc files are generated from the corresponding tags declared in sources files.
+  * Added support for auto-generated XML doc files introduced since Asterisk 1.6. The XML doc files are generated from the corresponding tags declared in source files.
   * Split the module app_unimrcp into several integral parts. The source file app_unimrcp.c is now the entry point of the module, and the applications reside in separate source files.
   * Fixed loading of the configuration parameter "offer-new-connection" to accept both boolean "true" or "false" and integer "1" or "0" values.
   * Added a checking for pkg-config to the configure script.
