@@ -42,6 +42,7 @@
 #include "speech_channel.h"
 
 #define MIME_TYPE_PLAIN_TEXT					"text/plain"
+#define MIME_TYPE_URI_LIST						"text/uri-list"
 
 #define XML_ID									"<?xml"
 #define SRGS_ID									"<grammar"
@@ -747,11 +748,16 @@ int determine_synth_content_type(speech_channel_t *schannel, const char *text, c
 		*content = text;
 
 	if (content_type) {
-		/* Good enough way of determining SSML or plain text body. */
-		if (text_starts_with(text, XML_ID) || text_starts_with(text, SSML_ID))
+		/* Good enough way of determining SSML, URI reference or plain text body. */
+		if (text_starts_with(text, XML_ID) || text_starts_with(text, SSML_ID)) {
 			*content_type = schannel->profile->ssml_mime_type;
-		else
+		}
+		else if ((text_starts_with(text, HTTP_ID)) || (text_starts_with(text, HTTPS_ID)) || (text_starts_with(text, FILE_ID))) {
+			*content_type = MIME_TYPE_URI_LIST;
+		}
+		else {
 			*content_type = MIME_TYPE_PLAIN_TEXT;
+		}
 	}
 
 	return 0;
@@ -826,7 +832,7 @@ const char *grammar_type_to_mime(grammar_type_t type, const ast_mrcp_profile_t *
 {
 	switch (type) {
 		case GRAMMAR_TYPE_UNKNOWN: return "";
-		case GRAMMAR_TYPE_URI: return "text/uri-list";
+		case GRAMMAR_TYPE_URI: return MIME_TYPE_URI_LIST;
 		case GRAMMAR_TYPE_SRGS: return profile->srgs_mime_type;
 		case GRAMMAR_TYPE_SRGS_XML: return profile->srgs_xml_mime_type;
 		case GRAMMAR_TYPE_NUANCE_GSL: return profile->gsl_mime_type;
