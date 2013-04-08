@@ -1078,7 +1078,7 @@ static int mrcprecog_exit(struct ast_channel *chan, speech_channel_t *schannel, 
 static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 {
 	int samplerate = 8000;
-	int dtmf_enable = 0;
+	int dtmf_enable;
 	struct ast_frame *f = NULL;
 	apr_size_t len;
 	int rres = 0;
@@ -1139,14 +1139,16 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 		}
 	}
 
+	dtmf_enable = 2;
 	if ((mrcprecog_options.flags & MRCPRECOG_INTERRUPT) == MRCPRECOG_INTERRUPT) {
 		if (!ast_strlen_zero(mrcprecog_options.params[OPT_ARG_INTERRUPT])) {
 			dtmf_enable = 1;
-
-			if (strcasecmp(mrcprecog_options.params[OPT_ARG_INTERRUPT], "any") == 0) {
+			if (strcasecmp(mrcprecog_options.params[OPT_ARG_INTERRUPT], "any") == 0)
 				mrcprecog_options.params[OPT_ARG_INTERRUPT] = AST_DIGIT_ANY;
-			} else if (strcasecmp(mrcprecog_options.params[OPT_ARG_INTERRUPT], "none") == 0)
+			else if (strcasecmp(mrcprecog_options.params[OPT_ARG_INTERRUPT], "none") == 0)
 				dtmf_enable = 2;
+			else if (strcasecmp(mrcprecog_options.params[OPT_ARG_INTERRUPT], "disable") == 0)
+				dtmf_enable = 0;
 		}
 	}
 	ast_log(LOG_NOTICE, "DTMF enable: %d\n", dtmf_enable);
@@ -1450,7 +1452,7 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 
 	i = 0;
 	if (((dtmf_enable == 1) && (dtmfkey != -1)) || (waitres < 0)) {
-		/* Skip as we have to return to specific dialplan extension, or a error occurred on the channel */
+		/* Skip as we have to return to specific dialplan extension, or an error occurred on the channel */
 	} else {
 		ast_log(LOG_NOTICE, "Recognizing\n");
 
