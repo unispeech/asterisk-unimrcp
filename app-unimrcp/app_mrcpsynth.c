@@ -159,12 +159,6 @@ static apt_bool_t speech_on_session_terminate(mrcp_application_t *application, m
 	ast_log(LOG_DEBUG, "speech_on_session_terminate\n");
 
 	if (schannel != NULL) {
-		if (schannel->dtmf_generator != NULL) {
-			ast_log(LOG_NOTICE, "(%s) DTMF generator destroyed\n", schannel->name);
-			mpf_dtmf_generator_destroy(schannel->dtmf_generator);
-			schannel->dtmf_generator = NULL;
-		}
-
 		ast_log(LOG_DEBUG, "(%s) Destroying MRCP session\n", schannel->name);
 
 		if (!mrcp_application_session_destroy(session))
@@ -191,16 +185,6 @@ static apt_bool_t speech_on_channel_add(mrcp_application_t *application, mrcp_se
 
 	if ((schannel != NULL) && (application != NULL) && (session != NULL) && (channel != NULL)) {
 		if ((session != NULL) && (status == MRCP_SIG_STATUS_CODE_SUCCESS)) {
-			if (schannel->stream != NULL) {
-				schannel->dtmf_generator = mpf_dtmf_generator_create(schannel->stream, schannel->pool);
-				/* schannel->dtmf_generator = mpf_dtmf_generator_create_ex(schannel->stream, MPF_DTMF_GENERATOR_OUTBAND, 70, 50, schannel->pool); */
-
-				if (schannel->dtmf_generator != NULL)
-					ast_log(LOG_NOTICE, "(%s) DTMF generator created\n", schannel->name);
-				else
-					ast_log(LOG_NOTICE, "(%s) Unable to create DTMF generator\n", schannel->name);
-			}
-
 			const char *codec_name = NULL;
 			const mpf_codec_descriptor_t *descriptor = NULL;
 
