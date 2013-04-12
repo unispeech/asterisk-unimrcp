@@ -166,38 +166,43 @@ static apt_bool_t speech_on_channel_add(mrcp_application_t *application, mrcp_se
 
 	if ((schannel != NULL) && (application != NULL) && (session != NULL) && (channel != NULL)) {
 		if ((session != NULL) && (status == MRCP_SIG_STATUS_CODE_SUCCESS)) {
-			if (schannel->stream != NULL) {
+			const mpf_codec_descriptor_t *descriptor = NULL;
+			if (schannel->type == SPEECH_CHANNEL_SYNTHESIZER)
+				descriptor = mrcp_application_sink_descriptor_get(channel);
+			else
+				descriptor = mrcp_application_source_descriptor_get(channel);
+			
+			if (!descriptor) {
+				ast_log(LOG_ERROR, "(%s) Unable to determine codec descriptor\n", schannel->name);
+				speech_channel_set_state(schannel, SPEECH_CHANNEL_ERROR);
+				ast_log(LOG_DEBUG, "Terminating MRCP session\n");
+				if (!mrcp_application_session_terminate(session))
+					ast_log(LOG_WARNING, "(%s) %s unable to terminate application session\n", schannel->name, speech_channel_type_to_string(schannel->type));
+				return FALSE;
+			}
+
+			if (schannel->type == SPEECH_CHANNEL_RECOGNIZER && schannel->stream != NULL) {
 				schannel->dtmf_generator = mpf_dtmf_generator_create(schannel->stream, schannel->pool);
 				/* schannel->dtmf_generator = mpf_dtmf_generator_create_ex(schannel->stream, MPF_DTMF_GENERATOR_OUTBAND, 70, 50, schannel->pool); */
 
 				if (schannel->dtmf_generator != NULL)
 					ast_log(LOG_NOTICE, "(%s) DTMF generator created\n", schannel->name);
 				else
-					ast_log(LOG_NOTICE, "(%s) Unable to create DTMF generator\n", schannel->name);
+					ast_log(LOG_WARNING, "(%s) Unable to create DTMF generator\n", schannel->name);
 			}
 
-			const mpf_codec_descriptor_t *descriptor = NULL;
+			schannel->rate = descriptor->sampling_rate;
 			const char *codec_name = NULL;
-
-			/* What sample rate did we negotiate? */
-			if (schannel->type == SPEECH_CHANNEL_SYNTHESIZER)
-				descriptor = mrcp_application_sink_descriptor_get(channel);
-			else
-				descriptor = mrcp_application_source_descriptor_get(channel);
-
-			if (descriptor != NULL)
-				schannel->rate = descriptor->sampling_rate;
-			else {
-				ast_log(LOG_ERROR, "(%s) Unable to determine codec descriptor\n", schannel->name);
-				return FALSE;
-			}
-
 			if (descriptor->name.length > 0)
 				codec_name = descriptor->name.buf;
 			else
 				codec_name = "unknown";
 
-			ast_log(LOG_DEBUG, "(%s) %s channel is ready, codec = %s, sample rate = %d\n", schannel->name, speech_channel_type_to_string(schannel->type), codec_name, schannel->rate);
+			ast_log(LOG_DEBUG, "(%s) %s channel is ready, codec = %s, sample rate = %d\n", 
+				schannel->name, 
+				speech_channel_type_to_string(schannel->type), 
+				codec_name, 
+				schannel->rate);
 			speech_channel_set_state(schannel, SPEECH_CHANNEL_READY);
 		} else {
 			ast_log(LOG_ERROR, "(%s) %s channel error!\n", schannel->name, speech_channel_type_to_string(schannel->type));
