@@ -1100,15 +1100,21 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 		return -1;
 	}
 
+	/* We need to make a copy of the input string if we are going to modify it! */
+	parse = ast_strdupa(data);
+	AST_STANDARD_APP_ARGS(args, parse);
+
+	if (ast_strlen_zero(args.grammar)) {
+		ast_log(LOG_WARNING, "%s requires a grammar argument (grammar[,options])\n", app_recog);
+		pbx_builtin_setvar_helper(chan, "RECOGSTATUS", "ERROR");
+		return -1;
+	}
+
 	if ((pool = apt_pool_create()) == NULL) {
 		ast_log(LOG_ERROR, "Unable to create memory pool for channel\n");
 		pbx_builtin_setvar_helper(chan, "RECOGSTATUS", "ERROR");
 		return -1;
 	}
-
-	/* We need to make a copy of the input string if we are going to modify it! */
-	parse = ast_strdupa(data);
-	AST_STANDARD_APP_ARGS(args, parse);
 
 	mrcprecog_options.recog_hfs = NULL;
 	mrcprecog_options.flags = 0;
@@ -1349,7 +1355,7 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 
 				/* Break if prompt has finished - don't care about analysis time which is in effect equal to prompt length. */
 				if ((filelength != 0) && ( ast_tellstream(fs) >= filelength)) {
-					ast_log(LOG_NOTICE, "prompt has finished playing, moving on.\n");
+					ast_log(LOG_NOTICE, "Prompt has finished playing, moving on.\n");
 					ast_frfree(f1);
 					break;
 				}

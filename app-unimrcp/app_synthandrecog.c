@@ -1248,13 +1248,29 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 	int i;
 
 	AST_DECLARE_APP_ARGS(args,
-		AST_APP_ARG(text);
+		AST_APP_ARG(prompt);
 		AST_APP_ARG(grammar);
 		AST_APP_ARG(options);
 	);
 
 	if (ast_strlen_zero(data)) {
-		ast_log(LOG_WARNING, "%s requires an argument (text,grammar[,options])\n", synthandrecog_name);
+		ast_log(LOG_WARNING, "%s requires arguments (prompt,grammar[,options])\n", synthandrecog_name);
+		pbx_builtin_setvar_helper(chan, "RECOG_STATUS", "ERROR");
+		return -1;
+	}
+
+	/* We need to make a copy of the input string if we are going to modify it! */
+	parse = ast_strdupa(data);
+	AST_STANDARD_APP_ARGS(args, parse);
+
+	if (ast_strlen_zero(args.prompt)) {
+		ast_log(LOG_WARNING, "%s requires a prompt argument (prompt,grammar[,options])\n", synthandrecog_name);
+		pbx_builtin_setvar_helper(chan, "RECOG_STATUS", "ERROR");
+		return -1;
+	}
+
+	if (ast_strlen_zero(args.grammar)) {
+		ast_log(LOG_WARNING, "%s requires a grammar argument (prompt,grammar[,options])\n", synthandrecog_name);
 		pbx_builtin_setvar_helper(chan, "RECOG_STATUS", "ERROR");
 		return -1;
 	}
@@ -1268,10 +1284,6 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 	sar_session.chan = chan;
 	sar_session.recog_channel = NULL;
 	sar_session.synth_channel = NULL;
-
-	/* We need to make a copy of the input string if we are going to modify it! */
-	parse = ast_strdupa(data);
-	AST_STANDARD_APP_ARGS(args, parse);
 
 	sar_options.recog_hfs = NULL;
 	sar_options.synth_hfs = NULL;
@@ -1428,7 +1440,7 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 
 	const char *content = NULL;
 	const char *content_type = NULL;
-	if (determine_synth_content_type(sar_session.synth_channel, args.text, &content, &content_type) != 0) {
+	if (determine_synth_content_type(sar_session.synth_channel, args.prompt, &content, &content_type) != 0) {
 		ast_log(LOG_WARNING, "Unable to determine synthesis content type\n");
 		res = -1;
 		return synthandrecog_exit(&sar_session, res);

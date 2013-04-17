@@ -68,7 +68,7 @@
 			MRCP synthesis application.
 		</synopsis>
 		<syntax>
-			<parameter name="text" required="true"/>
+			<parameter name="prompt" required="true"/>
 			<parameter name="options" />
 		</syntax>
 		<description>
@@ -555,12 +555,22 @@ static int app_synth_exec(struct ast_channel *chan, ast_app_data data)
 	mrcpsynth_options_t mrcpsynth_options;
 
 	AST_DECLARE_APP_ARGS(args,
-		AST_APP_ARG(text);
+		AST_APP_ARG(prompt);
 		AST_APP_ARG(options);
 	);
 
 	if (ast_strlen_zero(data)) {
-		ast_log(LOG_WARNING, "%s requires an argument (text[,options])\n", app_synth);
+		ast_log(LOG_WARNING, "%s requires an argument (prompt[,options])\n", app_synth);
+		pbx_builtin_setvar_helper(chan, "SYNTHSTATUS", "ERROR");
+		return -1;
+	}
+
+	/* We need to make a copy of the input string if we are going to modify it! */
+	parse = ast_strdupa(data);
+	AST_STANDARD_APP_ARGS(args, parse);
+
+	if (ast_strlen_zero(args.prompt)) {
+		ast_log(LOG_WARNING, "%s requires a prompt argument (prompt[,options])\n", app_synth);
 		pbx_builtin_setvar_helper(chan, "SYNTHSTATUS", "ERROR");
 		return -1;
 	}
@@ -570,10 +580,6 @@ static int app_synth_exec(struct ast_channel *chan, ast_app_data data)
 		pbx_builtin_setvar_helper(chan, "RECOGSTATUS", "ERROR");
 		return -1;
 	}
-
-	/* We need to make a copy of the input string if we are going to modify it! */
-	parse = ast_strdupa(data);
-	AST_STANDARD_APP_ARGS(args, parse);
 
 	mrcpsynth_options.synth_hfs = NULL;
 	mrcpsynth_options.flags = 0;
@@ -648,7 +654,7 @@ static int app_synth_exec(struct ast_channel *chan, ast_app_data data)
 
 	const char *content = NULL;
 	const char *content_type = NULL;
-	if (determine_synth_content_type(schannel, args.text, &content, &content_type) != 0) {
+	if (determine_synth_content_type(schannel, args.prompt, &content, &content_type) != 0) {
 		ast_log(LOG_WARNING, "Unable to determine synthesis content type\n");
 		res = -1;
 		speech_channel_stop(schannel);
