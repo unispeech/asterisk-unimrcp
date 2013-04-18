@@ -82,18 +82,20 @@ enum sar_option_flags {
 	SAR_RECOG_PROFILE          = (1 << 0),
 	SAR_SYNTH_PROFILE          = (2 << 0),
 	SAR_BARGEIN                = (3 << 0),
-	SAR_GRAMMAR_DELIMITERS     = (4 << 0)
+	SAR_GRAMMAR_DELIMITERS     = (4 << 0),
+	SAR_URI_ENCODED_RESULTS    = (5 << 0)
 };
 
 /* The enumeration of option arguments. */
 enum sar_option_args {
-	OPT_ARG_RECOG_PROFILE      = 0,
-	OPT_ARG_SYNTH_PROFILE      = 1,
-	OPT_ARG_BARGEIN            = 2,
-	OPT_ARG_GRAMMAR_DELIMITERS = 3,
+	OPT_ARG_RECOG_PROFILE       = 0,
+	OPT_ARG_SYNTH_PROFILE       = 1,
+	OPT_ARG_BARGEIN             = 2,
+	OPT_ARG_GRAMMAR_DELIMITERS  = 3,
+	OPT_ARG_URI_ENCODED_RESULTS = 4,
 
 	/* This MUST be the last value in this enum! */
-	OPT_ARG_ARRAY_SIZE         = 4
+	OPT_ARG_ARRAY_SIZE          = 5
 };
 
 /* The structure which holds the application options (including the MRCP params). */
@@ -623,7 +625,7 @@ static int recog_channel_set_results(speech_channel_t *schannel, int completion_
 }
 
 /* Get the recognition results. */
-static int recog_channel_get_results(speech_channel_t *schannel, const char **completion_cause, const char **result, const char **waveform_uri)
+static int recog_channel_get_results(speech_channel_t *schannel, int uri_encoded, const char **completion_cause, const char **result, const char **waveform_uri)
 {
 	if (schannel == NULL) {
 		ast_log(LOG_ERROR, "(unknown) channel error!\n");
@@ -659,12 +661,17 @@ static int recog_channel_get_results(speech_channel_t *schannel, const char **co
 		r->completion_cause = 0;
 	}
 
-	if (result) {
-		if (r->result && (strlen(r->result) > 0)) {
+	if (result && r->result && (strlen(r->result) > 0)) {
+		if (uri_encoded == 0) {
 			*result = apr_pstrdup(schannel->pool, r->result);
-			ast_log(LOG_DEBUG, "(%s) result:\n\n%s\n", schannel->name, *result);
-			r->result = NULL;
 		}
+		else {
+			apr_size_t len = strlen(r->result) * 2;
+			char *res = apr_palloc(schannel->pool, len);
+			*result = ast_uri_encode(r->result, res, len, ast_uri_http);
+		}
+		ast_log(LOG_DEBUG, "(%s) result:\n\n%s\n", schannel->name, *result);
+		r->result = NULL;
 	}
 
 	if (waveform_uri) {
@@ -1166,6 +1173,9 @@ static int synthandrecog_option_apply(sar_options_t *options, const char *key, c
 	} else if (strcasecmp(key, "gd") == 0) {
 		options->flags |= SAR_GRAMMAR_DELIMITERS;
 		options->params[OPT_ARG_GRAMMAR_DELIMITERS] = value;
+	} else if (strcasecmp(key, "uer") == 0) {
+		options->flags |= SAR_URI_ENCODED_RESULTS;
+		options->params[OPT_ARG_URI_ENCODED_RESULTS] = value;
 	}
 	else {
 		ast_log(LOG_WARNING, "Unknown option: %s\n", key);
@@ -1575,8 +1585,16 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 	const char *result = NULL;
 	const char *waveform_uri = NULL;
 
+	int uri_encoded_results = 0;
+	/* Check if the results should be URI-encoded */
+	if ((sar_options.flags & SAR_URI_ENCODED_RESULTS) == SAR_URI_ENCODED_RESULTS) {
+		if (!ast_strlen_zero(sar_options.params[OPT_ARG_URI_ENCODED_RESULTS])) {
+			uri_encoded_results = (atoi(sar_options.params[OPT_ARG_URI_ENCODED_RESULTS]) == 0) ? 0 : 1;
+		}
+	}
+
 	/* Get recognition result. */
-	if (recog_channel_get_results(sar_session.recog_channel, &completion_cause, &result, &waveform_uri) != 0) {
+	if (recog_channel_get_results(sar_session.recog_channel, uri_encoded_results, &completion_cause, &result, &waveform_uri) != 0) {
 		ast_log(LOG_WARNING, "Unable to retrieve result\n");
 		res = -1;
 		return synthandrecog_exit(&sar_session, res);

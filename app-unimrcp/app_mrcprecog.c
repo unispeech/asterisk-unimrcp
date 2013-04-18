@@ -118,12 +118,13 @@ static ast_mrcp_application_t *mrcprecog = NULL;
 
 /* The enumeration of application options (excluding the MRCP params). */
 enum mrcprecog_option_flags {
-	MRCPRECOG_PROFILE            = (1 << 0),
-	MRCPRECOG_INTERRUPT          = (2 << 0),
-	MRCPRECOG_FILENAME           = (3 << 0),
-	MRCPRECOG_BARGEIN            = (4 << 0),
-	MRCPRECOG_GRAMMAR_DELIMITERS = (5 << 0),
-	MRCPRECOG_EXIT_ON_PLAYERROR  = (6 << 0)
+	MRCPRECOG_PROFILE             = (1 << 0),
+	MRCPRECOG_INTERRUPT           = (2 << 0),
+	MRCPRECOG_FILENAME            = (3 << 0),
+	MRCPRECOG_BARGEIN             = (4 << 0),
+	MRCPRECOG_GRAMMAR_DELIMITERS  = (5 << 0),
+	MRCPRECOG_EXIT_ON_PLAYERROR   = (6 << 0),
+	MRCPRECOG_URI_ENCODED_RESULTS = (7 << 0)
 };
 
 /* The enumeration of option arguments. */
@@ -134,9 +135,10 @@ enum mrcprecog_option_args {
 	OPT_ARG_BARGEIN              = 3,
 	OPT_ARG_GRAMMAR_DELIMITERS   = 4,
 	OPT_ARG_EXIT_ON_PLAYERROR    = 5,
+	OPT_ARG_URI_ENCODED_RESULTS  = 6,
 
 	/* This MUST be the last value in this enum! */
-	OPT_ARG_ARRAY_SIZE           = 6
+	OPT_ARG_ARRAY_SIZE           = 7
 };
 
 /* The structure which holds the application options (including the MRCP params). */
@@ -442,7 +444,7 @@ static int recog_channel_set_results(speech_channel_t *schannel, const char *res
 }
 
 /* Get the recognition results. */
-static int recog_channel_get_results(speech_channel_t *schannel, const char **result)
+static int recog_channel_get_results(speech_channel_t *schannel, int uri_encoded, const char **result)
 {
 	int status = 0;
 
@@ -466,7 +468,14 @@ static int recog_channel_get_results(speech_channel_t *schannel, const char **re
 	}
 
 	if (r->result && (strlen(r->result) > 0)) {
-		*result = apr_pstrdup(schannel->pool, r->result);
+		if (uri_encoded == 0) {
+			*result = apr_pstrdup(schannel->pool, r->result);
+		}
+		else {
+			apr_size_t len = strlen(r->result) * 2;
+			char *res = apr_palloc(schannel->pool, len);
+			*result = ast_uri_encode(r->result, res, len, ast_uri_http);
+		}
 		ast_log(LOG_DEBUG, "(%s) result:\n\n%s\n", schannel->name, *result);
 		r->result = NULL;
 		r->start_of_input = 0;
@@ -1015,6 +1024,9 @@ static int mrcprecog_option_apply(mrcprecog_options_t *options, const char *key,
 	} else if (strcasecmp(key, "epe") == 0) {
 		options->flags |= MRCPRECOG_EXIT_ON_PLAYERROR;
 		options->params[OPT_ARG_EXIT_ON_PLAYERROR] = value;
+	} else if (strcasecmp(key, "uer") == 0) {
+		options->flags |= MRCPRECOG_URI_ENCODED_RESULTS;
+		options->params[OPT_ARG_URI_ENCODED_RESULTS] = value;
 	}
 	else {
 		ast_log(LOG_WARNING, "Unknown option: %s\n", key);
@@ -1580,7 +1592,15 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 		const char* result = NULL;
 
 		if (recog_channel_check_results(schannel) == 0) {
-			if (recog_channel_get_results(schannel, &result) == 0) {
+			int uri_encoded_results = 0;
+			/* Check if the results should be URI-encoded */
+			if ((mrcprecog_options.flags & MRCPRECOG_URI_ENCODED_RESULTS) == MRCPRECOG_URI_ENCODED_RESULTS) {
+				if (!ast_strlen_zero(mrcprecog_options.params[OPT_ARG_URI_ENCODED_RESULTS])) {
+					uri_encoded_results = (atoi(mrcprecog_options.params[OPT_ARG_URI_ENCODED_RESULTS]) == 0) ? 0 : 1;
+				}
+			}
+
+			if (recog_channel_get_results(schannel, uri_encoded_results, &result) == 0) {
 				ast_log(LOG_NOTICE, "Result=|%s|\n", result);
 			} else {
 				ast_log(LOG_ERROR, "Unable to retrieve result\n");
