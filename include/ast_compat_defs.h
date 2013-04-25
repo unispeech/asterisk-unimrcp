@@ -229,4 +229,16 @@ static APR_INLINE void ast_frame_set_format(struct ast_frame *f, const ast_forma
 #endif
 }
 
+/**
+ * Backward compatible URI encode function.
+ */
+static APR_INLINE char *ast_uri_encode_http(const char *string, char *outbuf, int buflen)
+{
+#if AST_VERSION_AT_LEAST(10,0,0)
+	return ast_uri_encode(string, outbuf, buflen, ast_uri_http);
+#else
+	return ast_uri_encode(string, outbuf, buflen, 1);
+#endif
+}
+
 #endif /* AST_COMPAT_DEFS_H */

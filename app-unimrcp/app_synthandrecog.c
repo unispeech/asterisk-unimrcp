@@ -668,7 +668,7 @@ static int recog_channel_get_results(speech_channel_t *schannel, int uri_encoded
 		else {
 			apr_size_t len = strlen(r->result) * 2;
 			char *res = apr_palloc(schannel->pool, len);
-			*result = ast_uri_encode(r->result, res, len, ast_uri_http);
+			*result = ast_uri_encode_http(r->result, res, len);
 		}
 		ast_log(LOG_DEBUG, "(%s) result:\n\n%s\n", schannel->name, *result);
 		r->result = NULL;
