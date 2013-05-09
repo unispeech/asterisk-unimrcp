@@ -1650,6 +1650,7 @@ int load_mrcprecog_app()
 	/* Create the recognizer application and link its callbacks */
 	if ((mrcprecog->app = mrcp_application_create(recog_message_handler, (void *)0, pool)) == NULL) {
 		ast_log(LOG_ERROR, "Unable to create recognizer MRCP application\n");
+		mrcprecog = NULL;
 		return -1;
 	}
 
@@ -1671,7 +1672,7 @@ int load_mrcprecog_app()
 		ast_log(LOG_ERROR, "Unable to register recognizer MRCP application\n");
 		if (!mrcp_application_destroy(mrcprecog->app))
 			ast_log(LOG_WARNING, "Unable to destroy recognizer MRCP application\n");
-		mrcprecog->app = NULL;
+		mrcprecog = NULL;
 		return -1;
 	}
 
