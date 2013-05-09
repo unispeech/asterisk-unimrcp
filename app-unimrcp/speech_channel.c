@@ -72,12 +72,23 @@ const char *speech_channel_state_to_string(speech_channel_state_t state)
 	}
 }
 
-/* Convert speech channel type into a string. */
+/* Convert speech channel type to string. */
 const char *speech_channel_type_to_string(speech_channel_type_t type)
 {
 	switch (type) {
 		case SPEECH_CHANNEL_SYNTHESIZER: return "SYNTHESIZER";
 		case SPEECH_CHANNEL_RECOGNIZER: return "RECOGNIZER";
+		default: return "UNKNOWN";
+	}
+}
+
+/* Convert channel status to string. */
+const char *speech_channel_status_to_string(speech_channel_status_t status)
+{
+	switch (status) {
+		case SPEECH_CHANNEL_STATUS_OK: return "OK";
+		case SPEECH_CHANNEL_STATUS_ERROR: return "ERROR";
+		case SPEECH_CHANNEL_STATUS_INTERRUPTED: return "INTERRUPTED";
 		default: return "UNKNOWN";
 	}
 }

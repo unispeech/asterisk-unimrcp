@@ -40,6 +40,17 @@ enum speech_channel_state_t {
 };
 typedef enum speech_channel_state_t speech_channel_state_t;
 
+/* Channel operation status. */
+enum speech_channel_status_t {
+	/* Success. */
+	SPEECH_CHANNEL_STATUS_OK,
+	/* Error. */
+	SPEECH_CHANNEL_STATUS_ERROR,
+	/* Interrupted. */
+	SPEECH_CHANNEL_STATUS_INTERRUPTED
+};
+typedef enum speech_channel_status_t speech_channel_status_t;
+
 /* An MRCP speech channel. */
 struct speech_channel_t {
 	/* The name of this channel (for logging). */
@@ -163,8 +174,11 @@ int speech_channel_write(speech_channel_t *schannel, void *data, apr_size_t *len
 /* Convert channel state to string. */
 const char *speech_channel_state_to_string(speech_channel_state_t state);
 
-/* Convert speech channel type into a string. */
+/* Convert speech channel type to string. */
 const char *speech_channel_type_to_string(speech_channel_type_t type);
+
+/* Convert channel status to string. */
+const char *speech_channel_status_to_string(speech_channel_status_t status);
 
 /* 
  * Determine synthesis content type by specified text.
