@@ -136,6 +136,16 @@ struct mrcpsynth_options_t {
 
 typedef struct mrcpsynth_options_t mrcpsynth_options_t;
 
+/* The application session. */
+struct mrcpsynth_session_t {
+	apr_pool_t         *pool;
+	speech_channel_t   *schannel;
+	FILE               *fp;
+	ast_format_compat  *writeformat;
+};
+
+typedef struct mrcpsynth_session_t mrcpsynth_session_t;
+
 /* Default frame size:
  *
  * 8000 samples/sec * 20ms = 160 * 2 bytes/sample = 320 bytes
@@ -501,26 +511,27 @@ static int mrcpsynth_options_parse(char *str, mrcpsynth_options_t *options, apr_
 }
 
 /* Exit the application. */
-static int mrcpsynth_exit(struct ast_channel *chan, speech_channel_t *schannel, apr_pool_t *pool, int res)
+static int mrcpsynth_exit(struct ast_channel *chan, mrcpsynth_session_t *mrcpsynth_session, speech_channel_status_t status)
 {
-	if (!pool)
-		return -1;
+	const char *status_str = speech_channel_status_to_string(status);
+	ast_log(LOG_NOTICE, "Set SYNTHSTATUS to %s\n", status_str);
+	pbx_builtin_setvar_helper(chan, "SYNTHSTATUS", status_str);
 
-	if (schannel) {
-		speech_channel_destroy(schannel);
-		schannel = NULL;
+	if (mrcpsynth_session) {
+		if (mrcpsynth_session->fp)
+			fclose(mrcpsynth_session->fp);
+
+		if (mrcpsynth_session->writeformat)
+			ast_channel_set_writeformat(chan, mrcpsynth_session->writeformat);
+
+		if (mrcpsynth_session->schannel)
+			speech_channel_destroy(mrcpsynth_session->schannel);
+
+		if (mrcpsynth_session->pool)
+			apr_pool_destroy(mrcpsynth_session->pool);
 	}
 
-	if (res < 0)
-		pbx_builtin_setvar_helper(chan, "SYNTHSTATUS", "ERROR");
-	else
-		pbx_builtin_setvar_helper(chan, "SYNTHSTATUS", "OK");
-
-	if ((res < 0) && (!ast_check_hangup(chan)))
-		res = 0;
-
-	apr_pool_destroy(pool);
-	return res;
+	return status != SPEECH_CHANNEL_STATUS_ERROR ? 0 : -1;
 }
 
 /* The entry point of the application. */
@@ -533,26 +544,21 @@ static int app_synth_exec(struct ast_channel *chan, ast_app_data data)
 	int samplerate = 8000;
 	/* int framesize = DEFAULT_FRAMESIZE; */
 	int framesize = format_to_bytes_per_sample(&nwriteformat) * (DEFAULT_FRAMESIZE / 2);
-	int dtmf_enable = 0;
 	struct ast_frame *f;
 	struct ast_frame fr;
 	struct timeval next;
-	int dobreak = 1;
 	int ms;
 	apr_size_t len;
-	int rres = 0;
-	speech_channel_t *schannel = NULL;
-	ast_mrcp_profile_t *profile = NULL;
+	int rres;
+	ast_mrcp_profile_t *profile;
 	apr_uint32_t speech_channel_number = get_next_speech_channel_number();
 	const char *name;
-	FILE* fp = NULL;
 	char buffer[framesize];
-	int dtmfkey = -1;
-	int res = 0;
+	speech_channel_status_t status;
 	char *parse;
-	apr_pool_t *pool;
 	int i;
 	mrcpsynth_options_t mrcpsynth_options;
+	mrcpsynth_session_t mrcpsynth_session;
 
 	AST_DECLARE_APP_ARGS(args,
 		AST_APP_ARG(prompt);
@@ -561,8 +567,7 @@ static int app_synth_exec(struct ast_channel *chan, ast_app_data data)
 
 	if (ast_strlen_zero(data)) {
 		ast_log(LOG_WARNING, "%s requires an argument (prompt[,options])\n", app_synth);
-		pbx_builtin_setvar_helper(chan, "SYNTHSTATUS", "ERROR");
-		return -1;
+		return mrcpsynth_exit(chan, NULL, SPEECH_CHANNEL_STATUS_ERROR);
 	}
 
 	/* We need to make a copy of the input string if we are going to modify it! */
@@ -571,15 +576,17 @@ static int app_synth_exec(struct ast_channel *chan, ast_app_data data)
 
 	if (ast_strlen_zero(args.prompt)) {
 		ast_log(LOG_WARNING, "%s requires a prompt argument (prompt[,options])\n", app_synth);
-		pbx_builtin_setvar_helper(chan, "SYNTHSTATUS", "ERROR");
-		return -1;
+		return mrcpsynth_exit(chan, NULL, SPEECH_CHANNEL_STATUS_ERROR);
 	}
 
-	if ((pool = apt_pool_create()) == NULL) {
+	if ((mrcpsynth_session.pool = apt_pool_create()) == NULL) {
 		ast_log(LOG_ERROR, "Unable to create memory pool for channel\n");
-		pbx_builtin_setvar_helper(chan, "RECOGSTATUS", "ERROR");
-		return -1;
+		return mrcpsynth_exit(chan, NULL, SPEECH_CHANNEL_STATUS_ERROR);
 	}
+
+	mrcpsynth_session.schannel = NULL;
+	mrcpsynth_session.fp = NULL;
+	mrcpsynth_session.writeformat = NULL;
 
 	mrcpsynth_options.synth_hfs = NULL;
 	mrcpsynth_options.flags = 0;
@@ -587,10 +594,11 @@ static int app_synth_exec(struct ast_channel *chan, ast_app_data data)
 		mrcpsynth_options.params[i] = NULL;
 
 	if (!ast_strlen_zero(args.options)) {
-		char *options_buf = apr_pstrdup(pool, args.options);
-		mrcpsynth_options_parse(options_buf, &mrcpsynth_options, pool);
+		char *options_buf = apr_pstrdup(mrcpsynth_session.pool, args.options);
+		mrcpsynth_options_parse(options_buf, &mrcpsynth_options, mrcpsynth_session.pool);
 	}
 
+	int dtmf_enable = 0;
 	if ((mrcpsynth_options.flags & MRCPSYNTH_INTERRUPT) == MRCPSYNTH_INTERRUPT) {
 		if (!ast_strlen_zero(mrcpsynth_options.params[OPT_ARG_INTERRUPT])) {
 			dtmf_enable = 1;
@@ -611,15 +619,14 @@ static int app_synth_exec(struct ast_channel *chan, ast_app_data data)
 	if ((mrcpsynth_options.flags & MRCPSYNTH_FILENAME) == MRCPSYNTH_FILENAME) {
 		const char *filename = mrcpsynth_options.params[OPT_ARG_FILENAME];
 		if (!ast_strlen_zero(filename))
-			fp = fopen(filename, "wb");
+			mrcpsynth_session.fp = fopen(filename, "wb");
 	}
 
-	name = apr_psprintf(pool, "TTS-%lu", (unsigned long int)speech_channel_number);
+	name = apr_psprintf(mrcpsynth_session.pool, "TTS-%lu", (unsigned long int)speech_channel_number);
 
-	schannel = speech_channel_create(pool, name, SPEECH_CHANNEL_SYNTHESIZER, mrcpsynth, format_to_str(&nwriteformat), samplerate, chan);
-	if (schannel == NULL) {
-		res = -1;
-		return mrcpsynth_exit(chan, schannel, pool, res);
+	mrcpsynth_session.schannel = speech_channel_create(mrcpsynth_session.pool, name, SPEECH_CHANNEL_SYNTHESIZER, mrcpsynth, format_to_str(&nwriteformat), samplerate, chan);
+	if (mrcpsynth_session.schannel == NULL) {
+		return mrcpsynth_exit(chan, &mrcpsynth_session, SPEECH_CHANNEL_STATUS_ERROR);
 	}
 
 	const char *profile_name = NULL;
@@ -628,17 +635,15 @@ static int app_synth_exec(struct ast_channel *chan, ast_app_data data)
 			profile_name = mrcpsynth_options.params[OPT_ARG_PROFILE];
 		}
 	}
-	
+
 	profile = get_synth_profile(profile_name);
 	if (!profile) {
 		ast_log(LOG_ERROR, "(%s) Can't find profile, %s\n", name, profile_name);
-		res = -1;
-		return mrcpsynth_exit(chan, schannel, pool, res);
+		return mrcpsynth_exit(chan, &mrcpsynth_session, SPEECH_CHANNEL_STATUS_ERROR);
 	}
 
-	if (speech_channel_open(schannel, profile) != 0) {
-		res = -1;
-		return mrcpsynth_exit(chan, schannel, pool, res);
+	if (speech_channel_open(mrcpsynth_session.schannel, profile) != 0) {
+		return mrcpsynth_exit(chan, &mrcpsynth_session, SPEECH_CHANNEL_STATUS_ERROR);
 	}
 
 	ast_format_compat owriteformat;
@@ -646,115 +651,113 @@ static int app_synth_exec(struct ast_channel *chan, ast_app_data data)
 	ast_channel_get_writeformat(chan, &owriteformat);
 
 	if (ast_channel_set_writeformat(chan, &nwriteformat) < 0) {
-		ast_log(LOG_WARNING, "Unable to set write format to signed linear\n");
-		res = -1;
-		speech_channel_stop(schannel);
-		return mrcpsynth_exit(chan, schannel, pool, res);
+		ast_log(LOG_ERROR, "Unable to set write format to signed linear\n");
+		return mrcpsynth_exit(chan, &mrcpsynth_session, SPEECH_CHANNEL_STATUS_ERROR);
 	}
+
+	mrcpsynth_session.writeformat = &owriteformat;
 
 	const char *content = NULL;
 	const char *content_type = NULL;
-	if (determine_synth_content_type(schannel, args.prompt, &content, &content_type) != 0) {
+	if (determine_synth_content_type(mrcpsynth_session.schannel, args.prompt, &content, &content_type) != 0) {
 		ast_log(LOG_WARNING, "Unable to determine synthesis content type\n");
-		res = -1;
-		speech_channel_stop(schannel);
-		return mrcpsynth_exit(chan, schannel, pool, res);
+		return mrcpsynth_exit(chan, &mrcpsynth_session, SPEECH_CHANNEL_STATUS_ERROR);
 	}
 
-	if (synth_channel_speak(schannel, content, content_type, mrcpsynth_options.synth_hfs) == 0) {
-		rres = 0;
-		res = 0;
+	if (synth_channel_speak(mrcpsynth_session.schannel, content, content_type, mrcpsynth_options.synth_hfs) != 0) {
+		ast_log(LOG_WARNING, "Unable to start synthesis\n");
+		return mrcpsynth_exit(chan, &mrcpsynth_session, SPEECH_CHANNEL_STATUS_ERROR);
+	}
 
-		/* Wait 50 ms first for synthesis to start, to fill a frame with audio. */
-		next = ast_tvadd(ast_tvnow(), ast_tv(0, 50000));
+	rres = 0;
+	status = SPEECH_CHANNEL_STATUS_OK;
 
-		do {
-			ms = ast_tvdiff_ms(next, ast_tvnow());
-			if (ms <= 0) {
-				len = sizeof(buffer);
-				rres = speech_channel_read(schannel, buffer, &len, 0);
+	/* Wait 50 ms first for synthesis to start, to fill a frame with audio. */
+	next = ast_tvadd(ast_tvnow(), ast_tv(0, 50000));
 
-				if ((rres == 0) && (len > 0)) {
-					if (fp != NULL)
-						fwrite(buffer, 1, len, fp);
+	do {
+		ms = ast_tvdiff_ms(next, ast_tvnow());
+		if (ms <= 0) {
+			len = sizeof(buffer);
+			rres = speech_channel_read(mrcpsynth_session.schannel, buffer, &len, 0);
 
-					memset(&fr, 0, sizeof(fr));
-					fr.frametype = AST_FRAME_VOICE;
-					/* fr.subclass.codec = AST_FORMAT_SLINEAR; */
-					ast_frame_set_format(&fr, &nwriteformat);
-					fr.datalen = len;
-					/* fr.samples = len / 2; */
-					fr.samples = len / format_to_bytes_per_sample(&nwriteformat);
-					ast_frame_set_data(&fr, buffer);
-					fr.mallocd = 0;
-					fr.offset = AST_FRIENDLY_OFFSET;
-					fr.src = __PRETTY_FUNCTION__;
-					fr.delivery.tv_sec = 0;
-					fr.delivery.tv_usec = 0;
+			if ((rres == 0) && (len > 0)) {
+				if (mrcpsynth_session.fp != NULL)
+					fwrite(buffer, 1, len, mrcpsynth_session.fp);
 
-					if (ast_write(chan, &fr) < 0) {
-						ast_log(LOG_WARNING, "Unable to write frame to channel: %s\n", strerror(errno));
-						res = -1;
-						break;
-					}
+				memset(&fr, 0, sizeof(fr));
+				fr.frametype = AST_FRAME_VOICE;
+				/* fr.subclass.codec = AST_FORMAT_SLINEAR; */
+				ast_frame_set_format(&fr, &nwriteformat);
+				fr.datalen = len;
+				/* fr.samples = len / 2; */
+				fr.samples = len / format_to_bytes_per_sample(&nwriteformat);
+				ast_frame_set_data(&fr, buffer);
+				fr.mallocd = 0;
+				fr.offset = AST_FRIENDLY_OFFSET;
+				fr.src = __PRETTY_FUNCTION__;
+				fr.delivery.tv_sec = 0;
+				fr.delivery.tv_usec = 0;
 
-					next = ast_tvadd(next, ast_samp2tv(fr.samples, samplerate));
-				} else {
-					if (rres == 0) {
-						/* next = ast_tvadd(next, ast_samp2tv(framesize/2, samplerate)); */
-						next = ast_tvadd(next, ast_samp2tv(framesize / format_to_bytes_per_sample(&nwriteformat), samplerate));
-						ast_log(LOG_WARNING, "Writer starved for audio\n");
-					}
-				}
-			} else {
-				ms = ast_waitfor(chan, ms);
-				if (ms < 0) {
-					ast_log(LOG_DEBUG, "Hangup detected\n");
-					res = -1;
+				if (ast_write(chan, &fr) < 0) {
+					ast_log(LOG_WARNING, "Unable to write frame to channel: %s\n", strerror(errno));
+					status = SPEECH_CHANNEL_STATUS_ERROR;
 					break;
-				} else if (ms) {
-					f = ast_read(chan);
+				}
 
-					if (!f) {
-						ast_log(LOG_DEBUG, "Null frame == hangup() detected\n");
-						res = -1;
-						break;
-					} else if ((dtmf_enable) && (f->frametype == AST_FRAME_DTMF)) {
-						dobreak = 1;
-						dtmfkey = ast_frame_get_dtmfkey(f);
-
-						ast_log(LOG_DEBUG, "User pressed a key (%d)\n", dtmfkey);
-						if (mrcpsynth_options.params[OPT_ARG_INTERRUPT] && strchr(mrcpsynth_options.params[OPT_ARG_INTERRUPT], dtmfkey)) {
-							res = dtmfkey;
-							dobreak = 0;
-						}
-
-						ast_log(LOG_DEBUG, "(%s) sending BARGE-IN-OCCURRED\n", schannel->name);
-
-						if (speech_channel_bargeinoccurred(schannel) != 0) {
-							ast_log(LOG_ERROR, "(%s) Failed to send BARGE-IN-OCCURRED\n", schannel->name);
-							dobreak = 0;
-						}
-					
-						ast_frfree(f);
-
-						if (dobreak == 0)
-							break;
-					} else /* Ignore other frametypes. */
-						ast_frfree(f);
+				next = ast_tvadd(next, ast_samp2tv(fr.samples, samplerate));
+			} else {
+				if (rres == 0) {
+					/* next = ast_tvadd(next, ast_samp2tv(framesize/2, samplerate)); */
+					next = ast_tvadd(next, ast_samp2tv(framesize / format_to_bytes_per_sample(&nwriteformat), samplerate));
+					ast_log(LOG_WARNING, "Writer starved for audio\n");
 				}
 			}
-		} while (rres == 0);
-	}
+		} else {
+			ms = ast_waitfor(chan, ms);
+			if (ms < 0) {
+				ast_log(LOG_DEBUG, "Hangup detected\n");
+				status = SPEECH_CHANNEL_STATUS_INTERRUPTED;
+				break;
+			} else if (ms) {
+				f = ast_read(chan);
+				if (!f) {
+					ast_log(LOG_DEBUG, "Null frame == hangup() detected\n");
+					status = SPEECH_CHANNEL_STATUS_INTERRUPTED;
+					break;
+				}
+				
+				if ((dtmf_enable) && (f->frametype == AST_FRAME_DTMF)) {
+					int dobreak = 1;
+					int dtmfkey = ast_frame_get_dtmfkey(f);
 
-	ast_channel_set_writeformat(chan, &owriteformat);
+					ast_log(LOG_DEBUG, "User pressed a key (%d)\n", dtmfkey);
+					if (mrcpsynth_options.params[OPT_ARG_INTERRUPT] && strchr(mrcpsynth_options.params[OPT_ARG_INTERRUPT], dtmfkey)) {
+						status = SPEECH_CHANNEL_STATUS_INTERRUPTED;
+						dobreak = 0;
+					}
 
-	if (fp != NULL)
-		fclose(fp);
+					ast_log(LOG_DEBUG, "(%s) sending BARGE-IN-OCCURRED\n", mrcpsynth_session.schannel->name);
 
-	speech_channel_stop(schannel);
+					if (speech_channel_bargeinoccurred(mrcpsynth_session.schannel) != 0) {
+						ast_log(LOG_ERROR, "(%s) Failed to send BARGE-IN-OCCURRED\n", mrcpsynth_session.schannel->name);
+						dobreak = 0;
+					}
 
-	return mrcpsynth_exit(chan, schannel, pool, res);
+					if (dobreak == 0) {
+						ast_frfree(f);
+						break;
+					}
+				}
+
+				ast_frfree(f);
+			}
+		}
+	} while (rres == 0);
+
+	speech_channel_stop(mrcpsynth_session.schannel);
+
+	return mrcpsynth_exit(chan, &mrcpsynth_session, status);
 }
 
 int load_mrcpsynth_app()
