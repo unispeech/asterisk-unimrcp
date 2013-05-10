@@ -111,10 +111,11 @@ typedef struct sar_options_t sar_options_t;
 
 /* The application session. */
 struct sar_session_t {
-	struct ast_channel *chan;
 	apr_pool_t         *pool;
 	speech_channel_t   *synth_channel;
 	speech_channel_t   *recog_channel;
+	ast_format_compat  *readformat;
+	ast_format_compat  *writeformat;
 };
 
 typedef struct sar_session_t sar_session_t;
@@ -200,10 +201,10 @@ static apt_bool_t speech_on_channel_add(mrcp_application_t *application, mrcp_se
 			else
 				codec_name = "unknown";
 
-			ast_log(LOG_DEBUG, "(%s) %s channel is ready, codec = %s, sample rate = %d\n", 
-				schannel->name, 
-				speech_channel_type_to_string(schannel->type), 
-				codec_name, 
+			ast_log(LOG_DEBUG, "(%s) %s channel is ready, codec = %s, sample rate = %d\n",
+				schannel->name,
+				speech_channel_type_to_string(schannel->type),
+				codec_name,
 				schannel->rate);
 			speech_channel_set_state(schannel, SPEECH_CHANNEL_READY);
 		} else {
@@ -1061,12 +1062,12 @@ static apt_bool_t recog_stream_open(mpf_audio_stream_t* stream, mpf_codec_t *cod
 	else
 		schannel = NULL;
 
-    schannel->stream = stream;
+	schannel->stream = stream;
 
 	if ((schannel == NULL) || (stream == NULL))
 		ast_log(LOG_ERROR, "(unknown) channel error opening stream!\n");
 
-        return TRUE;
+	return TRUE;
 }
 
 /* UniMRCP callback requesting next frame for speech recognition. */
@@ -1212,30 +1213,30 @@ static int synthandrecog_options_parse(char *str, sar_options_t *options, apr_po
 }
 
 /* Exit the application. */
-static int synthandrecog_exit(sar_session_t *sar_session, int res)
+static int synthandrecog_exit(struct ast_channel *chan, sar_session_t *sar_session, speech_channel_status_t status)
 {
-	if (!sar_session || !sar_session->pool)
-		return -1;
+	const char *status_str = speech_channel_status_to_string(status);
+	ast_log(LOG_NOTICE, "Set RECOG_STATUS to %s\n", status_str);
+	pbx_builtin_setvar_helper(chan, "RECOG_STATUS", status_str);
 
-	if (sar_session->synth_channel) {
-		speech_channel_destroy(sar_session->synth_channel);
-		sar_session->synth_channel = NULL;
+	if (sar_session) {
+		if (sar_session->writeformat)
+			ast_channel_set_writeformat(chan, sar_session->writeformat);
+
+		if (sar_session->readformat)
+			ast_channel_set_readformat(chan, sar_session->readformat);
+
+		if (sar_session->synth_channel)
+			speech_channel_destroy(sar_session->synth_channel);
+
+		if (sar_session->recog_channel)
+			speech_channel_destroy(sar_session->recog_channel);
+
+		if (sar_session->pool)
+			apr_pool_destroy(sar_session->pool);
 	}
-	if (sar_session->recog_channel) {
-		speech_channel_destroy(sar_session->recog_channel);
-		sar_session->recog_channel = NULL;
-	}
 
-	if (res < 0)
-		pbx_builtin_setvar_helper(sar_session->chan, "RECOG_STATUS", "ERROR");
-	else
-		pbx_builtin_setvar_helper(sar_session->chan, "RECOG_STATUS", "OK");
-
-	if ((res < 0) && (!ast_check_hangup(sar_session->chan)))
-		res = 0;
-
-	apr_pool_destroy(sar_session->pool);
-	return res;
+	return status != SPEECH_CHANNEL_STATUS_ERROR ? 0 : -1;
 }
 
 /* The entry point of the application. */
@@ -1250,7 +1251,7 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 	ast_mrcp_profile_t *synth_profile = NULL;
 	const char *synth_name;
 	apr_uint32_t speech_channel_number = get_next_speech_channel_number();
-	int res = 0;
+	speech_channel_status_t status = SPEECH_CHANNEL_STATUS_OK;
 
 	sar_session_t sar_session;
 	sar_options_t sar_options;
@@ -1265,8 +1266,7 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 
 	if (ast_strlen_zero(data)) {
 		ast_log(LOG_WARNING, "%s requires arguments (prompt,grammar[,options])\n", synthandrecog_name);
-		pbx_builtin_setvar_helper(chan, "RECOG_STATUS", "ERROR");
-		return -1;
+		return synthandrecog_exit(chan, NULL, SPEECH_CHANNEL_STATUS_ERROR);
 	}
 
 	/* We need to make a copy of the input string if we are going to modify it! */
@@ -1275,25 +1275,23 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 
 	if (ast_strlen_zero(args.prompt)) {
 		ast_log(LOG_WARNING, "%s requires a prompt argument (prompt,grammar[,options])\n", synthandrecog_name);
-		pbx_builtin_setvar_helper(chan, "RECOG_STATUS", "ERROR");
-		return -1;
+		return synthandrecog_exit(chan, NULL, SPEECH_CHANNEL_STATUS_ERROR);
 	}
 
 	if (ast_strlen_zero(args.grammar)) {
 		ast_log(LOG_WARNING, "%s requires a grammar argument (prompt,grammar[,options])\n", synthandrecog_name);
-		pbx_builtin_setvar_helper(chan, "RECOG_STATUS", "ERROR");
-		return -1;
+		return synthandrecog_exit(chan, NULL, SPEECH_CHANNEL_STATUS_ERROR);
 	}
 
 	if ((sar_session.pool = apt_pool_create()) == NULL) {
 		ast_log(LOG_ERROR, "Unable to create memory pool for channel\n");
-		pbx_builtin_setvar_helper(chan, "RECOG_STATUS", "ERROR");
-		return -1;
+		return synthandrecog_exit(chan, NULL, SPEECH_CHANNEL_STATUS_ERROR);
 	}
 
-	sar_session.chan = chan;
 	sar_session.recog_channel = NULL;
 	sar_session.synth_channel = NULL;
+	sar_session.readformat = NULL;
+	sar_session.writeformat = NULL;
 
 	sar_options.recog_hfs = NULL;
 	sar_options.synth_hfs = NULL;
@@ -1322,8 +1320,7 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 	/* Create speech channel for recognition. */
 	sar_session.recog_channel = speech_channel_create(sar_session.pool, recog_name, SPEECH_CHANNEL_RECOGNIZER, synthandrecog, format_to_str(&nreadformat), samplerate, chan);
 	if (sar_session.recog_channel == NULL) {
-		res = -1;
-		return synthandrecog_exit(&sar_session, res);
+		return synthandrecog_exit(chan, &sar_session, SPEECH_CHANNEL_STATUS_ERROR);
 	}
 
 	const char *recog_profile_option = NULL;
@@ -1337,14 +1334,12 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 	recog_profile = get_recog_profile(recog_profile_option);
 	if (!recog_profile) {
 		ast_log(LOG_ERROR, "(%s) Can't find profile, %s\n", recog_name, recog_profile_option);
-		res = -1;
-		return synthandrecog_exit(&sar_session, res);
+		return synthandrecog_exit(chan, &sar_session, SPEECH_CHANNEL_STATUS_ERROR);
 	}
 
 	/* Open recognition channel. */
 	if (speech_channel_open(sar_session.recog_channel, recog_profile) != 0) {
-		res = -1;
-		return synthandrecog_exit(&sar_session, res);
+		return synthandrecog_exit(chan, &sar_session, SPEECH_CHANNEL_STATUS_ERROR);
 	}
 
 	ast_format_compat nwriteformat;
@@ -1356,8 +1351,7 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 	/* Create speech channel for synthesis. */
 	sar_session.synth_channel = speech_channel_create(sar_session.pool, synth_name, SPEECH_CHANNEL_SYNTHESIZER, synthandrecog, format_to_str(&nwriteformat), samplerate, chan);
 	if (sar_session.synth_channel == NULL) {
-		res = -1;
-		return synthandrecog_exit(&sar_session, res);
+		return synthandrecog_exit(chan, &sar_session, SPEECH_CHANNEL_STATUS_ERROR);
 	}
 
 	const char *synth_profile_option = NULL;
@@ -1371,14 +1365,12 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 	synth_profile = get_synth_profile(synth_profile_option);
 	if (!synth_profile) {
 		ast_log(LOG_ERROR, "(%s) Can't find profile, %s\n", synth_name, synth_profile_option);
-		res = -1;
-		return synthandrecog_exit(&sar_session, res);
+		return synthandrecog_exit(chan, &sar_session, SPEECH_CHANNEL_STATUS_ERROR);
 	}
 
 	/* Open synthesis channel. */
 	if (speech_channel_open(sar_session.synth_channel, synth_profile) != 0) {
-		res = -1;
-		return synthandrecog_exit(&sar_session, res);
+		return synthandrecog_exit(chan, &sar_session, SPEECH_CHANNEL_STATUS_ERROR);
 	}
 
 	int bargein = 1;
@@ -1395,9 +1387,10 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 
 	if (ast_channel_set_readformat(chan, &nreadformat) < 0) {
 		ast_log(LOG_WARNING, "Unable to set read format to signed linear\n");
-		res = -1;
-		return synthandrecog_exit(&sar_session, res);
+		return synthandrecog_exit(chan, &sar_session, SPEECH_CHANNEL_STATUS_ERROR);
 	}
+
+	sar_session.readformat = &oreadformat;
 
 	ast_format_compat owriteformat;
 	ast_format_clear(&owriteformat);
@@ -1405,9 +1398,10 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 
 	if (ast_channel_set_writeformat(chan, &nwriteformat) < 0) {
 		ast_log(LOG_WARNING, "Unable to set write format to signed linear\n");
-		res = -1;
-		return synthandrecog_exit(&sar_session, res);
+		return synthandrecog_exit(chan, &sar_session, SPEECH_CHANNEL_STATUS_ERROR);
 	}
+
+	sar_session.writeformat = &owriteformat;
 
 	const char *grammar_delimiters = ",";
 	/* Get grammar delimiters. */
@@ -1431,8 +1425,7 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 		ast_log(LOG_DEBUG, "Determine grammar type: %s\n", grammar_str);
 		if (determine_grammar_type(sar_session.recog_channel, grammar_str, &grammar_content, &grammar_type) != 0) {
 			ast_log(LOG_WARNING, "Unable to determine grammar type\n");
-			res = -1;
-			return synthandrecog_exit(&sar_session, res);
+			return synthandrecog_exit(chan, &sar_session, SPEECH_CHANNEL_STATUS_ERROR);
 		}
 		ast_log(LOG_DEBUG, "Grammar type is: %i\n", grammar_type);
 
@@ -1441,8 +1434,7 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 		/* Load grammar. */
 		if (recog_channel_load_grammar(sar_session.recog_channel, grammar_name, grammar_type, grammar_content) != 0) {
 			ast_log(LOG_ERROR, "Unable to load grammar\n");
-			res = -1;
-			return synthandrecog_exit(&sar_session, res);
+			return synthandrecog_exit(chan, &sar_session, SPEECH_CHANNEL_STATUS_ERROR);
 		}
 
 		grammar_str = apr_strtok(NULL, grammar_delimiters, &last);
@@ -1452,15 +1444,13 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 	const char *content_type = NULL;
 	if (determine_synth_content_type(sar_session.synth_channel, args.prompt, &content, &content_type) != 0) {
 		ast_log(LOG_WARNING, "Unable to determine synthesis content type\n");
-		res = -1;
-		return synthandrecog_exit(&sar_session, res);
+		return synthandrecog_exit(chan, &sar_session, SPEECH_CHANNEL_STATUS_ERROR);
 	}
 
 	/* Start synthesis. */
 	if (synth_channel_speak(sar_session.synth_channel, content, content_type, sar_options.synth_hfs) != 0) {
 		ast_log(LOG_ERROR, "Unable to send SPEAK request\n");
-		res = -1;
-		return synthandrecog_exit(&sar_session, res);
+		return synthandrecog_exit(chan, &sar_session, SPEECH_CHANNEL_STATUS_ERROR);
 	}
 
 	if (!bargein) {
@@ -1469,18 +1459,15 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 			int ms = ast_waitfor(chan, 100);
 			if (ms < 0) {
 				ast_log(LOG_DEBUG, "Hangup detected\n");
-				res = -1;
-				return synthandrecog_exit(&sar_session, res);
+				return synthandrecog_exit(chan, &sar_session, SPEECH_CHANNEL_STATUS_INTERRUPTED);
 			}
-			
-			f = ast_read(chan);
 
+			f = ast_read(chan);
 			if (!f) {
 				ast_log(LOG_DEBUG, "Null frame. Hangup detected\n");
-				res = -1;
-				return synthandrecog_exit(&sar_session, res);
-			} 
-	
+				return synthandrecog_exit(chan, &sar_session, SPEECH_CHANNEL_STATUS_INTERRUPTED);
+			}
+
 			ast_frfree(f);
 		}
 		while (sar_session.synth_channel->state == SPEECH_CHANNEL_PROCESSING);
@@ -1493,117 +1480,109 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 	ast_log(LOG_NOTICE, "Recognizing start-input-timers: %d\n", start_input_timers);
 
 	/* Start recognition. */
-	if (recog_channel_start(sar_session.recog_channel, recog_name, start_input_timers, sar_options.recog_hfs) == 0) {
-		int waitres;
-		
-		/* Continue with recognition. */
-		while (((waitres = ast_waitfor(chan, 100)) >= 0)) {
-			int recog_processing = 1;
-
-			if ((sar_session.recog_channel != NULL) && (sar_session.recog_channel->mutex != NULL)) {
-				if (sar_session.recog_channel->mutex != NULL) {
-					apr_thread_mutex_lock(sar_session.recog_channel->mutex);
-				}
-
-				if (sar_session.recog_channel->state != SPEECH_CHANNEL_PROCESSING) {
-					recog_processing = 0;
-				}
-
-				if (sar_session.recog_channel->mutex != NULL) {
-					apr_thread_mutex_unlock(sar_session.recog_channel->mutex);
-				}
-			}
-
-			if (recog_processing == 0)
-				break;
-
-			if (start_input_timers == 0) {
-				if (sar_session.synth_channel->state != SPEECH_CHANNEL_PROCESSING) {
-					start_input_timers = 1;
-					ast_log(LOG_DEBUG, "Start input timers\n");
-					recog_channel_start_input_timers(sar_session.recog_channel);
-				}
-			}
-			
-			if (synth_processing == 1) {
-				if (r && r->start_of_input) {
-					synth_processing = 0;
-					ast_log(LOG_DEBUG, "Bargein occurred\n");
-					synth_channel_bargein_occurred(sar_session.synth_channel);
-				}
-			}
-
-			if (waitres == 0)
-				continue;
-
-			f = ast_read(chan);
-
-			if (!f) {
-				res = -1;
-				break;
-			}
-
-			if (f->frametype == AST_FRAME_VOICE) {
-				len = f->datalen;
-				if (speech_channel_write(sar_session.recog_channel, ast_frame_get_data(f), &len) != 0)
-					break;
-			} else if (f->frametype == AST_FRAME_VIDEO) {
-				/* Ignore. */
-			} else if (f->frametype == AST_FRAME_DTMF) {
-				int dtmfkey = ast_frame_get_dtmfkey(f);
-				ast_log(LOG_DEBUG, "User pressed DTMF key (%d)\n", dtmfkey);
-				/* Send DTMF frame to ASR engine. */
-				if (sar_session.recog_channel->dtmf_generator != NULL) {
-					char digits[2];
-					digits[0] = (char)dtmfkey;
-					digits[1] = '\0';
-
-					ast_log(LOG_NOTICE, "(%s) DTMF digit queued (%s)\n", sar_session.recog_channel->name, digits);
-					mpf_dtmf_generator_enqueue(sar_session.recog_channel->dtmf_generator, digits);
-					dtmfkey = -1;
-				}
-			}
-
-			if (f != NULL)
-				ast_frfree(f);
-		}
-	} else {
+	if (recog_channel_start(sar_session.recog_channel, recog_name, start_input_timers, sar_options.recog_hfs) != 0) {
 		ast_log(LOG_ERROR, "Unable to start recognition\n");
-		res = -1;
+		return synthandrecog_exit(chan, &sar_session, SPEECH_CHANNEL_STATUS_ERROR);
 	}
-	
-	if (!f) {
-		ast_log(LOG_NOTICE, "Got hangup\n");
-		res = -1;
-	} else {
-		if (bargein != 0) {
-			res = ast_waitstream(chan, "");
+
+	int waitres;
+
+	/* Continue with recognition. */
+	while ((waitres = ast_waitfor(chan, 100)) >= 0) {
+		int recog_processing = 1;
+
+		if ((sar_session.recog_channel != NULL) && (sar_session.recog_channel->mutex != NULL)) {
+			if (sar_session.recog_channel->mutex != NULL) {
+				apr_thread_mutex_lock(sar_session.recog_channel->mutex);
+			}
+
+			if (sar_session.recog_channel->state != SPEECH_CHANNEL_PROCESSING) {
+				recog_processing = 0;
+			}
+
+			if (sar_session.recog_channel->mutex != NULL) {
+				apr_thread_mutex_unlock(sar_session.recog_channel->mutex);
+			}
 		}
+
+		if (recog_processing == 0)
+			break;
+
+		if (start_input_timers == 0) {
+			if (sar_session.synth_channel->state != SPEECH_CHANNEL_PROCESSING) {
+				start_input_timers = 1;
+				ast_log(LOG_DEBUG, "Start input timers\n");
+				recog_channel_start_input_timers(sar_session.recog_channel);
+			}
+		}
+
+		if (synth_processing == 1) {
+			if (r && r->start_of_input) {
+				synth_processing = 0;
+				ast_log(LOG_DEBUG, "Bargein occurred\n");
+				synth_channel_bargein_occurred(sar_session.synth_channel);
+			}
+		}
+
+		if (waitres == 0)
+			continue;
+
+		f = ast_read(chan);
+		if (!f) {
+			ast_log(LOG_DEBUG, "Null frame. Hangup detected\n");
+			status = SPEECH_CHANNEL_STATUS_INTERRUPTED;
+			break;
+		}
+
+		if (f->frametype == AST_FRAME_VOICE) {
+			len = f->datalen;
+			if (speech_channel_write(sar_session.recog_channel, ast_frame_get_data(f), &len) != 0) {
+				ast_frfree(f);
+				break;
+			}
+		} else if (f->frametype == AST_FRAME_VIDEO) {
+			/* Ignore. */
+		} else if (f->frametype == AST_FRAME_DTMF) {
+			int dtmfkey = ast_frame_get_dtmfkey(f);
+			ast_log(LOG_DEBUG, "User pressed DTMF key (%d)\n", dtmfkey);
+			/* Send DTMF frame to ASR engine. */
+			if (sar_session.recog_channel->dtmf_generator != NULL) {
+				char digits[2];
+				digits[0] = (char)dtmfkey;
+				digits[1] = '\0';
+
+				ast_log(LOG_NOTICE, "(%s) DTMF digit queued (%s)\n", sar_session.recog_channel->name, digits);
+				mpf_dtmf_generator_enqueue(sar_session.recog_channel->dtmf_generator, digits);
+			}
+		}
+
+		ast_frfree(f);
 	}
 
 	const char *completion_cause = NULL;
 	const char *result = NULL;
 	const char *waveform_uri = NULL;
 
-	int uri_encoded_results = 0;
-	/* Check if the results should be URI-encoded */
-	if ((sar_options.flags & SAR_URI_ENCODED_RESULTS) == SAR_URI_ENCODED_RESULTS) {
-		if (!ast_strlen_zero(sar_options.params[OPT_ARG_URI_ENCODED_RESULTS])) {
-			uri_encoded_results = (atoi(sar_options.params[OPT_ARG_URI_ENCODED_RESULTS]) == 0) ? 0 : 1;
+	if (status == SPEECH_CHANNEL_STATUS_OK) {
+		int uri_encoded_results = 0;
+		/* Check if the results should be URI-encoded */
+		if ((sar_options.flags & SAR_URI_ENCODED_RESULTS) == SAR_URI_ENCODED_RESULTS) {
+			if (!ast_strlen_zero(sar_options.params[OPT_ARG_URI_ENCODED_RESULTS])) {
+				uri_encoded_results = (atoi(sar_options.params[OPT_ARG_URI_ENCODED_RESULTS]) == 0) ? 0 : 1;
+			}
 		}
-	}
 
-	/* Get recognition result. */
-	if (recog_channel_get_results(sar_session.recog_channel, uri_encoded_results, &completion_cause, &result, &waveform_uri) != 0) {
-		ast_log(LOG_WARNING, "Unable to retrieve result\n");
-		res = -1;
-		return synthandrecog_exit(&sar_session, res);
+		/* Get recognition result. */
+		if (recog_channel_get_results(sar_session.recog_channel, uri_encoded_results, &completion_cause, &result, &waveform_uri) != 0) {
+			ast_log(LOG_WARNING, "Unable to retrieve result\n");
+			return synthandrecog_exit(chan, &sar_session, SPEECH_CHANNEL_STATUS_ERROR);
+		}
 	}
 
 	/* Completion cause should always be available at this stage. */
 	if (completion_cause)
 		pbx_builtin_setvar_helper(chan, "RECOG_COMPLETION_CAUSE", completion_cause);
-	
+
 	/* Result may not be available if recognition completed with nomatch, noinput, or other error cause. */
 	if (result) {
 		ast_log(LOG_NOTICE, "Result=|%s|\n", result);
@@ -1617,11 +1596,7 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 	if (waveform_uri)
 		pbx_builtin_setvar_helper(chan, "RECOG_WAVEFORM_URI", waveform_uri);
 
-	ast_channel_set_readformat(chan, &oreadformat);
-	ast_channel_set_writeformat(chan, &owriteformat);
-
-	res = synthandrecog_exit(&sar_session, res);
-	return res;
+	return synthandrecog_exit(chan, &sar_session, status);
 }
 
 /* Process messages from UniMRCP for the synthandrecog application. */
