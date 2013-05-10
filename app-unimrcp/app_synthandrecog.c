@@ -727,7 +727,6 @@ static int recog_channel_start(speech_channel_t *schannel, const char *name, int
 	mrcp_generic_header_t *generic_header = NULL;
 	mrcp_recog_header_t *recog_header = NULL;
 	recognizer_data_t *r = NULL;
-	const char *mime_type = NULL;
 	grammar_t *grammar = NULL;
 
 	if ((schannel != NULL) && (name != NULL)) {
