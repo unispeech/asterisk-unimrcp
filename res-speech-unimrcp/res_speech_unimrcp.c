@@ -81,7 +81,7 @@ struct uni_speech_t {
 
 	/* Active grammars (Content-IDs) */
 	apr_hash_t            *active_grammars;
-	
+
 	/* Is session management request in-progress or not */
 	apt_bool_t             is_sm_request;
 	/* Session management request sent to server */
@@ -91,7 +91,7 @@ struct uni_speech_t {
 
 	/* Is recognition in-progress or not */
 	apt_bool_t             is_inprogress;
-	
+
 	/* In-progress request sent to server */
 	mrcp_message_t        *mrcp_request;
 	/* Response received from server */
@@ -242,7 +242,7 @@ static int uni_recog_create_internal(struct ast_speech *speech, ast_format_compa
 		media_buffer = mpf_frame_buffer_create(frame_size,20,pool);
 		uni_speech->media_buffer = media_buffer;
 	}
-	
+
 	if(!uni_speech->media_buffer) {
 		ast_log(LOG_WARNING, "Failed to create media buffer\n");
 		uni_recog_sm_request_send(uni_speech,MRCP_SIG_COMMAND_SESSION_TERMINATE);
@@ -299,7 +299,7 @@ static int uni_recog_stop(struct ast_speech *speech)
 {
 	uni_speech_t *uni_speech = speech->data;
 	mrcp_message_t *mrcp_message;
-	
+
 	if(!uni_speech->is_inprogress) {
 		return 0;
 	}
@@ -313,7 +313,7 @@ static int uni_recog_stop(struct ast_speech *speech)
 		ast_log(LOG_WARNING, "Failed to create MRCP message\n");
 		return -1;
 	}
-	
+
 	/* Reset last event (if any) */
 	uni_speech->mrcp_event = NULL;
 
@@ -328,12 +328,12 @@ static int uni_recog_stop(struct ast_speech *speech)
 		ast_log(LOG_WARNING, "Received failure response\n");
 		return -1;
 	}
-	
+
 	/* Reset media buffer */
 	mpf_frame_buffer_restart(uni_speech->media_buffer);
-	
+
 	ast_speech_change_state(speech, AST_SPEECH_STATE_NOT_READY);
-	
+
 	uni_speech->is_inprogress = FALSE;
 	return 0;
 }
@@ -486,7 +486,7 @@ static int uni_recog_unload_grammar(struct ast_speech *speech, ast_compat_const 
 		ast_log(LOG_WARNING, "Failed to create MRCP message\n");
 		return -1;
 	}
-	
+
 	/* Get/allocate generic header */
 	generic_header = mrcp_generic_header_prepare(mrcp_message);
 	if(generic_header) {
@@ -589,7 +589,7 @@ static int uni_recog_start(struct ast_speech *speech)
 		ast_log(LOG_WARNING, "Failed to create MRCP message\n");
 		return -1;
 	}
-	
+
 	/* Get/allocate generic header */
 	generic_header = mrcp_generic_header_prepare(mrcp_message);
 	if(generic_header) {
@@ -645,12 +645,12 @@ static int uni_recog_start(struct ast_speech *speech)
 		ast_log(LOG_WARNING, "Received failure response\n");
 		return -1;
 	}
-	
+
 	/* Reset media buffer */
 	mpf_frame_buffer_restart(uni_speech->media_buffer);
-	
+
 	ast_speech_change_state(speech, AST_SPEECH_STATE_READY);
-	
+
 	uni_speech->is_inprogress = TRUE;
 	return 0;
 }
@@ -810,7 +810,7 @@ struct ast_speech_result* uni_recog_get(struct ast_speech *speech)
 		&uni_speech->mrcp_event->body,
 		uni_speech->mrcp_event->start_line.version,
 		mrcp_application_session_pool_get(uni_speech->session));
-	
+
 	if(speech->results) {
 		ast_set_flag(speech,AST_SPEECH_HAVE_RESULTS);
 	}
@@ -900,10 +900,10 @@ static apt_bool_t on_message_receive(mrcp_application_t *application, mrcp_sessi
 	if(message->start_line.message_type == MRCP_MESSAGE_TYPE_RESPONSE) {
 		return uni_recog_mrcp_response_signal(uni_speech,message);
 	}
-	
+
 	if(message->start_line.message_type == MRCP_MESSAGE_TYPE_EVENT) {
 		if(message->start_line.method_id == RECOGNIZER_RECOGNITION_COMPLETE) {
-			uni_speech->is_inprogress = FALSE;			
+			uni_speech->is_inprogress = FALSE;
 			if (uni_speech->speech_base->state != AST_SPEECH_STATE_NOT_READY) {
 				uni_speech->mrcp_event = message;
 				ast_speech_change_state(uni_speech->speech_base,AST_SPEECH_STATE_DONE);
@@ -985,7 +985,7 @@ static apt_bool_t uni_recog_channel_create(uni_speech_t *uni_speech, ast_format_
 	mpf_termination_t *termination;
 	mpf_stream_capabilities_t *capabilities;
 	apr_pool_t *pool = mrcp_application_session_pool_get(uni_speech->session);
-	
+
 	/* Create source stream capabilities */
 	capabilities = mpf_source_stream_capabilities_create(pool);
 	/* Add codec capabilities (Linear PCM) */
@@ -1000,7 +1000,7 @@ static apt_bool_t uni_recog_channel_create(uni_speech_t *uni_speech, ast_format_
 			&audio_stream_vtable,     /* virtual methods table of audio stream */
 			capabilities,             /* stream capabilities */
 			uni_speech);              /* object to associate */
-	
+
 	/* Create MRCP channel */
 	channel = mrcp_application_channel_create(
 			uni_speech->session,      /* session, channel belongs to */
@@ -1030,7 +1030,7 @@ static apt_bool_t uni_recog_properties_set(uni_speech_t *uni_speech)
 		ast_log(LOG_WARNING, "Failed to create MRCP message\n");
 		return FALSE;
 	}
-	
+
 	/* Inherit properties loaded from config */
 	if(mrcp_message->start_line.version == MRCP_VERSION_2) {
 		properties = uni_engine.v2_properties;
@@ -1100,10 +1100,10 @@ static apt_bool_t uni_recog_sm_request_send(uni_speech_t *uni_speech, mrcp_sig_c
 			res = mrcp_application_channel_add(uni_speech->session,uni_speech->channel);
 			break;
 		case MRCP_SIG_COMMAND_CHANNEL_REMOVE:
-    			res = mrcp_application_channel_remove(uni_speech->session,uni_speech->channel);
+			res = mrcp_application_channel_remove(uni_speech->session,uni_speech->channel);
 			break;
 		case MRCP_SIG_COMMAND_RESOURCE_DISCOVER:
-    			res = mrcp_application_resource_discover(uni_speech->session);
+			res = mrcp_application_resource_discover(uni_speech->session);
 			break;
 		default:
 			break;
@@ -1113,12 +1113,12 @@ static apt_bool_t uni_recog_sm_request_send(uni_speech_t *uni_speech, mrcp_sig_c
 		/* Wait for session response */
 		ast_log(LOG_DEBUG, "Wait for session response\n");
 		if(apr_thread_cond_timedwait(uni_speech->wait_object,uni_speech->mutex,MRCP_APP_REQUEST_TIMEOUT) != APR_SUCCESS) {
-		    ast_log(LOG_ERROR, "Failed to get response, request timed out\n");
-		    uni_speech->sm_response = MRCP_SIG_STATUS_CODE_FAILURE;
+			ast_log(LOG_ERROR, "Failed to get response, request timed out\n");
+			uni_speech->sm_response = MRCP_SIG_STATUS_CODE_FAILURE;
 		}
 		ast_log(LOG_DEBUG, "Waked up, status code: %d\n",uni_speech->sm_response);
 	}
-	
+
 	uni_speech->is_sm_request = FALSE;
 	apr_thread_mutex_unlock(uni_speech->mutex);
 	return res;
@@ -1150,7 +1150,7 @@ static apt_bool_t uni_recog_mrcp_request_send(uni_speech_t *uni_speech, mrcp_mes
 }
 
 /** \brief Speech engine declaration */
-static struct ast_speech_engine ast_engine = { 
+static struct ast_speech_engine ast_engine = {
 	UNI_ENGINE_NAME,
 	uni_recog_create,
 	uni_recog_destroy,
@@ -1225,11 +1225,11 @@ static apr_table_t* uni_engine_grammars_load(struct ast_config *cfg, const char 
 static apt_bool_t uni_engine_config_load(apr_pool_t *pool)
 {
 	const char *value = NULL;
-#if defined(ASTERISK14)
-	struct ast_config *cfg = ast_config_load(UNI_ENGINE_CONFIG);
-#else
+#if AST_VERSION_AT_LEAST(1,6,0)
 	struct ast_flags config_flags = { 0 };
 	struct ast_config *cfg = ast_config_load(UNI_ENGINE_CONFIG, config_flags);
+#else
+	struct ast_config *cfg = ast_config_load(UNI_ENGINE_CONFIG);
 #endif
 	if(!cfg) {
 		ast_log(LOG_WARNING, "No such configuration file %s\n", UNI_ENGINE_CONFIG);
@@ -1356,7 +1356,7 @@ static int load_module(void)
 	if(uni_engine_load() == FALSE) {
 		return AST_MODULE_LOAD_FAILURE;
 	}
-	
+
 	if(mrcp_client_start(uni_engine.client) != TRUE) {
 		ast_log(LOG_ERROR, "Failed to start client stack\n");
 		uni_engine_unload();
