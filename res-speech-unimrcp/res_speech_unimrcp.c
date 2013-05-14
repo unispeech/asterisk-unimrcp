@@ -684,118 +684,91 @@ static int uni_recog_change_results_type(struct ast_speech *speech,enum ast_spee
 /** \brief Build ast_speech_result based on the NLSML result */
 static struct ast_speech_result* uni_recog_speech_result_build(const apt_str_t *nlsml_result, mrcp_version_e mrcp_version, apr_pool_t *pool)
 {
-	apr_xml_doc *doc; /* xml document */
-	apr_xml_elem *interpret; /* <interpret> element */
-	apr_xml_elem *instance; /* <instance> element */
-	apr_xml_elem *input; /* <input> element */
-	apr_xml_elem *text_elem; /* the element which contains the target, interpreted text */
-	apr_xml_elem *elem; /* temp element */
-	const char *confidence;
+	float confidence;
 	const char *grammar;
+	const char *text;
 	struct ast_speech_result *speech_result;
+	struct ast_speech_result *first_speech_result;
+	nlsml_interpretation_t *interpretation;
+	nlsml_instance_t *instance;
+	nlsml_input_t *input;
+	int index = 0;
 
-	/* Load NLSML document */
-	doc = nlsml_doc_load(nlsml_result,pool);
-	if(!doc) {
-		ast_log(LOG_WARNING, "Failed to load NLSML document\n");
+	nlsml_result_t *result = nlsml_result_parse(nlsml_result->buf, nlsml_result->length, pool);
+	if(!result) {
+		ast_log(LOG_WARNING, "Failed to parse NLSML result\n");
 		return NULL;
 	}
 
-	/* Get interpretation element */
-	interpret = nlsml_first_interpret_get(doc);
-	if(!interpret) {
-		ast_log(LOG_WARNING, "Missing <interpretation> element\n");
+	nlsml_result_trace(result, pool);
+
+	interpretation = nlsml_first_interpretation_get(result);
+	if(!interpretation) {
+		ast_log(LOG_WARNING, "Failed to get NLSML interpretation\n");
 		return NULL;
 	}
 
-	/* Get instance and input elements */
-	nlsml_interpret_results_get(interpret,&instance,&input);
-
-	if(!instance || !input) {
-		ast_log(LOG_WARNING, "Missing either <instance> or <input> element\n");
+	input = nlsml_interpretation_input_get(interpretation);
+	if(!input) {
+		ast_log(LOG_WARNING, "Failed to get NLSML input\n");
 		return NULL;
 	}
 
-	/* <input> element can also contain additional <input> element(s); if so, use the child one */
-	elem = input->first_child;
-	if(elem && strcmp(elem->name,"input") == 0) {
-		input = elem;
-	}
-	
-	speech_result = ast_calloc(sizeof(struct ast_speech_result), 1);
-	speech_result->text = NULL;
-	speech_result->score = 0;
-	speech_result->grammar = NULL;
-	
-	text_elem = NULL;
-
-	elem = instance->first_child;
-	if(elem && elem->first_cdata.first) {
-		text_elem = elem;
-		ast_log(LOG_DEBUG, "Found speech result in the child element of the <instance> element = %s\n",text_elem->first_cdata.first->text);
+	instance = nlsml_interpretation_first_instance_get(interpretation);
+	if(!instance) {
+		ast_log(LOG_WARNING, "Failed to get NLSML instance\n");
+		return NULL;
 	}
 
-	if(!text_elem) {
-		if(instance->first_cdata.first) {
-			text_elem = instance;
-			ast_log(LOG_DEBUG, "Found speech result in the <instance> element = %s\n",text_elem->first_cdata.first->text);
-		}
-	}
+	confidence = nlsml_interpretation_confidence_get(interpretation);
+	grammar = nlsml_interpretation_grammar_get(interpretation);
 
-	if(!text_elem) {
-		if(input->first_cdata.first) {
-			text_elem = input;
-			ast_log(LOG_DEBUG, "Found speech result in the <input> element = %s\n",text_elem->first_cdata.first->text);
-		}
-	}
-	
-	if(text_elem && text_elem->first_cdata.first->text) {
-		speech_result->text = strdup(text_elem->first_cdata.first->text);
-		if(speech_result->text[0] == 10 && text_elem->first_cdata.first->next) {
-			free(speech_result->text);
-			speech_result->text = strdup(text_elem->first_cdata.first->next->text);
-			
-			if(speech_result->text[0] == 9) {
-				char *skip = speech_result->text;
-				while(*skip==9) skip++;
-
-				skip = strdup(skip);
-				free(speech_result->text);
-				speech_result->text = skip;    
-			}
-		}
-	}
-
-	confidence = nlsml_input_attrib_get(instance,"confidence",TRUE);
-	if(!confidence) {
-		confidence = nlsml_input_attrib_get(input,"confidence",TRUE);
-	}
-
-	if(confidence) {
-		if(mrcp_version == MRCP_VERSION_2) {
-			speech_result->score = (int)(atof(confidence) * 100);
-		}
-		else {
-			speech_result->score = atoi(confidence);
-		}
-	}
-
-	grammar = nlsml_input_attrib_get(interpret,"grammar",TRUE);
 	if(grammar) {
-		char *str = strstr(grammar,"session:");
+		const char session_token[] = "session:";
+		char *str = strstr(grammar,session_token);
 		if(str) {
-			grammar = str + strlen("session:");
-		}
-		if(grammar && *grammar != '\0') {
-			speech_result->grammar = strdup(grammar);
+			grammar = str + sizeof(session_token) - 1;
 		}
 	}
-	
-	ast_log(LOG_NOTICE, "Interpreted text:%s score:%d grammar:%s\n",
-		speech_result->text ? speech_result->text : "none",
-		speech_result->score,
-		speech_result->grammar ? speech_result->grammar : "none");
-	return speech_result;
+
+	first_speech_result = NULL;
+#if AST_VERSION_AT_LEAST(1,6,0)
+	AST_LIST_HEAD_NOLOCK(, ast_speech_result) speech_results;
+	AST_LIST_HEAD_INIT_NOLOCK(&speech_results);
+#else
+	struct ast_speech_result *last_speech_result = NULL;
+#endif
+
+	do {
+		nlsml_instance_swi_suppress(instance);
+		text = nlsml_instance_content_generate(instance, pool);
+
+		speech_result = ast_calloc(sizeof(struct ast_speech_result), 1);
+		if(text)
+			speech_result->text = strdup(text);
+		speech_result->score = confidence * 100;
+		if(grammar)
+			speech_result->grammar = strdup(grammar);
+		if(!first_speech_result)
+			first_speech_result = speech_result;
+#if AST_VERSION_AT_LEAST(1,6,0)
+		AST_LIST_INSERT_TAIL(&speech_results, speech_result, list);
+#else
+		speech_result->next = last_speech_result;
+		last_speech_result = speech_result;
+#endif
+
+		ast_log(LOG_NOTICE, "Speech result[%d]: %s score: %d  grammar: %s\n",
+				index++,
+				speech_result->text,
+				speech_result->score,
+				speech_result->grammar);
+
+		instance = nlsml_interpretation_next_instance_get(interpretation, instance);
+	}
+	while(instance);
+
+	return first_speech_result;
 }
 
 /** \brief Try to get result */
