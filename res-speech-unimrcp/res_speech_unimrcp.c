@@ -692,7 +692,8 @@ static struct ast_speech_result* uni_recog_speech_result_build(const apt_str_t *
 	nlsml_interpretation_t *interpretation;
 	nlsml_instance_t *instance;
 	nlsml_input_t *input;
-	int index = 0;
+	int interpretation_count;
+	int instance_count;
 
 	nlsml_result_t *result = nlsml_result_parse(nlsml_result->buf, nlsml_result->length, pool);
 	if(!result) {
@@ -700,36 +701,9 @@ static struct ast_speech_result* uni_recog_speech_result_build(const apt_str_t *
 		return NULL;
 	}
 
+#if 1 /* enable/disable debug output of parsed results */
 	nlsml_result_trace(result, pool);
-
-	interpretation = nlsml_first_interpretation_get(result);
-	if(!interpretation) {
-		ast_log(LOG_WARNING, "Failed to get NLSML interpretation\n");
-		return NULL;
-	}
-
-	input = nlsml_interpretation_input_get(interpretation);
-	if(!input) {
-		ast_log(LOG_WARNING, "Failed to get NLSML input\n");
-		return NULL;
-	}
-
-	instance = nlsml_interpretation_first_instance_get(interpretation);
-	if(!instance) {
-		ast_log(LOG_WARNING, "Failed to get NLSML instance\n");
-		return NULL;
-	}
-
-	confidence = nlsml_interpretation_confidence_get(interpretation);
-	grammar = nlsml_interpretation_grammar_get(interpretation);
-
-	if(grammar) {
-		const char session_token[] = "session:";
-		char *str = strstr(grammar,session_token);
-		if(str) {
-			grammar = str + sizeof(session_token) - 1;
-		}
-	}
+#endif
 
 	first_speech_result = NULL;
 #if AST_VERSION_AT_LEAST(1,6,0)
@@ -739,34 +713,67 @@ static struct ast_speech_result* uni_recog_speech_result_build(const apt_str_t *
 	struct ast_speech_result *last_speech_result = NULL;
 #endif
 
-	do {
-		nlsml_instance_swi_suppress(instance);
-		text = nlsml_instance_content_generate(instance, pool);
+	interpretation_count = 0;
+	interpretation = nlsml_first_interpretation_get(result);
+	while(interpretation) {
+		input = nlsml_interpretation_input_get(interpretation);
+		if(!input) {
+			ast_log(LOG_WARNING, "Failed to get NLSML input\n");
+			continue;
+		}
 
-		speech_result = ast_calloc(sizeof(struct ast_speech_result), 1);
-		if(text)
-			speech_result->text = strdup(text);
-		speech_result->score = confidence * 100;
-		if(grammar)
-			speech_result->grammar = strdup(grammar);
-		if(!first_speech_result)
-			first_speech_result = speech_result;
+		instance_count = 0;
+		instance = nlsml_interpretation_first_instance_get(interpretation);
+		if(!instance) {
+			ast_log(LOG_WARNING, "Failed to get NLSML instance\n");
+			continue;
+		}
+
+		confidence = nlsml_interpretation_confidence_get(interpretation);
+		grammar = nlsml_interpretation_grammar_get(interpretation);
+
+		if(grammar) {
+			const char session_token[] = "session:";
+			char *str = strstr(grammar,session_token);
+			if(str) {
+				grammar = str + sizeof(session_token) - 1;
+			}
+		}
+
+		do {
+			nlsml_instance_swi_suppress(instance);
+			text = nlsml_instance_content_generate(instance, pool);
+
+			speech_result = ast_calloc(sizeof(struct ast_speech_result), 1);
+			if(text)
+				speech_result->text = strdup(text);
+			speech_result->score = confidence * 100;
+			if(grammar)
+				speech_result->grammar = strdup(grammar);
+			speech_result->nbest_num = interpretation_count;
+			if(!first_speech_result)
+				first_speech_result = speech_result;
 #if AST_VERSION_AT_LEAST(1,6,0)
-		AST_LIST_INSERT_TAIL(&speech_results, speech_result, list);
+			AST_LIST_INSERT_TAIL(&speech_results, speech_result, list);
 #else
-		speech_result->next = last_speech_result;
-		last_speech_result = speech_result;
+			speech_result->next = last_speech_result;
+			last_speech_result = speech_result;
 #endif
+			ast_log(LOG_NOTICE, "Speech result[%d/%d]: %s, score: %d, grammar: %s\n",
+					interpretation_count,
+					instance_count,
+					speech_result->text,
+					speech_result->score,
+					speech_result->grammar);
 
-		ast_log(LOG_NOTICE, "Speech result[%d]: %s score: %d  grammar: %s\n",
-				index++,
-				speech_result->text,
-				speech_result->score,
-				speech_result->grammar);
+			instance_count++;
+			instance = nlsml_interpretation_next_instance_get(interpretation, instance);
+		}
+		while(instance);
 
-		instance = nlsml_interpretation_next_instance_get(interpretation, instance);
+		interpretation_count++;
+		interpretation = nlsml_next_interpretation_get(result, interpretation);
 	}
-	while(instance);
 
 	return first_speech_result;
 }
