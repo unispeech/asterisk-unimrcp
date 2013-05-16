@@ -36,7 +36,7 @@
 
 /* UniMRCP includes. */
 #include "ast_unimrcp_framework.h"
-
+#include "recog_datastore.h"
 #include "audio_queue.h"
 #include "speech_channel.h"
 
@@ -663,6 +663,9 @@ static int recog_channel_get_results(speech_channel_t *schannel, int uri_encoded
 	}
 
 	if (result && r->result && (strlen(r->result) > 0)) {
+		/* Store the results for further reference from the dialplan. */
+		recog_datastore_result_set(schannel->chan, r->result);
+
 		if (uri_encoded == 0) {
 			*result = apr_pstrdup(schannel->pool, r->result);
 		}

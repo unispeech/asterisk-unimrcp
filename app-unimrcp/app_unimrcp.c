@@ -76,6 +76,7 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: $")
 
 /* UniMRCP includes. */
 #include "ast_unimrcp_framework.h"
+#include "recog_datastore.h"
 
 /* The configuration file to read. */
 #define MRCP_CONFIG "mrcp.conf"
@@ -239,7 +240,10 @@ AST_COMPAT_STATIC int load_module(void)
 		res |= ast_register_application(name, application->exec, application->synopsis, application->description);
 #endif
 	}
-	
+
+	/* Register the custom functions. */
+	res |= recog_datastore_functions_register(ast_module_info->self);
+
 	return res;
 }
 
@@ -259,6 +263,9 @@ AST_COMPAT_STATIC int unload_module(void)
 
 		res |= ast_unregister_application(name);
 	}
+
+	/* Unregister the custom functions. */
+	res |= recog_datastore_functions_unregister();
 
 	/* Unload the applications. */
 	unload_mrcpsynth_app();
