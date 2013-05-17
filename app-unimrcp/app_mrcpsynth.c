@@ -68,23 +68,33 @@
 			MRCP synthesis application.
 		</synopsis>
 		<syntax>
-			<parameter name="prompt" required="true"/>
-			<parameter name="options" />
+			<parameter name="prompt" required="true">
+				<para>A plain text or SSML prompt to be synthesized and played to the caller.</para>
+			</parameter>
+			<parameter name="options" required="false">
+				<optionlist>
+					<option name="p"> <para>Profile to use in mrcp.conf.</para> </option>
+					<option name="i"> <para>Digits to allow the TTS to be interrupted with.</para> </option>
+					<option name="f"> <para>Filename on disk to store audio to (audio not stored if not specified or empty).</para> </option>
+					<option name="l"> <para>Language to use (e.g. "en-GB", "en-US", "en-AU", etc.).</para> </option>
+					<option name="ll"> <para>Load lexicon (true/false).</para> </option>
+					<option name="pv"> <para>Prosody volume (silent/x-soft/soft/medium/load/x-loud/default).</para> </option>
+					<option name="pr"> <para>Prosody rate (x-slow/slow/medium/fast/x-fast/default).</para> </option>
+					<option name="v"> <para>Voice name to use (e.g. "Daniel", "Karin", etc.).</para> </option>
+					<option name="g"> <para>Voice gender to use (e.g. "male", "female").</para> </option>
+					<option name="vv"> <para>Voice variant.</para> </option>
+					<option name="a"> <para>Voice age.</para> </option>
+				</optionlist>
+			</parameter>
 		</syntax>
 		<description>
-		<para>MRCP synthesis application.
-		Supports version 1 and 2 of MRCP, using UniMRCP. The options can be one or
-		more of the following: i=interrupt keys or <literal>any</literal> for any DTMF
-		key, p=profile to use, f=filename to save audio to, l=language to use in the
-		synthesis header (en-US/en-GB/etc.), v=voice name, g=gender (male/female),
-		a=voice age (1-19 digits), pv=prosody volume
-		(silent/x-soft/soft/medium/load/x-loud/default), pr=prosody rate
-		(x-slow/slow/medium/fast/x-fast/default), ll=load lexicon (true/false),
-		vv=voice variant (1-19 digits). If the audio file name is empty or the
-		parameter not given, no audio will be stored to disk. If the interrupt keys
-		are set, then kill-on-bargein will be enabled, otherwise if it is empty or not
-		given, then kill-on-bargein will be disabled.</para>
+			<para>This application establishes an MRCP synthesis session.</para>
+			<para>If synthesis successfully completed, the variable ${SYNTHSTATUS} is set to "OK"; otherwise, the variable is set to "ERROR".</para>
 		</description>
+		<see-also>
+			<ref type="application">MRCPRecog</ref>
+			<ref type="application">SynthAndRecog</ref>
+		</see-also>
 	</application>
  ***/
 

@@ -35,6 +35,11 @@
 		<description>
 			<para>This function returns the confidence score of the specified interpretation.</para>
 		</description>
+		<see-also>
+			<ref type="function">RECOG_GRAMMAR</ref>
+			<ref type="function">RECOG_INPUT</ref>
+			<ref type="function">RECOG_INSTANCE</ref>
+		</see-also>
 	</function>
 	<function name="RECOG_GRAMMAR" language="en_US">
 		<synopsis>
@@ -49,6 +54,11 @@
 		<description>
 			<para>This function returns the matched grammar of the specified interpretation.</para>
 		</description>
+		<see-also>
+			<ref type="function">RECOG_CONFIDENCE</ref>
+			<ref type="function">RECOG_INPUT</ref>
+			<ref type="function">RECOG_INSTANCE</ref>
+		</see-also>
 	</function>
 	<function name="RECOG_INPUT" language="en_US">
 		<synopsis>
@@ -63,6 +73,11 @@
 		<description>
 			<para>This function returns the spoken input.</para>
 		</description>
+		<see-also>
+			<ref type="function">RECOG_CONFIDENCE</ref>
+			<ref type="function">RECOG_GRAMMAR</ref>
+			<ref type="function">RECOG_INSTANCE</ref>
+		</see-also>
 	</function>
 	<function name="RECOG_INSTANCE" language="en_US">
 		<synopsis>
@@ -81,6 +96,11 @@
 		<description>
 			<para>This function returns the interpreted instance.</para>
 		</description>
+		<see-also>
+			<ref type="function">RECOG_CONFIDENCE</ref>
+			<ref type="function">RECOG_GRAMMAR</ref>
+			<ref type="function">RECOG_INPUT</ref>
+		</see-also>
 	</function>
  ***/
 

@@ -47,14 +47,47 @@
 		</synopsis>
 		<syntax>
 			<parameter name="prompt" required="true">
-				<para>A prompt specified as a plain text or SSML content.</para>
+				<para>A plain text or SSML prompt to be synthesized and played to the caller.</para>
 			</parameter>
 			<parameter name="grammar" required="true">
 				<para>An inline or URI grammar to be used for recognition.</para>
 			</parameter>
-			<parameter name="options" required="true">
-				<para>Additional parameters such as the MRCP profile to be used, 
-				the synthesizer and recognizer header fields to be set.</para>
+			<parameter name="options" required="false">
+				<optionlist>
+					<option name="p"> <para>Profile to use in mrcp.conf.</para> </option>
+					<option name="t"> <para>Recognition timeout (msec).</para> </option>
+					<option name="b"> <para>Bargein value (0: no barge-in, 1: enable barge-in).</para> </option>
+					<option name="dt"> <para>Grammar delimiters.</para> </option>
+					<option name="ct"> <para>Confidence threshold (0.0 - 1.0).</para> </option>
+					<option name="sl"> <para>Sensitivity level (0.0 - 1.0).</para> </option>
+					<option name="sva"> <para>Speed vs accuracy (0.0 - 1.0).</para> </option>
+					<option name="nb"> <para>N-best list length.</para> </option>
+					<option name="nit"> <para>No input timeout (msec).</para> </option>
+					<option name="sct"> <para>Speech complete timeout (msec).</para> </option>
+					<option name="sint"> <para>Speech incomplete timeout (msec).</para> </option>
+					<option name="dit"> <para>DTMF interdigit timeout (msec).</para> </option>
+					<option name="dtt"> <para>DTMF terminate timeout (msec).</para> </option>
+					<option name="dttc"> <para>DTMF terminate characters.</para> </option>
+					<option name="sw"> <para>Save waveform (true/false).</para> </option>
+					<option name="nac"> <para>New audio channel (true/false).</para> </option>
+					<option name="spl"> <para>Speech language (en-US/en-GB/etc).</para> </option>
+					<option name="rm"> <para>Recognition mode (normal/hotword).</para> </option>
+					<option name="hmaxd"> <para>Hotword max duration (msec).</para> </option>
+					<option name="hmind"> <para>Hotword min duration (msec).</para> </option>
+					<option name="cdb"> <para>Clear DTMF buffer (true/false).</para> </option>
+					<option name="enm"> <para>Early nomatch (true/false).</para> </option>
+					<option name="iwu"> <para>Input waveform URI.</para> </option>
+					<option name="mt"> <para>Media type.</para> </option>
+					<option name="pv"> <para>Prosody volume (silent/x-soft/soft/medium/load/x-loud/default).</para> </option>
+					<option name="pr"> <para>Prosody rate (x-slow/slow/medium/fast/x-fast/default).</para> </option>
+					<option name="vn"> <para>Voice name to use (e.g. "Daniel", "Karin", etc.).</para> </option>
+					<option name="vg"> <para>Voice gender to use (e.g. "male", "female").</para> </option>
+					<option name="vv"> <para>Voice variant.</para> </option>
+					<option name="a"> <para>Voice age.</para> </option>
+					<option name="uer"> <para>URI-encoded results 
+						(1: URI-encode NLMSL results, 0: do not encode).</para>
+					</option>
+				</optionlist>
 			</parameter>
 		</syntax>
 		<description>
@@ -68,6 +101,14 @@
 			<para>If recognition completed successfully, the variable ${RECOG_RESULT} is set to an NLSML result received from
 			the MRCP server.</para>
 		</description>
+		<see-also>
+			<ref type="application">MRCPSynth</ref>
+			<ref type="application">MRCPRecog</ref>
+			<ref type="function">RECOG_CONFIDENCE</ref>
+			<ref type="function">RECOG_GRAMMAR</ref>
+			<ref type="function">RECOG_INPUT</ref>
+			<ref type="function">RECOG_INSTANCE</ref>
+		</see-also>
 	</application>
  ***/
 

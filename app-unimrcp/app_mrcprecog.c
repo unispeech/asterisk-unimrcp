@@ -69,26 +69,67 @@
 			MRCP recognition application.
 		</synopsis>
 		<syntax>
-			<parameter name="grammar" required="true"/>
-			<parameter name="options" required="true"/>
+			<parameter name="grammar" required="true">
+				<para>An inline or URI grammar to be used for recognition.</para>
+			</parameter>
+			<parameter name="options" required="false">
+				<optionlist>
+					<option name="p"> <para>Profile to use in mrcp.conf.</para> </option>
+					<option name="i"> <para>Digits to allow recognition to be interrupted with
+						(set to "none" for DTMF grammars to allow DTMFs to be sent to the MRCP server;
+						otherwise, if "any" or other digits specified, recognition will be interrupted
+						and the digit will be returned to dialplan).</para>
+					</option>
+					<option name="f"> <para>Filename to play (if empty or not specified, no file is played).</para> </option>
+					<option name="t"> <para>Recognition timeout (msec).</para> </option>
+					<option name="b"> <para>Bargein value (0: no barge-in, 1: enable barge-in).</para> </option>
+					<option name="dt"> <para>Grammar delimiters.</para> </option>
+					<option name="ct"> <para>Confidence threshold (0.0 - 1.0).</para> </option>
+					<option name="sl"> <para>Sensitivity level (0.0 - 1.0).</para> </option>
+					<option name="sva"> <para>Speed vs accuracy (0.0 - 1.0).</para> </option>
+					<option name="nb"> <para>N-best list length.</para> </option>
+					<option name="nit"> <para>No input timeout (msec).</para> </option>
+					<option name="sit"> <para>Start input timers (true/false).</para> </option>
+					<option name="sct"> <para>Speech complete timeout (msec).</para> </option>
+					<option name="sint"> <para>Speech incomplete timeout (msec).</para> </option>
+					<option name="dit"> <para>DTMF interdigit timeout (msec).</para> </option>
+					<option name="dtt"> <para>DTMF terminate timeout (msec).</para> </option>
+					<option name="dttc"> <para>DTMF terminate characters.</para> </option>
+					<option name="sw"> <para>Save waveform (true/false).</para> </option>
+					<option name="nac"> <para>New audio channel (true/false).</para> </option>
+					<option name="spl"> <para>Speech language (e.g. "en-GB", "en-US", "en-AU", etc.).</para> </option>
+					<option name="rm"> <para>Recognition mode (normal/hotword).</para> </option>
+					<option name="hmaxd"> <para>Hotword max duration (msec).</para> </option>
+					<option name="hmind"> <para>Hotword min duration (msec).</para> </option>
+					<option name="cdb"> <para>Clear DTMF buffer (true/false).</para> </option>
+					<option name="enm"> <para>Early nomatch (true/false).</para> </option>
+					<option name="iwu"> <para>Input waveform URI.</para> </option>
+					<option name="mt"> <para>Media type.</para> </option>
+					<option name="epe"> <para>Exit on play error 
+						(1: terminate recognition on file play error, 0: continue even if file play fails).</para>
+					</option>
+					<option name="uer"> <para>URI-encoded results 
+						(1: URI-encode NLMSL results, 0: do not encode).</para>
+					</option>
+				</optionlist>
+			</parameter>
 		</syntax>
 		<description>
-		<para>MRCP recognition application.
-		Supports version 1 and 2 of MRCP, using UniMRCP. First parameter is grammar /
-		text of speech. Second paramater contains more options: p=profile, i=interrupt
-		key, t=auto speech timeout, f=filename of prompt to play, b=bargein value (no
-		barge-in=0, ASR engine barge-in=1, Asterisk barge-in=2, ct=confidence
-		threshold (0.0 - 1.0), sl=sensitivity level (0.0 - 1.0), sva=speed vs accuracy
-		(0.0 - 1.0), nb=n-best list length (1 - 19 digits), nit=no input timeout (1 -
-		19 digits), sit=start input timers (true/false), sct=speech complete timeout
-		(1 - 19 digits), sint=speech incomplete timeout (1 - 19 digits), dit=DTMF
-		interdigit timeout (1 - 19 digits), dtt=DTMF terminate timout (1 - 19 digits),
-		dttc=DTMF terminate characters, sw=save waveform (true/false), nac=new audio
-		channel (true/false), spl=speech language (en-US/en-GB/etc.), rm=recognition
-		mode, hmaxd=hotword max duration (1 - 19 digits), hmind=hotword min duration
-		(1 - 19 digits), cdb=clear DTMF buffer (true/false), enm=early no match
-		(true/false), iwu=input waveform URI, mt=media type.</para>
+			<para> This application establishes an MRCP recognition session and optionally plays a prompt file.
+			Once recognition completes, the application exits and returns results to the dialplan.</para>
+			<para>If recognition successfully started, the variable ${RECOGSTATUS} is set to "OK"; otherwise, if recognition
+			terminated prematurely, the variable ${RECOGSTATUS} is set to "ERROR".</para>
+			<para>If recognition completed successfully, the variable ${RECOG_RESULT} is set to an NLSML result received from
+			the MRCP server.</para>
 		</description>
+		<see-also>
+			<ref type="application">MRCPSynth</ref>
+			<ref type="application">SynthAndRecog</ref>
+			<ref type="function">RECOG_CONFIDENCE</ref>
+			<ref type="function">RECOG_GRAMMAR</ref>
+			<ref type="function">RECOG_INPUT</ref>
+			<ref type="function">RECOG_INSTANCE</ref>
+		</see-also>
 	</application>
  ***/
 
