@@ -106,8 +106,9 @@
 
 /* The structure which holds recognition result */
 struct recog_data_t {
-	apr_pool_t     *pool;
-	nlsml_result_t *result;
+	apr_pool_t     *pool;   /* memory pool */
+	nlsml_result_t *result; /* parsed NLSMl result */
+	const char     *name;   /* associated channel name */
 };
 
 typedef struct recog_data_t recog_data_t;
@@ -121,7 +122,7 @@ static void recog_data_destroy(void *data)
 		return;
 	}
 
-	ast_log(LOG_DEBUG, "Destroy recog datastore\n");
+	ast_log(LOG_DEBUG, "Destroy recog datastore on %s\n", recog_data->name);
 	apr_pool_destroy(recog_data->pool);
 	return;
 }
@@ -144,29 +145,30 @@ int recog_datastore_result_set(struct ast_channel *chan, const char *result)
 	}
 	else {
 		apr_pool_t *pool;
-		ast_log(LOG_DEBUG, "Create recog datastore\n");
+		ast_log(LOG_DEBUG, "Create recog datastore on %s\n", ast_channel_name(chan));
 		datastore = ast_datastore_alloc(&recog_datastore, NULL);
 		if (!datastore) {
-			ast_log(LOG_ERROR, "Unable to create recog datastore\n");
+			ast_log(LOG_ERROR, "Unable to create recog datastore on %s\n", ast_channel_name(chan));
 			return -1;
 		}
 
 		if ((pool = apt_pool_create()) == NULL) {
 			ast_datastore_free(datastore);
-			ast_log(LOG_ERROR, "Unable to create memory pool for recog datastore\n");
+			ast_log(LOG_ERROR, "Unable to create memory pool for recog datastore on %s\n", ast_channel_name(chan));
 			return -1;
 		}
 
 		recog_data = apr_palloc(pool, sizeof(recog_data_t));
 		recog_data->pool = pool;
 		recog_data->result = NULL;
+		recog_data->name = apr_pstrdup(pool, ast_channel_name(chan));
 
 		datastore->data = recog_data;
 		ast_channel_datastore_add(chan, datastore);
 	}
 
 	if (!recog_data) {
-		ast_log(LOG_ERROR, "Unable to retrieve data from recog datastore\n");
+		ast_log(LOG_ERROR, "Unable to retrieve data from recog datastore on %s\n", ast_channel_name(chan));
 		return -1;
 	}
 

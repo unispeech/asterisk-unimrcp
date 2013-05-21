@@ -325,86 +325,78 @@ mpf_termination_t *speech_channel_create_mpf_termination(speech_channel_t *schan
 /* Destroy the speech channel. */
 int speech_channel_destroy(speech_channel_t *schannel)
 {
-	if (schannel != NULL) {
-		ast_log(LOG_DEBUG, "Destroying speech channel: Name=%s, Type=%s, Codec=%s, Rate=%u\n", schannel->name, speech_channel_type_to_string(schannel->type), schannel->codec, schannel->rate);
-
-		if (schannel->mutex)
-			apr_thread_mutex_lock(schannel->mutex);
-
-		/* Destroy the channel and session if not already done. */
-		if (schannel->state != SPEECH_CHANNEL_CLOSED) {
-			int warned = 0;
-
-			if ((schannel->unimrcp_session != NULL) && (schannel->unimrcp_channel != NULL)) {
-				if (!mrcp_application_session_terminate(schannel->unimrcp_session))
-					ast_log(LOG_WARNING, "(%s) %s unable to terminate application session\n", schannel->name, speech_channel_type_to_string(schannel->type));
-
-				/* if (!mrcp_application_channel_remove(schannel->unimrcp_session, schannel->unimrcp_channel))
-					ast_log(LOG_WARNING, "(%s) Unable to remove channel from application\n", schannel->name);
-				 */
-			}
-
-			ast_log(LOG_DEBUG, "(%s) Waiting for MRCP session to terminate\n", schannel->name);
-			while (schannel->state != SPEECH_CHANNEL_CLOSED) {
-				if (schannel->cond != NULL) {
-					if ((apr_thread_cond_timedwait(schannel->cond, schannel->mutex, SPEECH_CHANNEL_TIMEOUT_USEC) == APR_TIMEUP) && (!warned)) {
-						warned = 1;
-						ast_log(LOG_WARNING, "(%s) MRCP session has not terminated after %d ms\n", schannel->name, SPEECH_CHANNEL_TIMEOUT_USEC / 1000);
-					}
-				}
-			}
-		}
-
-		if (schannel->state != SPEECH_CHANNEL_CLOSED) {
-			ast_log(LOG_ERROR, "(%s) Failed to destroy channel.  Continuing\n", schannel->name);
-		}
-
-		if (schannel->dtmf_generator != NULL) {
-			ast_log(LOG_NOTICE, "(%s) DTMF generator destroyed\n", schannel->name);
-			mpf_dtmf_generator_destroy(schannel->dtmf_generator);
-			schannel->dtmf_generator = NULL;
-		}
-
-		if (schannel->audio_queue != NULL) {
-			if (audio_queue_destroy(schannel->audio_queue) != 0)
-				ast_log(LOG_WARNING, "(%s) Unable to destroy channel audio queue\n",schannel->name);
-			else
-				ast_log(LOG_NOTICE, "(%s) Audio queue destroyed\n", schannel->name);
-		}
-
-		if (schannel->mutex != NULL)
-			apr_thread_mutex_unlock(schannel->mutex);
-
-		if (schannel->cond != NULL) {
-			if (apr_thread_cond_destroy(schannel->cond) != APR_SUCCESS)
-				ast_log(LOG_WARNING, "(%s) Unable to destroy channel condition variable\n", schannel->name);
-		}
-
-		if (schannel->mutex != NULL) {
-			if (apr_thread_mutex_destroy(schannel->mutex) != APR_SUCCESS)
-				ast_log(LOG_WARNING, "(%s) Unable to destroy channel condition variable\n", schannel->name);
-		}
-
-		schannel->name = NULL;
-		schannel->profile = NULL;
-		schannel->application = NULL;
-		schannel->unimrcp_session = NULL;
-		schannel->unimrcp_channel = NULL;
-		schannel->stream = NULL;
-		schannel->dtmf_generator = NULL;
-		schannel->pool = NULL;
-		schannel->mutex = NULL;
-		schannel->cond = NULL;
-		schannel->audio_queue = NULL;
-		schannel->codec = NULL;
-		schannel->data = NULL;
-		schannel->chan = NULL;
-	} else {
+	if (schannel == NULL) {
 		ast_log(LOG_ERROR, "Speech channel structure pointer is NULL\n");
 		return -1;
 	}
 	
-	ast_log(LOG_DEBUG, "Destroyed speech channel complete\n");
+	ast_log(LOG_DEBUG, "Destroy speech channel: Name=%s, Type=%s, Codec=%s, Rate=%u\n", schannel->name, speech_channel_type_to_string(schannel->type), schannel->codec, schannel->rate);
+
+	if (schannel->mutex)
+		apr_thread_mutex_lock(schannel->mutex);
+
+	/* Destroy the channel and session if not already done. */
+	if (schannel->state != SPEECH_CHANNEL_CLOSED) {
+		int warned = 0;
+
+		if ((schannel->unimrcp_session != NULL) && (schannel->unimrcp_channel != NULL)) {
+			if (!mrcp_application_session_terminate(schannel->unimrcp_session))
+				ast_log(LOG_WARNING, "(%s) Unable to terminate application session\n", schannel->name);
+		}
+
+		ast_log(LOG_DEBUG, "(%s) Waiting for MRCP session to terminate\n", schannel->name);
+		while (schannel->state != SPEECH_CHANNEL_CLOSED) {
+			if (schannel->cond != NULL) {
+				if ((apr_thread_cond_timedwait(schannel->cond, schannel->mutex, SPEECH_CHANNEL_TIMEOUT_USEC) == APR_TIMEUP) && (!warned)) {
+					warned = 1;
+					ast_log(LOG_WARNING, "(%s) MRCP session has not terminated after %d ms\n", schannel->name, SPEECH_CHANNEL_TIMEOUT_USEC / 1000);
+				}
+			}
+		}
+	}
+
+	if (schannel->state != SPEECH_CHANNEL_CLOSED) {
+		ast_log(LOG_ERROR, "(%s) Failed to destroy channel.  Continuing\n", schannel->name);
+	}
+
+	if (schannel->dtmf_generator != NULL) {
+		mpf_dtmf_generator_destroy(schannel->dtmf_generator);
+		schannel->dtmf_generator = NULL;
+		ast_log(LOG_DEBUG, "(%s) DTMF generator destroyed\n", schannel->name);
+	}
+
+	if (schannel->audio_queue != NULL) {
+		if (audio_queue_destroy(schannel->audio_queue) != 0)
+			ast_log(LOG_WARNING, "(%s) Unable to destroy channel audio queue\n",schannel->name);
+	}
+
+	if (schannel->mutex != NULL)
+		apr_thread_mutex_unlock(schannel->mutex);
+
+	if (schannel->cond != NULL) {
+		if (apr_thread_cond_destroy(schannel->cond) != APR_SUCCESS)
+			ast_log(LOG_WARNING, "(%s) Unable to destroy channel condition variable\n", schannel->name);
+	}
+
+	if (schannel->mutex != NULL) {
+		if (apr_thread_mutex_destroy(schannel->mutex) != APR_SUCCESS)
+			ast_log(LOG_WARNING, "(%s) Unable to destroy channel condition variable\n", schannel->name);
+	}
+
+	schannel->name = NULL;
+	schannel->profile = NULL;
+	schannel->application = NULL;
+	schannel->unimrcp_session = NULL;
+	schannel->unimrcp_channel = NULL;
+	schannel->stream = NULL;
+	schannel->dtmf_generator = NULL;
+	schannel->pool = NULL;
+	schannel->mutex = NULL;
+	schannel->cond = NULL;
+	schannel->audio_queue = NULL;
+	schannel->codec = NULL;
+	schannel->data = NULL;
+	schannel->chan = NULL;
 
 	return 0;
 }

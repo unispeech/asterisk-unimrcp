@@ -213,11 +213,11 @@ static apt_bool_t speech_on_session_terminate(mrcp_application_t *application, m
 	else
 		schannel = NULL;
 
-	ast_log(LOG_DEBUG, "speech_on_session_terminate\n");
+	ast_log(LOG_DEBUG, "(%s) speech_on_session_terminate\n", schannel->name);
 
 	if (schannel != NULL) {
 		if (schannel->dtmf_generator != NULL) {
-			ast_log(LOG_NOTICE, "(%s) DTMF generator destroyed\n", schannel->name);
+			ast_log(LOG_DEBUG, "(%s) DTMF generator destroyed\n", schannel->name);
 			mpf_dtmf_generator_destroy(schannel->dtmf_generator);
 			schannel->dtmf_generator = NULL;
 		}
@@ -244,7 +244,7 @@ static apt_bool_t speech_on_channel_add(mrcp_application_t *application, mrcp_se
 	else
 		schannel = NULL;
 
-	ast_log(LOG_DEBUG, "speech_on_channel_add\n");
+	ast_log(LOG_DEBUG, "(%s) speech_on_channel_add\n", schannel->name);
 
 	if ((schannel != NULL) && (application != NULL) && (session != NULL) && (channel != NULL)) {
 		if ((session != NULL) && (status == MRCP_SIG_STATUS_CODE_SUCCESS)) {
@@ -252,9 +252,9 @@ static apt_bool_t speech_on_channel_add(mrcp_application_t *application, mrcp_se
 			if (!descriptor) {
 				ast_log(LOG_ERROR, "(%s) Unable to determine codec descriptor\n", schannel->name);
 				speech_channel_set_state(schannel, SPEECH_CHANNEL_ERROR);
-				ast_log(LOG_DEBUG, "Terminating MRCP session\n");
+				ast_log(LOG_DEBUG, "(%s) Terminating MRCP session\n", schannel->name);
 				if (!mrcp_application_session_terminate(session))
-					ast_log(LOG_WARNING, "(%s) %s unable to terminate application session\n", schannel->name, speech_channel_type_to_string(schannel->type));
+					ast_log(LOG_WARNING, "(%s) Unable to terminate application session\n", schannel->name);
 				return FALSE;
 			}
 
@@ -263,7 +263,7 @@ static apt_bool_t speech_on_channel_add(mrcp_application_t *application, mrcp_se
 				/* schannel->dtmf_generator = mpf_dtmf_generator_create_ex(schannel->stream, MPF_DTMF_GENERATOR_OUTBAND, 70, 50, schannel->pool); */
 
 				if (schannel->dtmf_generator != NULL)
-					ast_log(LOG_NOTICE, "(%s) DTMF generator created\n", schannel->name);
+					ast_log(LOG_DEBUG, "(%s) DTMF generator created\n", schannel->name);
 				else
 					ast_log(LOG_WARNING, "(%s) Unable to create DTMF generator\n", schannel->name);
 			}
@@ -275,21 +275,20 @@ static apt_bool_t speech_on_channel_add(mrcp_application_t *application, mrcp_se
 			else
 				codec_name = "unknown";
 
-			ast_log(LOG_DEBUG, "(%s) %s channel is ready, codec = %s, sample rate = %d\n",
+			ast_log(LOG_NOTICE, "(%s) Channel ready codec=%s, sample rate=%d\n",
 				schannel->name,
-				speech_channel_type_to_string(schannel->type),
 				codec_name,
 				schannel->rate);
 			speech_channel_set_state(schannel, SPEECH_CHANNEL_READY);
 		} else {
-			ast_log(LOG_ERROR, "(%s) %s channel error!\n", schannel->name, speech_channel_type_to_string(schannel->type));
+			ast_log(LOG_ERROR, "(%s) Channel error!\n", schannel->name);
 
 			if (session != NULL) {
-				ast_log(LOG_DEBUG, "Terminating MRCP session\n");
+				ast_log(LOG_DEBUG, "(%s) Terminating MRCP session\n", schannel->name);
 				speech_channel_set_state(schannel, SPEECH_CHANNEL_ERROR);
 
 				if (!mrcp_application_session_terminate(session))
-					ast_log(LOG_WARNING, "(%s) %s unable to terminate application session\n", schannel->name, speech_channel_type_to_string(schannel->type));
+					ast_log(LOG_WARNING, "(%s) Unable to terminate application session\n", schannel->name);
 			}
 		}
 	} else
@@ -308,17 +307,17 @@ static apt_bool_t speech_on_channel_remove(mrcp_application_t *application, mrcp
 	else
 		schannel = NULL;
 
-	ast_log(LOG_DEBUG, "speech_on_channel_remove\n");
+	ast_log(LOG_DEBUG, "(%s) speech_on_channel_remove\n", schannel->name);
 
 	if (schannel != NULL) {
-		ast_log(LOG_NOTICE, "(%s) %s channel is removed\n", schannel->name, speech_channel_type_to_string(schannel->type));
+		ast_log(LOG_NOTICE, "(%s) Channel removed\n", schannel->name);
 		schannel->unimrcp_channel = NULL;
 
 		if (session != NULL) {
 			ast_log(LOG_DEBUG, "(%s) Terminating MRCP session\n", schannel->name);
 
 			if (!mrcp_application_session_terminate(session))
-				ast_log(LOG_WARNING, "(%s) %s unable to terminate application session\n", schannel->name, speech_channel_type_to_string(schannel->type));
+				ast_log(LOG_WARNING, "(%s) Unable to terminate application session\n", schannel->name);
 		}
 	} else
 		ast_log(LOG_ERROR, "(unknown) channel error!\n");
@@ -386,20 +385,19 @@ static int recog_channel_start_input_timers(speech_channel_t *schannel)
 
 	if ((schannel->state == SPEECH_CHANNEL_PROCESSING) && (!r->timers_started)) {
 		mrcp_message_t *mrcp_message;
-		ast_log(LOG_DEBUG, "(%s) Starting input timers\n", schannel->name);
+		ast_log(LOG_DEBUG, "(%s) Sending START-INPUT-TIMERS request\n", schannel->name);
 
 		/* Send START-INPUT-TIMERS to MRCP server. */
 		mrcp_message = mrcp_application_message_create(schannel->unimrcp_session, schannel->unimrcp_channel, RECOGNIZER_START_INPUT_TIMERS);
 
-		if (mrcp_message == NULL) {
+		if (mrcp_message) {
+			mrcp_application_message_send(schannel->unimrcp_session, schannel->unimrcp_channel, mrcp_message);
+		} else {
 			ast_log(LOG_ERROR, "(%s) Failed to create START-INPUT-TIMERS message\n", schannel->name);
 			status = -1;
-		} else {
-			/* Set it and forget it. */
-			mrcp_application_message_send(schannel->unimrcp_session, schannel->unimrcp_channel, mrcp_message);
 		}
 	}
-
+ 
 	if (schannel->mutex != NULL)
 		apr_thread_mutex_unlock(schannel->mutex);
 
@@ -432,7 +430,6 @@ static int recog_channel_set_start_of_input(speech_channel_t *schannel)
 	}
 
 	r->start_of_input = 1;
-	ast_log(LOG_DEBUG, "(%s) start of input\n", schannel->name);
 
 	if (schannel->mutex != NULL)
 		apr_thread_mutex_unlock(schannel->mutex);
@@ -465,7 +462,7 @@ static int recog_channel_set_results(speech_channel_t *schannel, const char *res
 	}
 
 	if (r->result && (strlen(r->result) > 0)) {
-		ast_log(LOG_DEBUG, "(%s) result is already set\n", schannel->name);
+		ast_log(LOG_DEBUG, "(%s) Result is already set\n", schannel->name);
 
 		if (schannel->mutex != NULL)
 			apr_thread_mutex_unlock(schannel->mutex);
@@ -474,7 +471,7 @@ static int recog_channel_set_results(speech_channel_t *schannel, const char *res
 	}
 
 	if ((result == NULL) || (strlen(result) == 0)) {
-		ast_log(LOG_DEBUG, "(%s) result is NULL\n", schannel->name);
+		ast_log(LOG_DEBUG, "(%s) Result is NULL\n", schannel->name);
 
 		if (schannel->mutex != NULL)
 			apr_thread_mutex_unlock(schannel->mutex);
@@ -482,7 +479,7 @@ static int recog_channel_set_results(speech_channel_t *schannel, const char *res
 		return -1;
 	}
 
-	ast_log(LOG_DEBUG, "(%s) result:\n\n%s\n", schannel->name, result);
+	ast_log(LOG_DEBUG, "(%s) Set result:\n\n%s\n", schannel->name, result);
 	r->result = apr_pstrdup(schannel->pool, result);
 
 	if (schannel->mutex != NULL)
@@ -527,11 +524,11 @@ static int recog_channel_get_results(speech_channel_t *schannel, int uri_encoded
 			char *res = apr_palloc(schannel->pool, len);
 			*result = ast_uri_encode_http(r->result, res, len);
 		}
-		ast_log(LOG_DEBUG, "(%s) result:\n\n%s\n", schannel->name, *result);
+		ast_log(LOG_NOTICE, "(%s) Result:\n\n%s\n", schannel->name, *result);
 		r->result = NULL;
 		r->start_of_input = 0;
 	} else if (r->start_of_input) {
-		ast_log(LOG_DEBUG, "(%s) start of input\n", schannel->name);
+		ast_log(LOG_DEBUG, "(%s) Start of input\n", schannel->name);
 		status = 1;
 		r->start_of_input = 0;
 	} else
@@ -726,7 +723,12 @@ static int recog_channel_load_grammar(speech_channel_t *schannel, const char *na
 	char ldata[256];
 
 	if ((schannel != NULL) && (name != NULL) && (data != NULL)) {
-		ast_log(LOG_DEBUG, "(%s) Loading grammar %s, data = %s\n", schannel->name, name, data);
+		const char *mime_type;
+		if (((mime_type = grammar_type_to_mime(type, schannel->profile)) == NULL) || (strlen(mime_type) == 0)) {
+			ast_log(LOG_WARNING, "(%s) Unable to get MIME type: %i\n", schannel->name, type);
+			return -1;
+		}
+		ast_log(LOG_DEBUG, "(%s) Loading grammar name=%s, type=%s, data=%s\n", schannel->name, name, mime_type, data);
 
 		if (schannel->mutex != NULL)
 			apr_thread_mutex_lock(schannel->mutex);
@@ -742,7 +744,6 @@ static int recog_channel_load_grammar(speech_channel_t *schannel, const char *na
 		if (type != GRAMMAR_TYPE_URI) {
 			mrcp_message_t *mrcp_message;
 			mrcp_generic_header_t *generic_header;
-			const char *mime_type;
 
 			/* Create MRCP message. */
 			if ((mrcp_message = mrcp_application_message_create(schannel->unimrcp_session, schannel->unimrcp_channel, RECOGNIZER_DEFINE_GRAMMAR)) == NULL) {
@@ -754,13 +755,6 @@ static int recog_channel_load_grammar(speech_channel_t *schannel, const char *na
 
 			/* Set Content-Type and Content-ID in message. */
 			if ((generic_header = (mrcp_generic_header_t *)mrcp_generic_header_prepare(mrcp_message)) == NULL) {
-				if (schannel->mutex != NULL)
-					apr_thread_mutex_unlock(schannel->mutex);
-
-				return -1;
-			}
-
-			if (((mime_type = grammar_type_to_mime(type, schannel->profile)) == NULL) || (strlen(mime_type) == 0)) {
 				if (schannel->mutex != NULL)
 					apr_thread_mutex_unlock(schannel->mutex);
 
@@ -823,12 +817,11 @@ static int recog_channel_load_grammar(speech_channel_t *schannel, const char *na
 static apt_bool_t recog_message_handler(const mrcp_app_message_t *app_message)
 {
 	/* Call the appropriate callback in the dispatcher function table based on the app_message received. */
-	if (app_message != NULL)
+	if (app_message)
 		return mrcp_application_message_dispatch(&mrcprecog->dispatcher, app_message);
-	else {
-		ast_log(LOG_ERROR, "(unknown) channel error!\n");
-		return TRUE;
-	}
+
+	ast_log(LOG_ERROR, "(unknown) app_message error!\n");
+	return TRUE;
 }
 
 /* Handle the MRCP responses/events. */
@@ -863,7 +856,7 @@ static apt_bool_t recog_on_message_receive(mrcp_application_t *application, mrcp
 					ast_log(LOG_DEBUG, "(%s) RECOGNIZE PENDING\n", schannel->name);
 				else {
 					/* Received unexpected request_state. */
-					ast_log(LOG_DEBUG, "(%s) unexpected RECOGNIZE request state: %d\n", schannel->name, message->start_line.request_state);
+					ast_log(LOG_DEBUG, "(%s) Unexpected RECOGNIZE request state: %d\n", schannel->name, message->start_line.request_state);
 					speech_channel_set_state(schannel, SPEECH_CHANNEL_ERROR);
 				}
 			} else if (message->start_line.method_id == RECOGNIZER_STOP) {
@@ -874,32 +867,32 @@ static apt_bool_t recog_on_message_receive(mrcp_application_t *application, mrcp
 					speech_channel_set_state(schannel, SPEECH_CHANNEL_READY);
 				} else {
 					/* Received unexpected request state. */
-					ast_log(LOG_DEBUG, "(%s) unexpected STOP request state: %d\n", schannel->name, message->start_line.request_state);
+					ast_log(LOG_DEBUG, "(%s) Unexpected STOP request state: %d\n", schannel->name, message->start_line.request_state);
 					speech_channel_set_state(schannel, SPEECH_CHANNEL_ERROR);
 				}
 			} else if (message->start_line.method_id == RECOGNIZER_START_INPUT_TIMERS) {
 				/* Received response to START-INPUT-TIMERS request. */
 				if (message->start_line.request_state == MRCP_REQUEST_STATE_COMPLETE) {
 					if (message->start_line.status_code >= 200 && message->start_line.status_code <= 299) {
-						ast_log(LOG_DEBUG, "(%s) timers started\n", schannel->name);
+						ast_log(LOG_DEBUG, "(%s) Timers started\n", schannel->name);
 						recog_channel_set_timers_started(schannel);
 					} else
-						ast_log(LOG_DEBUG, "(%s) timers failed to start, status code = %d\n", schannel->name, message->start_line.status_code);
+						ast_log(LOG_DEBUG, "(%s) Timers failed to start, status code = %d\n", schannel->name, message->start_line.status_code);
 				}
 			} else if (message->start_line.method_id == RECOGNIZER_DEFINE_GRAMMAR) {
 				/* Received response to DEFINE-GRAMMAR request. */
 				if (message->start_line.request_state == MRCP_REQUEST_STATE_COMPLETE) {
 					if (message->start_line.status_code >= 200 && message->start_line.status_code <= 299) {
-						ast_log(LOG_DEBUG, "(%s) grammar loaded\n", schannel->name);
+						ast_log(LOG_DEBUG, "(%s) Grammar loaded\n", schannel->name);
 						speech_channel_set_state(schannel, SPEECH_CHANNEL_READY);
 					} else {
-						ast_log(LOG_DEBUG, "(%s) grammar failed to load, status code = %d\n", schannel->name, message->start_line.status_code);
+						ast_log(LOG_DEBUG, "(%s) Grammar failed to load, status code = %d\n", schannel->name, message->start_line.status_code);
 						speech_channel_set_state(schannel, SPEECH_CHANNEL_ERROR);
 					}
 				}
 			} else {
 				/* Received unexpected response. */
-				ast_log(LOG_DEBUG, "(%s) unexpected response, method_id = %d\n", schannel->name, (int)message->start_line.method_id);
+				ast_log(LOG_DEBUG, "(%s) Unexpected response, method_id = %d\n", schannel->name, (int)message->start_line.method_id);
 				speech_channel_set_state(schannel, SPEECH_CHANNEL_ERROR);
 			}
 		} else if (message->start_line.message_type == MRCP_MESSAGE_TYPE_EVENT) {
@@ -944,11 +937,11 @@ static apt_bool_t recog_on_message_receive(mrcp_application_t *application, mrcp
 				}
 				recog_channel_set_start_of_input(schannel);
 			} else {
-				ast_log(LOG_DEBUG, "(%s) unexpected event, method_id = %d\n", schannel->name, (int)message->start_line.method_id);
+				ast_log(LOG_DEBUG, "(%s) Unexpected event, method_id = %d\n", schannel->name, (int)message->start_line.method_id);
 				speech_channel_set_state(schannel, SPEECH_CHANNEL_ERROR);
 			}
 		} else {
-			ast_log(LOG_DEBUG, "(%s) unexpected message type, message_type = %d\n", schannel->name, message->start_line.message_type);
+			ast_log(LOG_DEBUG, "(%s) Unexpected message type, message_type = %d\n", schannel->name, message->start_line.message_type);
 			speech_channel_set_state(schannel, SPEECH_CHANNEL_ERROR);
 		}
 	} else
@@ -1090,11 +1083,8 @@ static int mrcprecog_options_parse(char *str, mrcprecog_options_t *options, apr_
 	char *s;
 	char *name, *value;
 
-	if (!str) {
+	if (!str)
 		return 0;
-	}
-
-	ast_log(LOG_NOTICE, "Parse options: %s\n", str);
 	if ((options->recog_hfs = apr_hash_make(pool)) == NULL) {
 		return -1;
 	}
@@ -1102,7 +1092,7 @@ static int mrcprecog_options_parse(char *str, mrcprecog_options_t *options, apr_
 	while ((s = strsep(&str, "&"))) {
 		value = s;
 		if ((name = strsep(&value, "=")) && value) {
-			ast_log(LOG_NOTICE, "Apply option: %s: %s\n", name, value);
+			ast_log(LOG_DEBUG, "Apply option %s: %s\n", name, value);
 			mrcprecog_option_apply(options, name, value);
 		}
 	}
@@ -1150,10 +1140,6 @@ static int mrcprecog_streamfile(struct ast_channel *chan, const char *filename)
 /* Exit the application. */
 static int mrcprecog_exit(struct ast_channel *chan, mrcprecog_session_t *mrcprecog_session, speech_channel_status_t status)
 {
-	const char *status_str = speech_channel_status_to_string(status);
-	ast_log(LOG_NOTICE, "Set RECOGSTATUS to %s\n", status_str);
-	pbx_builtin_setvar_helper(chan, "RECOGSTATUS", status_str);
-
 	if (mrcprecog_session) {
 		if (mrcprecog_session->readformat)
 			ast_channel_set_readformat(chan, mrcprecog_session->readformat);
@@ -1164,6 +1150,10 @@ static int mrcprecog_exit(struct ast_channel *chan, mrcprecog_session_t *mrcprec
 		if (mrcprecog_session->pool)
 			apr_pool_destroy(mrcprecog_session->pool);
 	}
+
+	const char *status_str = speech_channel_status_to_string(status);
+	pbx_builtin_setvar_helper(chan, "RECOGSTATUS", status_str);
+	ast_log(LOG_NOTICE, "%s() exiting status: %s on %s\n", app_recog, status_str, ast_channel_name(chan));
 
 	return status != SPEECH_CHANNEL_STATUS_ERROR ? 0 : -1;
 }
@@ -1190,7 +1180,7 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 	);
 
 	if (ast_strlen_zero(data)) {
-		ast_log(LOG_WARNING, "%s requires an argument (grammar[,options])\n", app_recog);
+		ast_log(LOG_WARNING, "%s() requires an argument (grammar[,options])\n", app_recog);
 		return mrcprecog_exit(chan, NULL, SPEECH_CHANNEL_STATUS_ERROR);
 	}
 
@@ -1199,12 +1189,14 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 	AST_STANDARD_APP_ARGS(args, parse);
 
 	if (ast_strlen_zero(args.grammar)) {
-		ast_log(LOG_WARNING, "%s requires a grammar argument (grammar[,options])\n", app_recog);
+		ast_log(LOG_WARNING, "%s() requires a grammar argument (grammar[,options])\n", app_recog);
 		return mrcprecog_exit(chan, NULL, SPEECH_CHANNEL_STATUS_ERROR);
 	}
 
+	ast_log(LOG_NOTICE, "%s() grammar: %s\n", app_recog, args.grammar);
+
 	if ((mrcprecog_session.pool = apt_pool_create()) == NULL) {
-		ast_log(LOG_ERROR, "Unable to create memory pool for channel\n");
+		ast_log(LOG_ERROR, "Unable to create memory pool for speech channel\n");
 		return mrcprecog_exit(chan, NULL, SPEECH_CHANNEL_STATUS_ERROR);
 	}
 
@@ -1217,6 +1209,7 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 		mrcprecog_options.params[i] = NULL;
 
 	if (!ast_strlen_zero(args.options)) {
+		ast_log(LOG_NOTICE, "%s() options: %s\n", app_recog, args.options);
 		char *options_buf = apr_pstrdup(mrcprecog_session.pool, args.options);
 		mrcprecog_options_parse(options_buf, &mrcprecog_options, mrcprecog_session.pool);
 	}
@@ -1240,7 +1233,6 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 				dtmf_enable = 0;
 		}
 	}
-	ast_log(LOG_NOTICE, "DTMF enable: %d\n", dtmf_enable);
 
 	/* Answer if it's not already going. */
 	if (ast_channel_state(chan) != AST_STATE_UP)
@@ -1283,7 +1275,7 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 	ast_channel_get_readformat(chan, &oreadformat);
 
 	if (ast_channel_set_readformat(chan, &nreadformat) < 0) {
-		ast_log(LOG_ERROR, "Unable to set read format to signed linear\n");
+		ast_log(LOG_ERROR, "(%s) Unable to set read format to signed linear\n", name);
 		return mrcprecog_exit(chan, &mrcprecog_session, SPEECH_CHANNEL_STATUS_ERROR);
 	}
 
@@ -1294,7 +1286,7 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 	if ((mrcprecog_options.flags & MRCPRECOG_GRAMMAR_DELIMITERS) == MRCPRECOG_GRAMMAR_DELIMITERS) {
 		if (!ast_strlen_zero(mrcprecog_options.params[OPT_ARG_GRAMMAR_DELIMITERS])) {
 			grammar_delimiters = mrcprecog_options.params[OPT_ARG_GRAMMAR_DELIMITERS];
-			ast_log(LOG_DEBUG, "Grammar delimiters are: %s\n", grammar_delimiters);
+			ast_log(LOG_DEBUG, "(%s) Grammar delimiters: %s\n", name, grammar_delimiters);
 		}
 	}
 	/* Parse the grammar argument into a sequence of grammars. */
@@ -1303,23 +1295,21 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 	char *grammar_str;
 	char grammar_name[32];
 	int grammar_id = 0;
-	ast_log(LOG_DEBUG, "Tokenize grammar argument: %s\n", grammar_arg);
 	grammar_str = apr_strtok(grammar_arg, grammar_delimiters, &last);
 	while (grammar_str) {
 		const char *grammar_content = NULL;
 		grammar_type_t grammar_type = GRAMMAR_TYPE_UNKNOWN;
-		ast_log(LOG_DEBUG, "Determine grammar type: %s\n", grammar_str);
+		ast_log(LOG_DEBUG, "(%s) Determine grammar type: %s\n", name, grammar_str);
 		if (determine_grammar_type(mrcprecog_session.schannel, grammar_str, &grammar_content, &grammar_type) != 0) {
-			ast_log(LOG_WARNING, "Unable to determine grammar type\n");
+			ast_log(LOG_WARNING, "(%s) Unable to determine grammar type: %s\n", name, grammar_str);
 			return mrcprecog_exit(chan, &mrcprecog_session, SPEECH_CHANNEL_STATUS_ERROR);
 		}
-		ast_log(LOG_DEBUG, "Grammar type is: %i\n", grammar_type);
 
 		apr_snprintf(grammar_name, sizeof(grammar_name) - 1, "grammar-%d", grammar_id++);
 		grammar_name[sizeof(grammar_name) - 1] = '\0';
 		/* Load grammar. */
 		if (recog_channel_load_grammar(mrcprecog_session.schannel, grammar_name, grammar_type, grammar_content) != 0) {
-			ast_log(LOG_ERROR, "Unable to load grammar\n");
+			ast_log(LOG_ERROR, "(%s) Unable to load grammar\n", name);
 			return mrcprecog_exit(chan, &mrcprecog_session, SPEECH_CHANNEL_STATUS_ERROR);
 		}
 
@@ -1341,7 +1331,7 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 			if (bargein == 0) {
 				/* Barge-in is not allowed, wait for stream to end. */
 				if (ast_waitstream(chan, "") != 0) {
-					ast_log(LOG_WARNING, "ast_waitstream failed on %s\n", ast_channel_name(chan));
+					ast_log(LOG_WARNING, "(%s) ast_waitstream failed on %s\n", name, ast_channel_name(chan));
 					return mrcprecog_exit(chan, &mrcprecog_session, SPEECH_CHANNEL_STATUS_ERROR);
 				}
 			}
@@ -1357,16 +1347,16 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 			}
 
 			if (exit_on_playerror) {
-				ast_log(LOG_ERROR, "Couldn't play file\n");
+				ast_log(LOG_ERROR, "(%s) Couldn't play file %s\n", name, filename);
 				return mrcprecog_exit(chan, &mrcprecog_session, SPEECH_CHANNEL_STATUS_ERROR);
 			}
 		}
 	}
 
-	ast_log(LOG_NOTICE, "Recognizing\n");
+	ast_log(LOG_NOTICE, "(%s) Recognizing, enable DTMFs: %d\n", name, dtmf_enable);
 
 	if (recog_channel_start(mrcprecog_session.schannel, name, mrcprecog_options.recog_hfs) != 0) {
-		ast_log(LOG_ERROR, "Unable to start recognition\n");
+		ast_log(LOG_ERROR, "(%s) Unable to start recognition\n", name);
 		return mrcprecog_exit(chan, &mrcprecog_session, SPEECH_CHANNEL_STATUS_ERROR);
 	}
 
@@ -1398,7 +1388,7 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 
 		f = ast_read(chan);
 		if (!f) {
-			ast_log(LOG_DEBUG, "Null frame. Hangup detected\n");
+			ast_log(LOG_DEBUG, "(%s) Null frame. Hangup detected\n", name);
 			status = SPEECH_CHANNEL_STATUS_INTERRUPTED;
 			break;
 		}
@@ -1413,8 +1403,8 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 			/* Ignore. */
 		} else if ((dtmf_enable != 0) && (f->frametype == AST_FRAME_DTMF)) {
 			int dtmfkey = ast_frame_get_dtmfkey(f);
-			ast_log(LOG_DEBUG, "User pressed DTMF key (%d)\n", dtmfkey);
-			if (dtmf_enable == 2) { 
+			ast_log(LOG_DEBUG, "(%s) User pressed DTMF key (%d)\n", name, dtmfkey);
+			if (dtmf_enable == 2) {
 				/* Send DTMF frame to ASR engine. */
 				if (mrcprecog_session.schannel->dtmf_generator != NULL) {
 					char digits[2];
@@ -1424,7 +1414,7 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 					ast_log(LOG_NOTICE, "(%s) DTMF digit queued (%s)\n", mrcprecog_session.schannel->name, digits);
 					mpf_dtmf_generator_enqueue(mrcprecog_session.schannel->dtmf_generator, digits);
 				}
-			} else if (dtmf_enable == 1) { 
+			} else if (dtmf_enable == 1) {
 				/* Stop streaming if within i chars. */
 				if (strchr(mrcprecog_options.params[OPT_ARG_INTERRUPT], dtmfkey) || (strcmp(mrcprecog_options.params[OPT_ARG_INTERRUPT],"any"))) {
 					ast_frfree(f);
@@ -1454,10 +1444,9 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 			}
 		}
 
-		if (recog_channel_get_results(mrcprecog_session.schannel, uri_encoded_results, &result) == 0) {
-			ast_log(LOG_NOTICE, "Result=|%s|\n", result);
-		} else {
-			ast_log(LOG_ERROR, "Unable to retrieve result\n");
+		if (recog_channel_get_results(mrcprecog_session.schannel, uri_encoded_results, &result) != 0) {
+			ast_log(LOG_WARNING, "(%s) Unable to retrieve result\n", name);
+			return mrcprecog_exit(chan, &mrcprecog_session, SPEECH_CHANNEL_STATUS_ERROR);
 		}
 	}
 
@@ -1494,7 +1483,7 @@ int load_mrcprecog_app()
 
 	/* Create the recognizer application and link its callbacks */
 	if ((mrcprecog->app = mrcp_application_create(recog_message_handler, (void *)0, pool)) == NULL) {
-		ast_log(LOG_ERROR, "Unable to create recognizer MRCP application\n");
+		ast_log(LOG_ERROR, "Unable to create recognizer MRCP application %s\n", app_recog);
 		mrcprecog = NULL;
 		return -1;
 	}
@@ -1514,9 +1503,9 @@ int load_mrcprecog_app()
 	mrcprecog->audio_stream_vtable.trace = NULL;
 
 	if (!mrcp_client_application_register(globals.mrcp_client, mrcprecog->app, app_recog)) {
-		ast_log(LOG_ERROR, "Unable to register recognizer MRCP application\n");
+		ast_log(LOG_ERROR, "Unable to register recognizer MRCP application %s\n", app_recog);
 		if (!mrcp_application_destroy(mrcprecog->app))
-			ast_log(LOG_WARNING, "Unable to destroy recognizer MRCP application\n");
+			ast_log(LOG_WARNING, "Unable to destroy recognizer MRCP application %s\n", app_recog);
 		mrcprecog = NULL;
 		return -1;
 	}

@@ -177,14 +177,14 @@ int audio_queue_destroy(audio_queue_t *queue)
 
 		if (queue->cond != NULL) {
 			if (apr_thread_cond_destroy(queue->cond) != APR_SUCCESS)
-				ast_log(LOG_WARNING, "(%s) unable to destroy audio queue condition variable\n", name);
+				ast_log(LOG_WARNING, "(%s) Unable to destroy audio queue condition variable\n", name);
 
 			queue->cond = NULL;
 		}
 
 		if (queue->mutex != NULL) {
 			if (apr_thread_mutex_destroy(queue->mutex) != APR_SUCCESS)
-				ast_log(LOG_WARNING, "(%s) unable to destroy audio queue mutex\n", name);
+				ast_log(LOG_WARNING, "(%s) Unable to destroy audio queue mutex\n", name);
 
 			queue->mutex = NULL;
 		}
@@ -194,7 +194,7 @@ int audio_queue_destroy(audio_queue_t *queue)
 		queue->waiting = 0;
 		queue->write_bytes = 0;
 
-		ast_log(LOG_DEBUG, "(%s) audio queue destroyed\n", name);
+		ast_log(LOG_DEBUG, "(%s) Audio queue destroyed\n", name);
 		if (queue->pool != NULL) {
 			apr_pool_destroy(queue->pool);
 		}
@@ -227,7 +227,7 @@ int audio_queue_create(audio_queue_t **audio_queue, const char *name)
 		lname = "";
 
 	if ((laudio_queue = (audio_queue_t *)apr_palloc(pool, sizeof(audio_queue_t))) == NULL) {
-		ast_log(LOG_ERROR, "(%s) unable to create audio queue\n", lname);
+		ast_log(LOG_ERROR, "(%s) Unable to create audio queue\n", lname);
 		return -1;
 	} else {
 		laudio_queue->buffer = NULL;
@@ -240,17 +240,17 @@ int audio_queue_create(audio_queue_t **audio_queue, const char *name)
 		laudio_queue->write_bytes = 0;
 
 		if (audio_buffer_create(&laudio_queue->buffer, AUDIO_QUEUE_SIZE) != 0) {
-			ast_log(LOG_ERROR, "(%s) unable to create audio queue buffer\n", laudio_queue->name);
+			ast_log(LOG_ERROR, "(%s) Unable to create audio queue buffer\n", laudio_queue->name);
 			status = -1;
 		} else if (apr_thread_mutex_create(&laudio_queue->mutex, APR_THREAD_MUTEX_UNNESTED, pool) != APR_SUCCESS) {
-			ast_log(LOG_ERROR, "(%s) unable to create audio queue mutex\n", laudio_queue->name);
+			ast_log(LOG_ERROR, "(%s) Unable to create audio queue mutex\n", laudio_queue->name);
 			status = -1;
 		} else if (apr_thread_cond_create(&laudio_queue->cond, pool) != APR_SUCCESS) {
-			ast_log(LOG_ERROR, "(%s) unable to create audio queue condition variable\n", laudio_queue->name);
+			ast_log(LOG_ERROR, "(%s) Unable to create audio queue condition variable\n", laudio_queue->name);
 			status = -1;
 		} else {
 			*audio_queue = laudio_queue;
-			ast_log(LOG_DEBUG, "(%s) audio queue created\n", laudio_queue->name);
+			ast_log(LOG_DEBUG, "(%s) Audio queue created\n", laudio_queue->name);
 		}
 	}
 
@@ -324,7 +324,7 @@ int audio_queue_write(audio_queue_t *queue, void *data, apr_size_t *data_len)
 				apr_thread_cond_signal(queue->cond);
 		}
 	} else {
-		ast_log(LOG_WARNING, "(%s) audio queue overflow!\n", queue->name);
+		ast_log(LOG_WARNING, "(%s) Audio queue overflow!\n", queue->name);
 		*data_len = 0;
 		status = -1;
 	}

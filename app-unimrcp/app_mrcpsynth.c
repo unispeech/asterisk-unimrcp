@@ -176,7 +176,7 @@ static apt_bool_t speech_on_session_terminate(mrcp_application_t *application, m
 	else
 		schannel = NULL;
 
-	ast_log(LOG_DEBUG, "speech_on_session_terminate\n");
+	ast_log(LOG_DEBUG, "(%s) speech_on_session_terminate\n", schannel->name);
 
 	if (schannel != NULL) {
 		ast_log(LOG_DEBUG, "(%s) Destroying MRCP session\n", schannel->name);
@@ -201,7 +201,7 @@ static apt_bool_t speech_on_channel_add(mrcp_application_t *application, mrcp_se
 	else
 		schannel = NULL;
 
-	ast_log(LOG_DEBUG, "speech_on_channel_add\n");
+	ast_log(LOG_DEBUG, "(%s) speech_on_channel_add\n", schannel->name);
 
 	if ((schannel != NULL) && (application != NULL) && (session != NULL) && (channel != NULL)) {
 		if ((session != NULL) && (status == MRCP_SIG_STATUS_CODE_SUCCESS)) {
@@ -209,9 +209,9 @@ static apt_bool_t speech_on_channel_add(mrcp_application_t *application, mrcp_se
 			if (!descriptor) {
 				ast_log(LOG_ERROR, "(%s) Unable to determine codec descriptor\n", schannel->name);
 				speech_channel_set_state(schannel, SPEECH_CHANNEL_ERROR);
-				ast_log(LOG_DEBUG, "Terminating MRCP session\n");
+				ast_log(LOG_DEBUG, "(%s) Terminating MRCP session\n", schannel->name);
 				if (!mrcp_application_session_terminate(session))
-					ast_log(LOG_WARNING, "(%s) %s unable to terminate application session\n", schannel->name, speech_channel_type_to_string(schannel->type));
+					ast_log(LOG_WARNING, "(%s) Unable to terminate application session\n", schannel->name);
 				return FALSE;
 			}
 
@@ -222,21 +222,20 @@ static apt_bool_t speech_on_channel_add(mrcp_application_t *application, mrcp_se
 			else
 				codec_name = "unknown";
 
-			ast_log(LOG_DEBUG, "(%s) %s channel is ready, codec = %s, sample rate = %d\n",
+			ast_log(LOG_NOTICE, "(%s) Channel ready, codec=%s, sample rate=%d\n",
 				schannel->name,
-				speech_channel_type_to_string(schannel->type),
 				codec_name,
 				schannel->rate);
 			speech_channel_set_state(schannel, SPEECH_CHANNEL_READY);
 		} else {
-			ast_log(LOG_ERROR, "(%s) %s channel error!\n", schannel->name, speech_channel_type_to_string(schannel->type));
+			ast_log(LOG_ERROR, "(%s) Channel error!\n", schannel->name);
 
 			if (session != NULL) {
-				ast_log(LOG_DEBUG, "Terminating MRCP session\n");
+				ast_log(LOG_DEBUG, "(%s) Terminating MRCP session\n", schannel->name);
 				speech_channel_set_state(schannel, SPEECH_CHANNEL_ERROR);
 
 				if (!mrcp_application_session_terminate(session))
-					ast_log(LOG_WARNING, "(%s) %s unable to terminate application session\n", schannel->name, speech_channel_type_to_string(schannel->type));
+					ast_log(LOG_WARNING, "(%s) Unable to terminate application session\n", schannel->name);
 			}
 		}
 	} else
@@ -255,17 +254,17 @@ static apt_bool_t speech_on_channel_remove(mrcp_application_t *application, mrcp
 	else
 		schannel = NULL;
 
-	ast_log(LOG_DEBUG, "speech_on_channel_remove\n");
+	ast_log(LOG_DEBUG, "(%s) speech_on_channel_remove\n", schannel->name);
 
 	if (schannel != NULL) {
-		ast_log(LOG_NOTICE, "(%s) %s channel is removed\n", schannel->name, speech_channel_type_to_string(schannel->type));
+		ast_log(LOG_NOTICE, "(%s) Channel removed\n", schannel->name);
 		schannel->unimrcp_channel = NULL;
 
 		if (session != NULL) {
 			ast_log(LOG_DEBUG, "(%s) Terminating MRCP session\n", schannel->name);
 
 			if (!mrcp_application_session_terminate(session))
-				ast_log(LOG_WARNING, "(%s) %s unable to terminate application session\n", schannel->name, speech_channel_type_to_string(schannel->type));
+				ast_log(LOG_WARNING, "(%s) Unable to terminate application session\n", schannel->name);
 		}
 	} else
 		ast_log(LOG_ERROR, "(unknown) channel error!\n");
@@ -279,12 +278,11 @@ static apt_bool_t speech_on_channel_remove(mrcp_application_t *application, mrcp
 static apt_bool_t synth_message_handler(const mrcp_app_message_t *app_message)
 {
 	/* Call the appropriate callback in the dispatcher function table based on the app_message received. */
-	if (app_message != NULL)
+	if (app_message)
 		return mrcp_application_message_dispatch(&mrcpsynth->dispatcher, app_message);
-	else {
-		ast_log(LOG_ERROR, "(unknown) app_message error!\n");
-		return TRUE;
-	}
+
+	ast_log(LOG_ERROR, "(unknown) app_message error!\n");
+	return TRUE;
 }
 
 /* Handle the MRCP synthesizer responses/events from UniMRCP. */
@@ -308,7 +306,7 @@ static apt_bool_t synth_on_message_receive(mrcp_application_t *application, mrcp
 					speech_channel_set_state(schannel, SPEECH_CHANNEL_PROCESSING);
 				} else {
 					/* Received unexpected request_state. */
-					ast_log(LOG_DEBUG, "(%s) unexpected SPEAK response, request_state = %d\n", schannel->name, message->start_line.request_state);
+					ast_log(LOG_DEBUG, "(%s) Unexpected SPEAK response, request_state = %d\n", schannel->name, message->start_line.request_state);
 					speech_channel_set_state(schannel, SPEECH_CHANNEL_ERROR);
 				}
 			} else if (message->start_line.method_id == SYNTHESIZER_STOP) {
@@ -319,7 +317,7 @@ static apt_bool_t synth_on_message_receive(mrcp_application_t *application, mrcp
 					speech_channel_set_state(schannel, SPEECH_CHANNEL_READY);
 				} else {
 					/* Received unexpected request state. */
-					ast_log(LOG_DEBUG, "(%s) unexpected STOP response, request_state = %d\n", schannel->name, message->start_line.request_state);
+					ast_log(LOG_DEBUG, "(%s) Unexpected STOP response, request_state = %d\n", schannel->name, message->start_line.request_state);
 					speech_channel_set_state(schannel, SPEECH_CHANNEL_ERROR);
 				}
 			} else if (message->start_line.method_id == SYNTHESIZER_BARGE_IN_OCCURRED) {
@@ -330,12 +328,12 @@ static apt_bool_t synth_on_message_receive(mrcp_application_t *application, mrcp
 					speech_channel_set_state(schannel, SPEECH_CHANNEL_READY);
 				} else {
 					/* Received unexpected request state. */
-					ast_log(LOG_DEBUG, "(%s) unexpected BARGE_IN_OCCURRED response, request_state = %d\n", schannel->name, message->start_line.request_state);
+					ast_log(LOG_DEBUG, "(%s) Unexpected BARGE-IN-OCCURRED response, request_state = %d\n", schannel->name, message->start_line.request_state);
 					speech_channel_set_state(schannel, SPEECH_CHANNEL_ERROR);
 				}
 			} else {
 				/* Received unexpected response. */
-				ast_log(LOG_DEBUG, "(%s) unexpected response, method_id = %d\n", schannel->name, (int)message->start_line.method_id);
+				ast_log(LOG_DEBUG, "(%s) Unexpected response, method_id = %d\n", schannel->name, (int)message->start_line.method_id);
 				speech_channel_set_state(schannel, SPEECH_CHANNEL_ERROR); 
 			}
 		} else if (message->start_line.message_type == MRCP_MESSAGE_TYPE_EVENT) {
@@ -345,11 +343,11 @@ static apt_bool_t synth_on_message_receive(mrcp_application_t *application, mrcp
 				ast_log(LOG_DEBUG, "(%s) SPEAK-COMPLETE\n", schannel->name);
 				speech_channel_set_state(schannel, SPEECH_CHANNEL_READY);
 			} else {
-				ast_log(LOG_DEBUG, "(%s) unexpected event, method_id = %d\n", schannel->name, (int)message->start_line.method_id);
+				ast_log(LOG_DEBUG, "(%s) Unexpected event, method_id = %d\n", schannel->name, (int)message->start_line.method_id);
 				speech_channel_set_state(schannel, SPEECH_CHANNEL_ERROR);
 			}
 		} else {
-			ast_log(LOG_DEBUG, "(%s) unexpected message type, message_type = %d\n", schannel->name, message->start_line.message_type);
+			ast_log(LOG_DEBUG, "(%s) Unexpected message type, message_type = %d\n", schannel->name, message->start_line.message_type);
 			speech_channel_set_state(schannel, SPEECH_CHANNEL_ERROR);
 		}
 	} else
@@ -501,11 +499,9 @@ static int mrcpsynth_options_parse(char *str, mrcpsynth_options_t *options, apr_
 	char *s;
 	char *name, *value;
 	
-	if (!str) {
+	if (!str)
 		return 0;
-	}
 
-	ast_log(LOG_NOTICE, "Parse options: %s\n", str);
 	if ((options->synth_hfs = apr_hash_make(pool)) == NULL) {
 		return -1;
 	}
@@ -513,7 +509,7 @@ static int mrcpsynth_options_parse(char *str, mrcpsynth_options_t *options, apr_
 	while ((s = strsep(&str, "&"))) {
 		value = s;
 		if ((name = strsep(&value, "=")) && value) {
-			ast_log(LOG_NOTICE, "Apply option: %s: %s\n", name, value);
+			ast_log(LOG_DEBUG, "Apply option %s: %s\n", name, value);
 			mrcpsynth_option_apply(options, name, value);
 		}
 	}
@@ -523,10 +519,6 @@ static int mrcpsynth_options_parse(char *str, mrcpsynth_options_t *options, apr_
 /* Exit the application. */
 static int mrcpsynth_exit(struct ast_channel *chan, mrcpsynth_session_t *mrcpsynth_session, speech_channel_status_t status)
 {
-	const char *status_str = speech_channel_status_to_string(status);
-	ast_log(LOG_NOTICE, "Set SYNTHSTATUS to %s\n", status_str);
-	pbx_builtin_setvar_helper(chan, "SYNTHSTATUS", status_str);
-
 	if (mrcpsynth_session) {
 		if (mrcpsynth_session->fp)
 			fclose(mrcpsynth_session->fp);
@@ -540,6 +532,10 @@ static int mrcpsynth_exit(struct ast_channel *chan, mrcpsynth_session_t *mrcpsyn
 		if (mrcpsynth_session->pool)
 			apr_pool_destroy(mrcpsynth_session->pool);
 	}
+
+	const char *status_str = speech_channel_status_to_string(status);
+	pbx_builtin_setvar_helper(chan, "SYNTHSTATUS", status_str);
+	ast_log(LOG_NOTICE, "%s() exiting status: %s on %s\n", app_synth, status_str, ast_channel_name(chan));
 
 	return status != SPEECH_CHANNEL_STATUS_ERROR ? 0 : -1;
 }
@@ -576,7 +572,7 @@ static int app_synth_exec(struct ast_channel *chan, ast_app_data data)
 	);
 
 	if (ast_strlen_zero(data)) {
-		ast_log(LOG_WARNING, "%s requires an argument (prompt[,options])\n", app_synth);
+		ast_log(LOG_WARNING, "%s() requires an argument (prompt[,options])\n", app_synth);
 		return mrcpsynth_exit(chan, NULL, SPEECH_CHANNEL_STATUS_ERROR);
 	}
 
@@ -585,12 +581,14 @@ static int app_synth_exec(struct ast_channel *chan, ast_app_data data)
 	AST_STANDARD_APP_ARGS(args, parse);
 
 	if (ast_strlen_zero(args.prompt)) {
-		ast_log(LOG_WARNING, "%s requires a prompt argument (prompt[,options])\n", app_synth);
+		ast_log(LOG_WARNING, "%s() requires a prompt argument (prompt[,options])\n", app_synth);
 		return mrcpsynth_exit(chan, NULL, SPEECH_CHANNEL_STATUS_ERROR);
 	}
 
+	ast_log(LOG_NOTICE, "%s() prompt: %s\n", app_synth, args.prompt);
+
 	if ((mrcpsynth_session.pool = apt_pool_create()) == NULL) {
-		ast_log(LOG_ERROR, "Unable to create memory pool for channel\n");
+		ast_log(LOG_ERROR, "Unable to create memory pool for speech channel\n");
 		return mrcpsynth_exit(chan, NULL, SPEECH_CHANNEL_STATUS_ERROR);
 	}
 
@@ -604,6 +602,7 @@ static int app_synth_exec(struct ast_channel *chan, ast_app_data data)
 		mrcpsynth_options.params[i] = NULL;
 
 	if (!ast_strlen_zero(args.options)) {
+		ast_log(LOG_NOTICE, "%s() options: %s\n", app_synth, args.options);
 		char *options_buf = apr_pstrdup(mrcpsynth_session.pool, args.options);
 		mrcpsynth_options_parse(options_buf, &mrcpsynth_options, mrcpsynth_session.pool);
 	}
@@ -619,7 +618,6 @@ static int app_synth_exec(struct ast_channel *chan, ast_app_data data)
 				dtmf_enable = 0;
 		}
 	}
-	ast_log(LOG_NOTICE, "DTMF enable: %d\n", dtmf_enable);
 
 	/* Answer if it's not already going. */
 	if (ast_channel_state(chan) != AST_STATE_UP)
@@ -661,7 +659,7 @@ static int app_synth_exec(struct ast_channel *chan, ast_app_data data)
 	ast_channel_get_writeformat(chan, &owriteformat);
 
 	if (ast_channel_set_writeformat(chan, &nwriteformat) < 0) {
-		ast_log(LOG_ERROR, "Unable to set write format to signed linear\n");
+		ast_log(LOG_ERROR, "(%s) Unable to set write format to signed linear\n", name);
 		return mrcpsynth_exit(chan, &mrcpsynth_session, SPEECH_CHANNEL_STATUS_ERROR);
 	}
 
@@ -670,12 +668,14 @@ static int app_synth_exec(struct ast_channel *chan, ast_app_data data)
 	const char *content = NULL;
 	const char *content_type = NULL;
 	if (determine_synth_content_type(mrcpsynth_session.schannel, args.prompt, &content, &content_type) != 0) {
-		ast_log(LOG_WARNING, "Unable to determine synthesis content type\n");
+		ast_log(LOG_WARNING, "(%s) Unable to determine synthesis content type\n", name);
 		return mrcpsynth_exit(chan, &mrcpsynth_session, SPEECH_CHANNEL_STATUS_ERROR);
 	}
 
+	ast_log(LOG_NOTICE, "(%s) Synthesizing, enable DTMFs: %d\n", name, dtmf_enable);
+
 	if (synth_channel_speak(mrcpsynth_session.schannel, content, content_type, mrcpsynth_options.synth_hfs) != 0) {
-		ast_log(LOG_WARNING, "Unable to start synthesis\n");
+		ast_log(LOG_WARNING, "(%s) Unable to start synthesis\n", name);
 		return mrcpsynth_exit(chan, &mrcpsynth_session, SPEECH_CHANNEL_STATUS_ERROR);
 	}
 
@@ -710,7 +710,7 @@ static int app_synth_exec(struct ast_channel *chan, ast_app_data data)
 				fr.delivery.tv_usec = 0;
 
 				if (ast_write(chan, &fr) < 0) {
-					ast_log(LOG_WARNING, "Unable to write frame to channel: %s\n", strerror(errno));
+					ast_log(LOG_WARNING, "(%s) Unable to write frame to channel: %s\n", name, strerror(errno));
 					status = SPEECH_CHANNEL_STATUS_ERROR;
 					break;
 				}
@@ -720,19 +720,19 @@ static int app_synth_exec(struct ast_channel *chan, ast_app_data data)
 				if (rres == 0) {
 					/* next = ast_tvadd(next, ast_samp2tv(framesize/2, samplerate)); */
 					next = ast_tvadd(next, ast_samp2tv(framesize / format_to_bytes_per_sample(&nwriteformat), samplerate));
-					ast_log(LOG_WARNING, "Writer starved for audio\n");
+					ast_log(LOG_WARNING, "(%s) Writer starved for audio\n", name);
 				}
 			}
 		} else {
 			ms = ast_waitfor(chan, ms);
 			if (ms < 0) {
-				ast_log(LOG_DEBUG, "Hangup detected\n");
+				ast_log(LOG_DEBUG, "(%s) Hangup detected\n", name);
 				status = SPEECH_CHANNEL_STATUS_INTERRUPTED;
 				break;
 			} else if (ms) {
 				f = ast_read(chan);
 				if (!f) {
-					ast_log(LOG_DEBUG, "Null frame == hangup() detected\n");
+					ast_log(LOG_DEBUG, "(%s) Null frame == hangup() detected\n", name);
 					status = SPEECH_CHANNEL_STATUS_INTERRUPTED;
 					break;
 				}
@@ -741,13 +741,13 @@ static int app_synth_exec(struct ast_channel *chan, ast_app_data data)
 					int dobreak = 1;
 					int dtmfkey = ast_frame_get_dtmfkey(f);
 
-					ast_log(LOG_DEBUG, "User pressed a key (%d)\n", dtmfkey);
+					ast_log(LOG_DEBUG, "(%s) User pressed a key (%d)\n", name, dtmfkey);
 					if (mrcpsynth_options.params[OPT_ARG_INTERRUPT] && strchr(mrcpsynth_options.params[OPT_ARG_INTERRUPT], dtmfkey)) {
 						status = SPEECH_CHANNEL_STATUS_INTERRUPTED;
 						dobreak = 0;
 					}
 
-					ast_log(LOG_DEBUG, "(%s) sending BARGE-IN-OCCURRED\n", mrcpsynth_session.schannel->name);
+					ast_log(LOG_DEBUG, "(%s) Sending BARGE-IN-OCCURRED\n", mrcpsynth_session.schannel->name);
 
 					if (speech_channel_bargeinoccurred(mrcpsynth_session.schannel) != 0) {
 						ast_log(LOG_ERROR, "(%s) Failed to send BARGE-IN-OCCURRED\n", mrcpsynth_session.schannel->name);
@@ -814,9 +814,9 @@ int load_mrcpsynth_app()
 	mrcpsynth->audio_stream_vtable.trace = NULL;
 
 	if (!mrcp_client_application_register(globals.mrcp_client, mrcpsynth->app, app_synth)) {
-		ast_log(LOG_ERROR, "Unable to register synthesizer MRCP application\n");
+		ast_log(LOG_ERROR, "Unable to register synthesizer MRCP application %s\n", app_synth);
 		if (!mrcp_application_destroy(mrcpsynth->app))
-			ast_log(LOG_WARNING, "Unable to destroy synthesizer MRCP application\n");
+			ast_log(LOG_WARNING, "Unable to destroy synthesizer MRCP application %s\n", app_synth);
 		mrcpsynth = NULL;
 		return -1;
 	}
