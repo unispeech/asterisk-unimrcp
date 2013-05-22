@@ -61,7 +61,7 @@
 /* --- MRCP SPEECH CHANNEL --- */
 
 /* Convert channel state to string. */
-const char *speech_channel_state_to_string(speech_channel_state_t state)
+static const char *speech_channel_state_to_string(speech_channel_state_t state)
 {
 	switch (state) {
 		case SPEECH_CHANNEL_CLOSED: return "CLOSED";
@@ -73,7 +73,7 @@ const char *speech_channel_state_to_string(speech_channel_state_t state)
 }
 
 /* Convert speech channel type to string. */
-const char *speech_channel_type_to_string(speech_channel_type_t type)
+static const char *speech_channel_type_to_string(speech_channel_type_t type)
 {
 	switch (type) {
 		case SPEECH_CHANNEL_SYNTHESIZER: return "SYNTHESIZER";
@@ -278,7 +278,7 @@ speech_channel_t *speech_channel_create(apr_pool_t *pool, const char *name, spee
 	return schan;
 }
 
-mpf_termination_t *speech_channel_create_mpf_termination(speech_channel_t *schannel)
+static mpf_termination_t *speech_channel_create_mpf_termination(speech_channel_t *schannel)
 {   
 	mpf_termination_t *termination = NULL;
 	mpf_stream_capabilities_t *capabilities = NULL;
