@@ -55,7 +55,6 @@
 #include "asterisk/lock.h"
 #include "asterisk/file.h"
 #include "asterisk/app.h"
-#include "asterisk/dsp.h"
 
 /* UniMRCP includes. */
 #include "ast_unimrcp_framework.h"
@@ -89,7 +88,6 @@
 					<option name="sva"> <para>Speed vs accuracy (0.0 - 1.0).</para> </option>
 					<option name="nb"> <para>N-best list length.</para> </option>
 					<option name="nit"> <para>No input timeout (msec).</para> </option>
-					<option name="sit"> <para>Start input timers (true/false).</para> </option>
 					<option name="sct"> <para>Speech complete timeout (msec).</para> </option>
 					<option name="sint"> <para>Speech incomplete timeout (msec).</para> </option>
 					<option name="dit"> <para>DTMF interdigit timeout (msec).</para> </option>
@@ -144,12 +142,11 @@ static char *recogdescrip =
 "Supports version 1 and 2 of MRCP, using UniMRCP. First parameter is grammar /\n"
 "text of speech. Second paramater contains more options: p=profile, i=interrupt\n"
 "key, t=speech recognition timeout, f=filename of prompt to play, b=bargein value\n"
-"(no barge-in=0, allow barge-in=1), ct=confidence\n"
-"threshold (0.0 - 1.0), sl=sensitivity level (0.0 - 1.0), sva=speed vs accuracy\n"
-"(0.0 - 1.0), nb=n-best list length (1 - 19 digits), nit=no input timeout (1 -\n"
-"19 digits), sit=start input timers (true/false), sct=speech complete timeout\n"
-"(1 - 19 digits), sint=speech incomplete timeout (1 - 19 digits), dit=DTMF\n"
-"interdigit timeout (1 - 19 digits), dtt=DTMF terminate timout (1 - 19 digits),\n"
+"(no barge-in=0, allow barge-in=1), ct=confidence threshold (0.0 - 1.0),\n"
+"sl=sensitivity level (0.0 - 1.0), sva=speed vs accuracy(0.0 - 1.0),\n"
+"nb=n-best list length (1 - 19 digits), nit=no input timeout (1 -19 digits),\n"
+"sct=speech complete timeout (1 - 19 digits), sint=speech incomplete timeout (1 - 19 digits),\n"
+"dit=DTMF interdigit timeout (1 - 19 digits), dtt=DTMF terminate timout (1 - 19 digits),\n"
 "dttc=DTMF terminate characters, sw=save waveform (true/false), nac=new audio\n"
 "channel (true/false), spl=speech language (en-US/en-GB/etc.), rm=recognition\n"
 "mode, hmaxd=hotword max duration (1 - 19 digits), hmind=hotword min duration\n"
@@ -329,7 +326,6 @@ static apt_bool_t speech_on_channel_remove(mrcp_application_t *application, mrcp
 
 /* --- MRCP ASR --- */
 
-#if 0
 /* Start recognizer's input timers. */
 static int recog_channel_start_input_timers(speech_channel_t *schannel)
 {   
@@ -374,7 +370,6 @@ static int recog_channel_start_input_timers(speech_channel_t *schannel)
 
 	return status;
 }
-#endif
 
 /* Flag that input has started. */
 static int recog_channel_set_start_of_input(speech_channel_t *schannel)
@@ -552,14 +547,13 @@ static int recog_channel_set_timers_started(speech_channel_t *schannel)
 }
 
 /* Start RECOGNIZE request. */
-static int recog_channel_start(speech_channel_t *schannel, const char *name, apr_hash_t *header_fields)
+static int recog_channel_start(speech_channel_t *schannel, const char *name, int start_input_timers, apr_hash_t *header_fields)
 {
 	int status = 0;
 	mrcp_message_t *mrcp_message = NULL;
 	mrcp_generic_header_t *generic_header = NULL;
 	mrcp_recog_header_t *recog_header = NULL;
 	recognizer_data_t *r = NULL;
-	char *start_input_timers = NULL;
 	grammar_t *grammar = NULL;
 
 	if ((schannel != NULL) && (name != NULL)) {
@@ -593,9 +587,7 @@ static int recog_channel_start(speech_channel_t *schannel, const char *name, apr
 		r->completion_cause = -1;
 		r->start_of_input = 0;
 
-		/* Input timers are started by default unless the start-input-timers=false param is set. */
-		start_input_timers = (char *)apr_hash_get(header_fields, "Start-Input-Timers", APR_HASH_KEY_STRING);
-		r->timers_started = (start_input_timers == NULL) || (strlen(start_input_timers) == 0) || (strcasecmp(start_input_timers, "false"));
+		r->timers_started = start_input_timers;
 
 		apr_hash_index_t *hi;
 		void *val;
@@ -661,6 +653,10 @@ static int recog_channel_start(speech_channel_t *schannel, const char *name, apr
 			recog_header->cancel_if_queue = FALSE;
 			mrcp_resource_header_property_add(mrcp_message, RECOGNIZER_HEADER_CANCEL_IF_QUEUE);
 		}
+
+		/* Set Start-Input-Timers. */
+		recog_header->start_input_timers = start_input_timers ? TRUE : FALSE;
+		mrcp_resource_header_property_add(mrcp_message, RECOGNIZER_HEADER_START_INPUT_TIMERS);
 
 		/* Set parameters. */
 		speech_channel_set_params(schannel, mrcp_message, header_fields);
@@ -885,10 +881,6 @@ static apt_bool_t recog_on_message_receive(mrcp_application_t *application, mrcp
 				speech_channel_set_state(schannel, SPEECH_CHANNEL_READY);
 			} else if (message->start_line.method_id == RECOGNIZER_START_OF_INPUT) {
 				ast_log(LOG_DEBUG, "(%s) START OF INPUT\n", schannel->name);
-				if (schannel->chan != NULL && ast_channel_stream(schannel->chan)) {
-					ast_log(LOG_DEBUG, "(%s) Stopping playback due to start of input\n", schannel->name);
-					ast_stopstream(schannel->chan);
-				}
 				recog_channel_set_start_of_input(schannel);
 			} else {
 				ast_log(LOG_DEBUG, "(%s) Unexpected event, method_id = %d\n", schannel->name, (int)message->start_line.method_id);
@@ -967,8 +959,6 @@ static int mrcprecog_option_apply(mrcprecog_options_t *options, const char *key,
 		apr_hash_set(options->recog_hfs, "N-Best-List-Length", APR_HASH_KEY_STRING, value);
 	} else if (strcasecmp(key, "nit") == 0) {
 		apr_hash_set(options->recog_hfs, "No-Input-Timeout", APR_HASH_KEY_STRING, value);
-	} else if (strcasecmp(key, "sit") == 0) {
-		apr_hash_set(options->recog_hfs, "Start-Input-Timers", APR_HASH_KEY_STRING, value);
 	} else if (strcasecmp(key, "sct") == 0) {
 		apr_hash_set(options->recog_hfs, "Speech-Complete-Timeout", APR_HASH_KEY_STRING, value);
 	} else if (strcasecmp(key, "sint") == 0) {
@@ -1054,41 +1044,42 @@ static int mrcprecog_options_parse(char *str, mrcprecog_options_t *options, apr_
 }
 
 /* Playback the specified sound file. */
-static int mrcprecog_streamfile(struct ast_channel *chan, const char *filename)
+static struct ast_filestream* mrcprecog_streamfile(struct ast_channel *chan, const char *filename, off_t *filelength_out)
 {
 	struct ast_filestream* fs = ast_openstream(chan, filename, ast_channel_language(chan));
 	if (!fs) {
 		ast_log(LOG_WARNING, "ast_openstream failed on %s for %s\n", ast_channel_name(chan), filename);
-		return -1;
+		return NULL;
 	}
 
-#if 0 /* get and log file length */
+	/* Get file length. */
 	if (ast_seekstream(fs, -1, SEEK_END) == 0) {
 		off_t filelength = ast_tellstream(fs);
 		ast_log(LOG_NOTICE, "Stream file on %s length:%"APR_OFF_T_FMT"\n", ast_channel_name(chan), filelength);
+		if (filelength_out)
+			*filelength_out = filelength;
 		
 		if (ast_seekstream(fs, 0, SEEK_SET) != 0) {
 			ast_log(LOG_WARNING, "ast_seekstream failed on %s for %s\n", ast_channel_name(chan), filename);
 		}
 	}
-	else
+	else {
 		ast_log(LOG_WARNING, "ast_seekstream failed on %s for %s\n", ast_channel_name(chan), filename);
 	}
-#endif
 
 	if (ast_applystream(chan, fs) != 0) {
 		ast_log(LOG_WARNING, "ast_applystream failed on %s for %s\n", ast_channel_name(chan), filename);
 		ast_closestream(fs);
-		return -1;
+		return NULL;
 	}
 
 	if (ast_playstream(fs) != 0) {
 		ast_log(LOG_WARNING, "ast_playstream failed on %s for %s\n", ast_channel_name(chan), filename);
 		ast_closestream(fs);
-		return -1;
+		return NULL;
 	}
 
-	return 0;
+	return fs;
 }
 
 /* Exit the application. */
@@ -1118,7 +1109,6 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 	int samplerate = 8000;
 	int dtmf_enable;
 	struct ast_frame *f = NULL;
-	apr_size_t len;
 	ast_mrcp_profile_t *profile = NULL;
 	apr_uint32_t speech_channel_number = get_next_speech_channel_number();
 	const char *name;
@@ -1272,6 +1262,9 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 		grammar_str = apr_strtok(NULL, grammar_delimiters, &last);
 	}
 
+	off_t max_filelength = 0;
+	off_t read_filelength = 0;
+	struct ast_filestream *filestream = NULL;
 	const char *filename = NULL;
 	if ((mrcprecog_options.flags & MRCPRECOG_FILENAME) == MRCPRECOG_FILENAME) {
 		if (!ast_strlen_zero(mrcprecog_options.params[OPT_ARG_FILENAME])) {
@@ -1281,13 +1274,15 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 
 	if (filename) {
 		/* Play file. */
-		if (mrcprecog_streamfile(chan, filename) == 0) {
+		filestream = mrcprecog_streamfile(chan, filename, &max_filelength);
+		if (filestream) {
 			if (bargein == 0) {
 				/* Barge-in is not allowed, wait for stream to end. */
 				if (ast_waitstream(chan, "") != 0) {
 					ast_log(LOG_WARNING, "(%s) ast_waitstream failed on %s\n", name, ast_channel_name(chan));
 					return mrcprecog_exit(chan, &mrcprecog_session, SPEECH_CHANNEL_STATUS_ERROR);
 				}
+				filestream = NULL;
 			}
 		}
 		else {
@@ -1307,10 +1302,13 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 		}
 	}
 
-	ast_log(LOG_NOTICE, "(%s) Recognizing, enable DTMFs: %d\n", name, dtmf_enable);
+	int start_input_timers = filestream ? 0 : 1;
+	recognizer_data_t *r = mrcprecog_session.schannel->data;
+
+	ast_log(LOG_NOTICE, "(%s) Recognizing, enable DTMFs: %d, start input timers: %d\n", name, dtmf_enable, start_input_timers);
 
 	/* Start recognition. */
-	if (recog_channel_start(mrcprecog_session.schannel, name, mrcprecog_options.recog_hfs) != 0) {
+	if (recog_channel_start(mrcprecog_session.schannel, name, start_input_timers, mrcprecog_options.recog_hfs) != 0) {
 		ast_log(LOG_ERROR, "(%s) Unable to start recognition\n", name);
 		return mrcprecog_exit(chan, &mrcprecog_session, SPEECH_CHANNEL_STATUS_ERROR);
 	}
@@ -1338,6 +1336,20 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 		if (processing == 0)
 			break;
 
+		if (filestream) {
+			read_filelength = ast_tellstream(filestream);
+			if (read_filelength >= max_filelength) {
+				ast_log(LOG_DEBUG, "(%s) File is over => Start input timers\n", name);
+				recog_channel_start_input_timers(mrcprecog_session.schannel);
+				filestream = NULL;
+			}
+			else if (r && r->start_of_input) {
+				ast_log(LOG_DEBUG, "(%s) Bargein occurred\n", name);
+				ast_stopstream(chan);
+				filestream = NULL;
+			}
+		}
+
 		if (waitres == 0)
 			continue;
 
@@ -1349,7 +1361,7 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 		}
 
 		if (f->frametype == AST_FRAME_VOICE) {
-			len = f->datalen;
+			apr_size_t len = f->datalen;
 			if (speech_channel_write(mrcprecog_session.schannel, ast_frame_get_data(f), &len) != 0) {
 				ast_frfree(f);
 				break;
@@ -1383,10 +1395,8 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 		ast_frfree(f);
 	}
 
-	if (status != SPEECH_CHANNEL_STATUS_INTERRUPTED && bargein != 0) {
-		if (ast_waitstream(chan, "") != 0)
-			status = SPEECH_CHANNEL_STATUS_ERROR;
-	}
+	if (status != SPEECH_CHANNEL_STATUS_INTERRUPTED && filestream)
+		ast_stopstream(chan);
 
 	const char *completion_cause = NULL;
 	const char *result = NULL;
@@ -1394,7 +1404,7 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 
 	if (status == SPEECH_CHANNEL_STATUS_OK) {
 		int uri_encoded_results = 0;
-		/* Check if the results should be URI-encoded */
+		/* Check if the results should be URI-encoded. */
 		if ((mrcprecog_options.flags & MRCPRECOG_URI_ENCODED_RESULTS) == MRCPRECOG_URI_ENCODED_RESULTS) {
 			if (!ast_strlen_zero(mrcprecog_options.params[OPT_ARG_URI_ENCODED_RESULTS])) {
 				uri_encoded_results = (atoi(mrcprecog_options.params[OPT_ARG_URI_ENCODED_RESULTS]) == 0) ? 0 : 1;
@@ -1418,9 +1428,6 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 	/* If Waveform URI is available, pass it further to dialplan. */
 	if (waveform_uri)
 		pbx_builtin_setvar_helper(chan, "RECOG_WAVEFORM_URI", waveform_uri);
-
-	if (ast_channel_stream(chan))
-		ast_stopstream(chan);
 
 	return mrcprecog_exit(chan, &mrcprecog_session, status);
 }
