@@ -1544,19 +1544,16 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 		if (recog_processing == 0)
 			break;
 
-		if (start_input_timers == 0) {
+		if (synth_processing == 1) {
 			if (sar_session.synth_channel->state != SPEECH_CHANNEL_PROCESSING) {
-				start_input_timers = 1;
 				ast_log(LOG_DEBUG, "(%s) Start input timers\n", recog_name);
 				recog_channel_start_input_timers(sar_session.recog_channel);
-			}
-		}
-
-		if (synth_processing == 1) {
-			if (r && r->start_of_input) {
 				synth_processing = 0;
+			}
+			else if (r && r->start_of_input) {
 				ast_log(LOG_DEBUG, "(%s) Bargein occurred\n", recog_name);
 				synth_channel_bargein_occurred(sar_session.synth_channel);
+				synth_processing = 0;
 			}
 		}
 
