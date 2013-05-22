@@ -636,8 +636,9 @@ static int recog_channel_start(speech_channel_t *schannel, const char *name, int
 			return -1;
 		}
 
-		/* Set Content-Type. */
-		apt_string_assign(&generic_header->content_type, "text/uri-list", mrcp_message->pool);
+		/* Set Content-Type to text/uri-list. */
+		const char *mime_type = grammar_type_to_mime(GRAMMAR_TYPE_URI, schannel->profile);
+		apt_string_assign(&generic_header->content_type, mime_type, mrcp_message->pool);
 		mrcp_generic_header_property_add(mrcp_message, GENERIC_HEADER_CONTENT_TYPE);
 
 		/* Allocate recognizer-specific header. */
