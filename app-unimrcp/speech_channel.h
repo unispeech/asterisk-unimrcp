@@ -197,6 +197,9 @@ int grammar_create(grammar_t **grammar, const char *name, grammar_type_t type, c
 /* Get the MIME type for this grammar type. */
 const char *grammar_type_to_mime(grammar_type_t type, const ast_mrcp_profile_t *profile);
 
+/* Trim any leading and trailing whitespaces and unquote the input string. */
+char *normalize_input_string(char *str);
+
 /* --- CODEC/FORMAT FUNCTIONS  --- */
 int get_synth_format(struct ast_channel *chan, ast_format_compat *format);
 int get_recog_format(struct ast_channel *chan, ast_format_compat *format);

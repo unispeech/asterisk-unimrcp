@@ -585,6 +585,7 @@ static int app_synth_exec(struct ast_channel *chan, ast_app_data data)
 		return mrcpsynth_exit(chan, NULL, SPEECH_CHANNEL_STATUS_ERROR);
 	}
 
+	args.prompt = normalize_input_string(args.prompt);
 	ast_log(LOG_NOTICE, "%s() prompt: %s\n", app_synth, args.prompt);
 
 	if ((mrcpsynth_session.pool = apt_pool_create()) == NULL) {
@@ -602,6 +603,7 @@ static int app_synth_exec(struct ast_channel *chan, ast_app_data data)
 		mrcpsynth_options.params[i] = NULL;
 
 	if (!ast_strlen_zero(args.options)) {
+		args.options = normalize_input_string(args.options);
 		ast_log(LOG_NOTICE, "%s() options: %s\n", app_synth, args.options);
 		char *options_buf = apr_pstrdup(mrcpsynth_session.pool, args.options);
 		mrcpsynth_options_parse(options_buf, &mrcpsynth_options, mrcpsynth_session.pool);

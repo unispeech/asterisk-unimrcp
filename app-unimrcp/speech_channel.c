@@ -682,6 +682,33 @@ int speech_channel_write(speech_channel_t *schannel, void *data, apr_size_t *len
 	return res;
 }
 
+/* Trim any leading and trailing whitespaces and unquote the input string. */
+char *normalize_input_string(char *str)
+{
+	/* Trim any leading spaces. */
+	while (isspace(*str))
+		str++;
+
+	if (*str == '\0')
+		return str;
+
+	/* Trim any trailing spaces */
+	char *end = str + strlen(str) - 1;
+	while (end > str && isspace(*end))
+		end--;
+
+	/* Unquote the string, if quoted */
+	if (end > str && *str == '"' && *end == '"') {
+		str++;
+		end--;
+	}
+
+	/* Set null terminator. */
+	*(end+1) = '\0';
+
+	return str;
+}
+
 /* Inspect text to determine if its first non-whitespace text matches "match". */
 static int text_starts_with(const char *text, const char *match)
 {

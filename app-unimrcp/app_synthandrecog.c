@@ -1312,6 +1312,7 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 		return synthandrecog_exit(chan, NULL, SPEECH_CHANNEL_STATUS_ERROR);
 	}
 
+	args.prompt = normalize_input_string(args.prompt);
 	ast_log(LOG_NOTICE, "%s() prompt: %s\n", synthandrecog_name, args.prompt);
 
 	if (ast_strlen_zero(args.grammar)) {
@@ -1319,6 +1320,7 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 		return synthandrecog_exit(chan, NULL, SPEECH_CHANNEL_STATUS_ERROR);
 	}
 
+	args.grammar = normalize_input_string(args.grammar);
 	ast_log(LOG_NOTICE, "%s() grammar: %s\n", synthandrecog_name, args.grammar);
 
 	if ((sar_session.pool = apt_pool_create()) == NULL) {
@@ -1338,6 +1340,7 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 		sar_options.params[i] = NULL;
 
 	if (!ast_strlen_zero(args.options)) {
+		args.options = normalize_input_string(args.options);
 		ast_log(LOG_NOTICE, "%s() options: %s\n", synthandrecog_name, args.options);
 		char *options_buf = apr_pstrdup(sar_session.pool, args.options);
 		synthandrecog_options_parse(options_buf, &sar_options, sar_session.pool);
