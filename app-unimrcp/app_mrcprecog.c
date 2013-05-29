@@ -115,7 +115,7 @@
 		<description>
 			<para>This application establishes an MRCP session for speech recognition and optionally plays a prompt file.
 			Once recognition completes, the application exits and returns results to the dialplan.</para>
-			<para>If recognition completed, the variable ${RECOGSTATUS} is set to "OK". Otherwise, if an error occurred,
+			<para>If recognition completed, the variable ${RECOGSTATUS} is set to "OK". Otherwise, if recognition couldn't be started,
 			the variable ${RECOGSTATUS} is set to "ERROR". If the caller hung up while recognition was still in-progress,
 			the variable ${RECOGSTATUS} is set to "INTERRUPTED".</para>
 			<para>The variable ${RECOG_COMPLETION_CAUSE} indicates whether recognition completed successfully with a match or

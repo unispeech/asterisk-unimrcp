@@ -94,9 +94,9 @@
 			<para>This application establishes two MRCP sessions: one for speech synthesis and the other for speech recognition.
 			Once the user starts speaking (barge-in occurred), the synthesis session is stopped, and the recognition engine
 			starts processing the input. Once recognition completes, the application exits and returns results to the dialplan.</para>
-			<para>If recognition completed, the variable ${RECOG_STATUS} is set to "OK"; otherwise, if an error occurred,
+			<para>If recognition completed, the variable ${RECOG_STATUS} is set to "OK". Otherwise, if recognition couldn't be started,
 			the variable ${RECOG_STATUS} is set to "ERROR". If the caller hung up while recognition was still in-progress,
-			the variable ${RECOG_STATUS} is set to "INTERRUPTED".
+			the variable ${RECOG_STATUS} is set to "INTERRUPTED".</para>
 			<para>The variable ${RECOG_COMPLETION_CAUSE} indicates whether recognition completed successfully with a match or
 			an error occurred. ("000" - success, "001" - nomatch, "002" - noinput) </para>
 			<para>If recognition completed successfully, the variable ${RECOG_RESULT} is set to an NLSML result received
