@@ -69,7 +69,7 @@
 		</synopsis>
 		<syntax>
 			<parameter name="prompt" required="true">
-				<para>A plain text or SSML prompt to be synthesized and played to the caller.</para>
+				<para>A prompt specified as a plain text, an SSML content, or by means of a file or URI reference.</para>
 			</parameter>
 			<parameter name="options" required="false">
 				<optionlist>
@@ -88,8 +88,10 @@
 			</parameter>
 		</syntax>
 		<description>
-			<para>This application establishes an MRCP synthesis session.</para>
-			<para>If synthesis successfully completed, the variable ${SYNTHSTATUS} is set to "OK"; otherwise, the variable is set to "ERROR".</para>
+			<para>This application establishes an MRCP session for speech synthesis.</para>
+			<para>If synthesis completed successfully, the variable ${SYNTHSTATUS} is set to "OK"; otherwise, if an error occurred, 
+			the variable ${SYNTHSTATUS} is set to "ERROR". If the caller hung up while the synthesis was in-progress, 
+			the variable ${SYNTHSTATUS} is set to "INTERRUPTED".</para>
 		</description>
 		<see-also>
 			<ref type="application">MRCPRecog</ref>
@@ -101,22 +103,7 @@
 /* The name of the application. */
 static const char *app_synth = "MRCPSynth";
 
-#if !AST_VERSION_AT_LEAST(1,6,2)
-static char *synthsynopsis = "MRCP synthesis application.";
-static char *synthdescrip =
-"Supports version 1 and 2 of MRCP, using UniMRCP. The options can be one or\n"
-"more of the following: i=interrupt keys or <literal>any</literal> for any DTMF\n"
-"key, p=profile to use, f=filename to save audio to, l=language to use in the\n"
-"synthesis header (en-US/en-GB/etc.), v=voice name, g=gender (male/female),\n"
-"a=voice age (1-19 digits), pv=prosody volume\n"
-"(silent/x-soft/soft/medium/load/x-loud/default), pr=prosody rate\n"
-"(x-slow/slow/medium/fast/x-fast/default), ll=load lexicon (true/false),\n"
-"vv=voice variant (1-19 digits). If the audio file name is empty or the\n"
-"parameter not given, no audio will be stored to disk. If the interrupt keys\n"
-"are set, then kill-on-bargein will be enabled, otherwise if it is empty or not\n"
-"given, then kill-on-bargein will be disabled.\n";
-#endif
-
+/* The application instance. */
 static ast_mrcp_application_t *mrcpsynth = NULL;
 
 /* The enumeration of application options (excluding the MRCP params). */
@@ -790,8 +777,8 @@ int load_mrcpsynth_app()
 	mrcpsynth->name = app_synth;
 	mrcpsynth->exec = app_synth_exec;
 #if !AST_VERSION_AT_LEAST(1,6,2)
-	mrcpsynth->synopsis = synthsynopsis;
-	mrcpsynth->description = synthdescrip;
+	mrcpsynth->synopsis = NULL;
+	mrcpsynth->description = NULL;
 #endif
 
 	/* Create the synthesizer application and link its callbacks */

@@ -113,14 +113,16 @@
 			</parameter>
 		</syntax>
 		<description>
-			<para> This application establishes an MRCP recognition session and optionally plays a prompt file.
+			<para>This application establishes an MRCP session for speech recognition and optionally plays a prompt file.
 			Once recognition completes, the application exits and returns results to the dialplan.</para>
-			<para>If recognition successfully started, the variable ${RECOGSTATUS} is set to "OK"; otherwise, if recognition
-			terminated prematurely, the variable ${RECOGSTATUS} is set to "ERROR".</para>
+			<para>If recognition completed, the variable ${RECOGSTATUS} is set to "OK". Otherwise, if an error occurred,
+			the variable ${RECOGSTATUS} is set to "ERROR". If the caller hung up while recognition was still in-progress,
+			the variable ${RECOGSTATUS} is set to "INTERRUPTED".</para>
 			<para>The variable ${RECOG_COMPLETION_CAUSE} indicates whether recognition completed successfully with a match or
 			an error occurred. ("000" - success, "001" - nomatch, "002" - noinput) </para>
-			<para>If recognition completed successfully, the variable ${RECOG_RESULT} is set to an NLSML result received from
-			the MRCP server.</para>
+			<para>If recognition completed successfully, the variable ${RECOG_RESULT} is set to an NLSML result received
+			from the MRCP server. Alternatively, the recognition result data can be retrieved by using the following dialplan
+			functions RECOG_CONFIDENCE(), RECOG_GRAMMAR(), RECOG_INPUT(), and RECOG_INSTANCE().</para>
 		</description>
 		<see-also>
 			<ref type="application">MRCPSynth</ref>
@@ -136,24 +138,7 @@
 /* The name of the application. */
 static const char *app_recog = "MRCPRecog";
 
-#if !AST_VERSION_AT_LEAST(1,6,2)
-static char *recogsynopsis = "MRCP recognition application.";
-static char *recogdescrip =
-"Supports version 1 and 2 of MRCP, using UniMRCP. First parameter is grammar /\n"
-"text of speech. Second paramater contains more options: p=profile, i=interrupt\n"
-"key, t=speech recognition timeout, f=filename of prompt to play, b=bargein value\n"
-"(no barge-in=0, allow barge-in=1), ct=confidence threshold (0.0 - 1.0),\n"
-"sl=sensitivity level (0.0 - 1.0), sva=speed vs accuracy(0.0 - 1.0),\n"
-"nb=n-best list length (1 - 19 digits), nit=no input timeout (1 -19 digits),\n"
-"sct=speech complete timeout (1 - 19 digits), sint=speech incomplete timeout (1 - 19 digits),\n"
-"dit=DTMF interdigit timeout (1 - 19 digits), dtt=DTMF terminate timout (1 - 19 digits),\n"
-"dttc=DTMF terminate characters, sw=save waveform (true/false), nac=new audio\n"
-"channel (true/false), spl=speech language (en-US/en-GB/etc.), rm=recognition\n"
-"mode, hmaxd=hotword max duration (1 - 19 digits), hmind=hotword min duration\n"
-"(1 - 19 digits), cdb=clear DTMF buffer (true/false), enm=early no match\n"
-"(true/false), iwu=input waveform URI, mt=media type.\n";
-#endif
-
+/* The application instance. */
 static ast_mrcp_application_t *mrcprecog = NULL;
 
 /* The enumeration of application options (excluding the MRCP params). */
@@ -1454,8 +1439,8 @@ int load_mrcprecog_app()
 	mrcprecog->name = app_recog;
 	mrcprecog->exec = app_recog_exec;
 #if !AST_VERSION_AT_LEAST(1,6,2)
-	mrcprecog->synopsis = recogsynopsis;
-	mrcprecog->description = recogdescrip;
+	mrcprecog->synopsis = NULL;
+	mrcprecog->description = NULL;
 #endif
 
 	/* Create the recognizer application and link its callbacks */

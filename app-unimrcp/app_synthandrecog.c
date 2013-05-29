@@ -47,7 +47,7 @@
 		</synopsis>
 		<syntax>
 			<parameter name="prompt" required="true">
-				<para>A plain text or SSML prompt to be synthesized and played to the caller.</para>
+				<para>A prompt specified as a plain text, an SSML content, or by means of a file or URI reference.</para>
 			</parameter>
 			<parameter name="grammar" required="true">
 				<para>An inline or URI grammar to be used for recognition.</para>
@@ -94,12 +94,14 @@
 			<para>This application establishes two MRCP sessions: one for speech synthesis and the other for speech recognition.
 			Once the user starts speaking (barge-in occurred), the synthesis session is stopped, and the recognition engine
 			starts processing the input. Once recognition completes, the application exits and returns results to the dialplan.</para>
-			<para>If recognition successfully started, the variable ${RECOG_STATUS} is set to "OK"; otherwise, if recognition
-			terminated prematurely, the variable ${RECOG_STATUS} is set to "ERROR".</para>
+			<para>If recognition completed, the variable ${RECOG_STATUS} is set to "OK"; otherwise, if an error occurred,
+			the variable ${RECOG_STATUS} is set to "ERROR". If the caller hung up while recognition was still in-progress,
+			the variable ${RECOG_STATUS} is set to "INTERRUPTED".
 			<para>The variable ${RECOG_COMPLETION_CAUSE} indicates whether recognition completed successfully with a match or
 			an error occurred. ("000" - success, "001" - nomatch, "002" - noinput) </para>
-			<para>If recognition completed successfully, the variable ${RECOG_RESULT} is set to an NLSML result received from
-			the MRCP server.</para>
+			<para>If recognition completed successfully, the variable ${RECOG_RESULT} is set to an NLSML result received
+			from the MRCP server. Alternatively, the recognition result data can be retrieved by using the following dialplan
+			functions RECOG_CONFIDENCE(), RECOG_GRAMMAR(), RECOG_INPUT(), and RECOG_INSTANCE().</para>
 		</description>
 		<see-also>
 			<ref type="application">MRCPSynth</ref>
