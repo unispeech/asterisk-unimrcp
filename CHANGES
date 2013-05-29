@@ -1,3 +1,48 @@
+Changes for Asterisk UniMRCP Modules 1.1.0
+
+1. Generic Speech Recognition API (res_speech_unimrcp.so)
+
+    * Use the new NLSML parser interface to build ast_speech_result based on the parsed nlsml_result_t structure.
+    * Added support for alternate interpretations (N-Best-List) as well as multiple instances per interpretation.
+
+2. Dialplan Applications (app_unimrcp.so)
+
+  2.1. MRCPSynth()
+
+    * Added support for prompts referenced by a URI.
+    * Differentiate the cases when synthesis is terminated due to an error or caller hang-up. In the latter case, the variable "SYNTHSTATUS" is set to the new status "INTERRUPTED".
+    * Fixed a possible file handle leak.
+
+  2.2. MRCPRecog()
+
+    * Modified the default value of the option "i" (interrupt) in order to enable the DTMF support by default. In order to disable DTMFs, use the option i=disable. The other settings/values remain intact.
+    * Added a new option "uer" (URI-encoded results). By default, this option is disabled (uer=0). If the option is enabled (uer=1), the variable "RECOG_RESULT" holds URI-encoded results. This matters in case of the AMI use.
+    * If the application creation fails on start-up, set the corresponding variable "mrcprecog" to NULL.
+    * Differentiate the cases when recognition is terminated due to an error or caller hang-up. In the latter case, the variable "RECOGSTATUS" is set to the new status "INTERRUPTED".
+    * Dropped support for the barge-in handled on/by Asterisk (bargein=2). The option bargein can now simply be enabled (1) or disabled (0).
+    * Set the dialplan variables "RECOG_COMPLETION_CAUSE", "RECOG_RESULT", and optionally "RECOG_WAVEFORM_URI" in accordance with the application SynthAndRecog().
+    * Added support for the method "Start-Input-Timers".
+    * Took out the input option "sit", since the header field "START-INPUT-TIMERS" is now set and controlled implicitly by the application.
+
+  2.3. SynthAndRecog()
+
+    * Added support for prompts referenced by a URI.
+    * Added a new option "uer" (URI-encoded results). By default, this option is disabled (uer=0). If the option is enabled (uer=1), the variable "RECOG_RESULT" holds URI-encoded results. This matters in case of the AMI use.
+    * Differentiate the cases when recognition is terminated due to an error or caller hang-up. In the latter case, the variable "RECOG_STATUS" is set to the new status "INTERRUPTED".
+
+3. Miscellaneous
+
+    * Terminate the MRCP session when negotiated codec descriptor cannot be retrieved by a user application.
+    * Prevent a possible segfault of Asterisk caused by malformed input parameters (Issue-157).
+    * Added a new enumeration speech_channel_status_t used by the applications to set the corresponding status variable on exit.
+    * Fixed possible memory leaks in the processing of ast_frames.
+    * Added new dialplan functions RECOG_CONFIDENCE(), RECOG_GRAMMAR(), RECOG_INPUT(), and RECOG_INSTANCE() to retrieve recognition results set by the applications MRCPRecog() and SynthAndRecog().
+    * Updated the XML documentation of the dialplan applications and custom functions.
+    * Improved the log statements.
+    * Added more usage examples and helper macros which output recognition results by using the new dialplan functions.
+    * Normalize application input arguments by stripping any leading and trailing whitespaces and skipping the quotes.
+
+
 Changes for Asterisk UniMRCP Modules 1.0.0
 
 1. Generic Speech Recognition API (res_speech_unimrcp.so)
@@ -17,8 +62,8 @@ Changes for Asterisk UniMRCP Modules 1.0.0
 
   2.2. MRCPRecog()
 
-    * Fixed a misspelled name of the 'Input-Waveform-URI' header field.
-    * Use the 'sl' option for the 'Sensitivity-Level' header field and 'spl' for 'Speech-Language'.
+    * Fixed a misspelled name of the header field "Input-Waveform-URI".
+    * Use the option "sl" for the header field "Sensitivity-Level" and "spl" for "Speech-Language".
     * Fixed a crash in speech_channel_destroy(). Thanks Evan, Stephen, and Rodolfo.
     * Fixed a memory leak in processing of recognition results. A recognition result is now allocated from the channel memory pool using apr_pstrdup(). Otherwise, the duplicated string should have been explicitly freed.
     * Fixed the grammar type detection routine.
