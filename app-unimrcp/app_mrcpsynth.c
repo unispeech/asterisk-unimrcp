@@ -700,8 +700,6 @@ static int app_synth_exec(struct ast_channel *chan, ast_app_data data)
 
 				if (ast_write(chan, &fr) < 0) {
 					ast_log(LOG_WARNING, "(%s) Unable to write frame to channel: %s\n", name, strerror(errno));
-					status = SPEECH_CHANNEL_STATUS_ERROR;
-					break;
 				}
 
 				next = ast_tvadd(next, ast_samp2tv(fr.samples, samplerate));
