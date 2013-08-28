@@ -1252,6 +1252,7 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 
 	off_t max_filelength = 0;
 	off_t read_filelength = 0;
+	off_t read_filestep = 0;
 	struct ast_filestream *filestream = NULL;
 	const char *filename = NULL;
 	if ((mrcprecog_options.flags & MRCPRECOG_FILENAME) == MRCPRECOG_FILENAME) {
@@ -1326,8 +1327,10 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 
 		if (filestream) {
 			read_filelength = ast_tellstream(filestream);
-			if (read_filelength >= max_filelength) {
-				ast_log(LOG_DEBUG, "(%s) File is over => Start input timers\n", name);
+			if(!read_filestep)
+				read_filestep = read_filelength;
+			if (read_filelength + read_filestep > max_filelength) {
+				ast_log(LOG_DEBUG, "(%s) File is over, read length:%"APR_OFF_T_FMT" => Start input timers\n", name, read_filelength);
 				recog_channel_start_input_timers(mrcprecog_session.schannel);
 				filestream = NULL;
 			}
