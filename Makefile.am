@@ -25,5 +25,5 @@ SUBDIRS              += app-unimrcp
 endif
 
 install-data-local:
-	test -f $(asterisk_conf_dir)/res-speech-unimrcp.conf || $(INSTALL) -m 644 conf/res-speech-unimrcp.conf $(asterisk_conf_dir)
-	test -f $(asterisk_conf_dir)/mrcp.conf || $(INSTALL) -m 644 conf/mrcp.conf $(asterisk_conf_dir)
+	test -f $(DESTDIR)$(asterisk_conf_dir)/res-speech-unimrcp.conf || $(INSTALL) -m 644 conf/res-speech-unimrcp.conf $(DESTDIR)$(asterisk_conf_dir)
+	test -f $(DESTDIR)$(asterisk_conf_dir)/mrcp.conf || $(INSTALL) -m 644 conf/mrcp.conf $(DESTDIR)$(asterisk_conf_dir)

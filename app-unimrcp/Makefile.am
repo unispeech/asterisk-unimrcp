@@ -38,7 +38,7 @@ clean-local:
 	rm -rf .xmldocs
 
 install-data-local:
-	$(INSTALL) -m 644 .xmldocs/*.xml $(asterisk_xmldoc_dir)
+	$(INSTALL) -m 644 .xmldocs/*.xml $(DESTDIR)$(asterisk_xmldoc_dir)
 
 load: 
 	asterisk -rx "module load app_unimrcp.so"
