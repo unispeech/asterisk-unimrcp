@@ -10,7 +10,20 @@ AC_INIT([asterisk-unimrcp],[1.1.0])
 AC_CONFIG_AUX_DIR([build])
 AC_CONFIG_MACRO_DIR([build/acmacros])
 
+dnl Set ac_macro_dir variable manually for autoconf 2.61 and above
+ac_macro_dir='build/acmacros'
+
+dnl Include m4 macros for libtool 2
+sinclude(build/acmacros/libtool.m4)
+sinclude(build/acmacros/ltoptions.m4)
+sinclude(build/acmacros/ltsugar.m4)
+sinclude(build/acmacros/ltversion.m4)
+sinclude(build/acmacros/lt~obsolete.m4)
+
 AM_INIT_AUTOMAKE(foreign)
+
+dnl Enable silent build rules (available since automake 1.11)
+m4_ifdef([AM_SILENT_RULES], [AM_SILENT_RULES([yes])])
 
 dnl Set default language
 AC_LANG_C
