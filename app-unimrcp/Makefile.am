@@ -39,6 +39,7 @@ clean-local:
 
 install-data-local:
 	$(INSTALL) -m 644 .xmldocs/*.xml $(DESTDIR)$(asterisk_xmldoc_dir)
+	test -f $(DESTDIR)$(asterisk_conf_dir)/mrcp.conf || $(INSTALL) -m 644 ../conf/mrcp.conf $(DESTDIR)$(asterisk_conf_dir)
 
 load: 
 	asterisk -rx "module load app_unimrcp.so"

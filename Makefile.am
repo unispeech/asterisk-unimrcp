@@ -31,7 +31,3 @@ endif
 if APP_UNIMRCP
 SUBDIRS              += app-unimrcp
 endif
-
-install-data-local:
-	test -f $(DESTDIR)$(asterisk_conf_dir)/res-speech-unimrcp.conf || $(INSTALL) -m 644 conf/res-speech-unimrcp.conf $(DESTDIR)$(asterisk_conf_dir)
-	test -f $(DESTDIR)$(asterisk_conf_dir)/mrcp.conf || $(INSTALL) -m 644 conf/mrcp.conf $(DESTDIR)$(asterisk_conf_dir)
