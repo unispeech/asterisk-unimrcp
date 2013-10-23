@@ -14,7 +14,7 @@ AC_DEFUN([FIND_ASTERISK], [
         [asterisk_conf_dir=""])
 
     AC_ARG_WITH([asterisk-version],
-        [  --with-asterisk-version=DIR specify Asterisk version],
+        [  --with-asterisk-version=VER specify Asterisk version],
         [asterisk_version=$withval],
         [asterisk_version=""])
 
