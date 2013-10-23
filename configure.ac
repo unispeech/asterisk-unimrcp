@@ -1,6 +1,6 @@
-dnl 
+dnl
 dnl Autoconf configuration file for the UniMRCP modules for Asterisk.
-dnl 
+dnl
 dnl Process this file with autoconf to produce a configure script.
 
 AC_PREREQ(2.59)
@@ -41,6 +41,9 @@ AC_PROG_INSTALL
 dnl Skip detection of Fortran.
 m4_undefine([AC_PROG_F77])
 m4_defun([AC_PROG_F77],[])
+
+dnl Turn off static libraries.
+AC_DISABLE_STATIC
 
 dnl Add libtool support.
 AC_PROG_LIBTOOL
