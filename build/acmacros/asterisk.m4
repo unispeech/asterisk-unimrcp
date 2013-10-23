@@ -18,7 +18,7 @@ AC_DEFUN([FIND_ASTERISK], [
         [asterisk_version=$withval],
         [asterisk_version=""])
 
-    dnl Test and set Asterisk directory.
+    dnl Test and set Asterisk directories.
     if test "${asterisk_dir}" = ""; then
         asterisk_dir="/usr"
         if test "${asterisk_conf_dir}" = ""; then
@@ -31,6 +31,7 @@ AC_DEFUN([FIND_ASTERISK], [
         fi
         asterisk_xmldoc_dir="${asterisk_dir}/var/lib/asterisk/documentation/thirdparty"
     fi
+    asterisk_mod_dir="${asterisk_dir}/lib/asterisk/modules"
 
     dnl Determine Asterisk version.
     if test "${asterisk_version}" = ""; then

@@ -49,11 +49,10 @@ FIND_UNIMRCP
 FIND_ASTERISK
 
 if test "x$prefix" = "xNONE"; then
-    echo "Prefix empty, so using Asterisk directory"
-    prefix="${asterisk_dir}/lib/asterisk/modules"
+    prefix="${asterisk_mod_dir}"
 fi
 
-moddir='${prefix}'
+moddir="${prefix}"
 
 AC_DEFUN([AX_COMPILER_VENDOR],
 [
