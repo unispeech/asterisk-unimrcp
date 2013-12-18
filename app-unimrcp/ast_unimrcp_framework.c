@@ -591,6 +591,9 @@ mrcp_client_t *mod_unimrcp_client_create(apr_pool_t *mod_pool)
 					}
 
 					config->origin = DEFAULT_SDP_ORIGIN;
+					if (globals.unimrcp_request_timeout != NULL) {
+						config->request_timeout = (apr_size_t)atol(globals.unimrcp_request_timeout);
+					}
 					sig_settings->resource_location = DEFAULT_RESOURCE_LOCATION;
 
 					ast_log(LOG_DEBUG, "Loading MRCPv1 profile: %s\n", name);
