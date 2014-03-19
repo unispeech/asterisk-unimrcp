@@ -59,7 +59,7 @@
 /* Global variables. */
 ast_mrcp_globals_t globals;
 
-void globals_null(void)
+static void globals_null(void)
 {
 	/* Set all variables to NULL so that checks work as expected. */
 	globals.pool = NULL;
@@ -78,7 +78,7 @@ void globals_null(void)
 	globals.profiles = NULL;
 }
 
-void globals_clear(void)
+static void globals_clear(void)
 {
 	/* Clear the hashes for the configuration of the profiles and the hash for the
 	 * profile itself.
@@ -121,7 +121,7 @@ void globals_clear(void)
 	}
 }
 
-void globals_default(void)
+static void globals_default(void)
 {
 	/* Initialize some of the variables with default values. */
 	globals.unimrcp_max_connection_count = DEFAULT_UNIMRCP_MAX_CONNECTION_COUNT;

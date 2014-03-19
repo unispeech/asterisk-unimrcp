@@ -131,12 +131,6 @@ typedef struct ast_mrcp_profile_t ast_mrcp_profile_t;
 
 extern ast_mrcp_globals_t globals;
 
-void globals_null(void);
-
-void globals_clear(void);
-
-void globals_default(void);
-
 void globals_destroy(void);
 
 int globals_init(void);
