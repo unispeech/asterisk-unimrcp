@@ -40,8 +40,8 @@
 /* UniMRCP includes. */
 #include "ast_unimrcp_framework.h"
 
-#define DEFAULT_UNIMRCP_MAX_CONNECTION_COUNT	"120"
-#define DEFAULT_UNIMRCP_OFFER_NEW_CONNECTION	"1"
+#define DEFAULT_UNIMRCP_MAX_CONNECTION_COUNT	120
+#define DEFAULT_UNIMRCP_OFFER_NEW_CONNECTION	1
 #define DEFAULT_UNIMRCP_LOG_LEVEL				"DEBUG"
 
 #define DEFAULT_LOCAL_IP_ADDRESS				"127.0.0.1"
@@ -124,8 +124,8 @@ static void globals_clear(void)
 static void globals_default(void)
 {
 	/* Initialize some of the variables with default values. */
-	globals.unimrcp_max_connection_count = DEFAULT_UNIMRCP_MAX_CONNECTION_COUNT;
-	globals.unimrcp_offer_new_connection = DEFAULT_UNIMRCP_OFFER_NEW_CONNECTION;
+	globals.unimrcp_max_connection_count = NULL;
+	globals.unimrcp_offer_new_connection = NULL;
 	globals.unimrcp_log_level = DEFAULT_UNIMRCP_LOG_LEVEL;
 	globals.speech_channel_number = 0;
 }
@@ -493,11 +493,14 @@ mrcp_client_t *mod_unimrcp_client_create(apr_pool_t *mod_pool)
 		max_connection_count = atoi(globals.unimrcp_max_connection_count);
 
 	if (max_connection_count <= 0)
-		max_connection_count = 120;
+		max_connection_count = DEFAULT_UNIMRCP_MAX_CONNECTION_COUNT;
 
 	if (globals.unimrcp_offer_new_connection != NULL) {
 		if (strcasecmp(globals.unimrcp_offer_new_connection, "true") == 0 || atoi(globals.unimrcp_offer_new_connection) == 1)
 			offer_new_connection = TRUE;
+	}
+	else {
+		offer_new_connection = DEFAULT_UNIMRCP_OFFER_NEW_CONNECTION;
 	}
 
 	if ((connection_agent = mrcp_client_connection_agent_create("MRCPv2ConnectionAgent", max_connection_count, offer_new_connection, pool)) != NULL) {
