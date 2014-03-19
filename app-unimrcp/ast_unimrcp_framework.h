@@ -151,6 +151,6 @@ int profile_create(ast_mrcp_profile_t **profile, const char *name, const char *v
 
 mrcp_client_t *mod_unimrcp_client_create(apr_pool_t *mod_pool);
 
-int load_mrcp_config(struct ast_config *cfg);
+int load_mrcp_config(const char *filename, const char *who_asked);
 
 #endif /* AST_UNIMRCP_FRAMEWORK_H */

@@ -35,6 +35,7 @@
 #include "ast_compat_defs.h"
 #include "asterisk/file.h"
 #include "asterisk/pbx.h"
+#include "asterisk/config.h"
 
 /* UniMRCP includes. */
 #include "ast_unimrcp_framework.h"
@@ -708,18 +709,25 @@ mrcp_client_t *mod_unimrcp_client_create(apr_pool_t *mod_pool)
 
 /* --- ASTERISK SPECIFIC CONFIGURATION --- */
 
-int load_mrcp_config(struct ast_config *cfg)
+int load_mrcp_config(const char *filename, const char *who_asked)
 {
 	const char *cat = NULL;
 	struct ast_variable *var;
 	const char *value = NULL;
 
+#if AST_VERSION_AT_LEAST(1,6,0)
+	struct ast_flags config_flags = { 0 };
+	struct ast_config *cfg = ast_config_load2(filename, who_asked, config_flags);
+#else
+	struct ast_config *cfg = ast_config_load(filename);
+#endif
 	if (!cfg) {
+		ast_log(LOG_WARNING, "No such configuration file %s\n", filename);
 		return -1;
 	}
-#if AST_VERSION_AT_LEAST(1,6,2)
-	else if (cfg == CONFIG_STATUS_FILEINVALID) {
-		ast_log(LOG_ERROR, "MRCP config file is in an invalid format, aborting\n");
+#if AST_VERSION_AT_LEAST(1,6,0)
+	if (cfg == CONFIG_STATUS_FILEINVALID) {
+		ast_log(LOG_ERROR, "Config file %s is in an invalid format\n", filename);
 		return -1;
 	}
 #endif

@@ -72,7 +72,6 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: $")
 #define AST_MODULE "app_unimrcp"
 
 #include "asterisk/module.h"
-#include "asterisk/config.h"
 
 /* UniMRCP includes. */
 #include "ast_unimrcp_framework.h"
@@ -159,22 +158,7 @@ AST_COMPAT_STATIC int load_module(void)
 	}
 
 	/* Load the configuration file mrcp.conf. */
-#if AST_VERSION_AT_LEAST(1,6,0)
-	struct ast_flags config_flags = { 0 };
-	struct ast_config *cfg = ast_config_load(MRCP_CONFIG, config_flags);
-#else
-	struct ast_config *cfg = ast_config_load(MRCP_CONFIG);
-#endif
-	if (!cfg) {
-		ast_log(LOG_WARNING, "No such configuration file %s\n", MRCP_CONFIG);
-		globals_destroy();
-		apr_terminate();
-		apr_initialized = 0;
-		return AST_MODULE_LOAD_DECLINE;
-	}
-
-	if (load_mrcp_config(cfg) != 0) {
-		ast_log(LOG_DEBUG, "Unable to load configuration\n");
+	if (load_mrcp_config(MRCP_CONFIG, AST_MODULE) != 0) {
 		globals_destroy();
 		apr_terminate();
 		apr_initialized = 0;
