@@ -97,6 +97,8 @@ int unload_synthandrecog_app();
 /* Connects UniMRCP logging to Asterisk. */
 static apt_bool_t unimrcp_log(const char *file, int line, const char *id, apt_log_priority_e priority, const char *format, va_list arg_ptr)
 {
+	/* Asterisk log level mapped to UniMRCP log priority. */
+	int level;
 	/* Same size as MAX_LOG_ENTRY_SIZE in UniMRCP apt_log.c. */
 	char log_message[4096] = { 0 };
 
@@ -112,23 +114,24 @@ static apt_bool_t unimrcp_log(const char *file, int line, const char *id, apt_lo
 		case APT_PRIO_ALERT:
 		case APT_PRIO_CRITICAL:
 		case APT_PRIO_ERROR:
-			ast_log(LOG_ERROR, "%s\n", log_message);
+			level = __LOG_ERROR;
 			break;
 		case APT_PRIO_WARNING:
-			ast_log(LOG_WARNING, "%s\n", log_message);
+			level = __LOG_WARNING;
 			break;
 		case APT_PRIO_NOTICE:
-			ast_log(LOG_NOTICE, "%s\n", log_message);
+			level = __LOG_NOTICE;
 			break;
 		case APT_PRIO_INFO:
 		case APT_PRIO_DEBUG:
-			ast_log(LOG_DEBUG, "%s\n", log_message);
+			level = __LOG_DEBUG;
 			break;
 		default:
-			ast_log(LOG_DEBUG, "%s\n", log_message);
+			level = __LOG_DEBUG;
 			break;
 	}
 
+	ast_log(level, file, line, NULL, "%s\n", log_message);
 	return TRUE;
 }
 
