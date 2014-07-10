@@ -275,6 +275,23 @@ speech_channel_t *speech_channel_create(apr_pool_t *pool, const char *name, spee
 		}
 	}
 
+#if SPEECH_CHANNEL_DUMP
+	if(schan) {
+		const char *stream_in_filename = apr_psprintf(pool,"%s/%s-%s-in.raw", SPEECH_CHANNEL_DUMP_DIR, schan->name, schan->codec);
+		const char *stream_out_filename = apr_psprintf(pool,"%s/%s-%s-out.raw", SPEECH_CHANNEL_DUMP_DIR, schan->name, schan->codec);
+
+		schan->stream_in = fopen(stream_in_filename,"wb");
+		if(!schan->stream_in) {
+			ast_log(LOG_WARNING, "(%s) Unable to open input stream file for writing\n", schan->name);
+		}
+
+		schan->stream_out = fopen(stream_out_filename,"wb");
+		if(!schan->stream_out) {
+			ast_log(LOG_WARNING, "(%s) Unable to open output stream file for writing\n", schan->name);
+		}
+	}
+#endif
+
 	return schan;
 }
 
@@ -334,6 +351,17 @@ int speech_channel_destroy(speech_channel_t *schannel)
 
 	if (schannel->mutex)
 		apr_thread_mutex_lock(schannel->mutex);
+
+#if SPEECH_CHANNEL_DUMP
+	if(schannel->stream_out) {
+		fclose(schannel->stream_out);
+		schannel->stream_out = NULL;
+	}
+	if(schannel->stream_in) {
+		fclose(schannel->stream_in);
+		schannel->stream_in = NULL;
+	}
+#endif
 
 	/* Destroy the channel and session if not already done. */
 	if (schannel->state != SPEECH_CHANNEL_CLOSED) {
@@ -626,6 +654,9 @@ int speech_channel_read(speech_channel_t *schannel, void *data, apr_size_t *len,
 	int status = 0;
 
 	if (schannel != NULL) {
+#if SPEECH_CHANNEL_TRACE
+		apr_size_t req_len = *len;
+#endif
 		audio_queue_t *queue = schannel->audio_queue;
 
 		if (schannel->mutex != NULL)
@@ -638,6 +669,18 @@ int speech_channel_read(speech_channel_t *schannel, void *data, apr_size_t *len,
 
 		if (schannel->mutex != NULL)
 			apr_thread_mutex_unlock(schannel->mutex);
+
+#if SPEECH_CHANNEL_DUMP
+		if(status == 0 && schannel->stream_out) {
+			fwrite(data, 1, *len, schannel->stream_out);
+		}
+#endif
+
+#if SPEECH_CHANNEL_TRACE
+		ast_log(LOG_DEBUG, "(%s) channel_read() status=%d req=%"APR_SIZE_T_FMT" read=%"APR_SIZE_T_FMT"\n", 
+				schannel->name, status, req_len, *len);
+#endif
+
 	} else {
 		ast_log(LOG_ERROR, "Speech channel structure pointer is NULL\n");
 		return -1;
@@ -652,6 +695,15 @@ int speech_channel_write(speech_channel_t *schannel, void *data, apr_size_t *len
 	int status = 0;
 
 	if ((schannel != NULL) && (*len > 0)) {
+#if SPEECH_CHANNEL_TRACE
+		apr_size_t req_len = *len;
+#endif
+
+#if SPEECH_CHANNEL_DUMP
+		if(schannel->stream_in) {
+			fwrite(data, 1, *len, schannel->stream_in);
+		}
+#endif
 		if (schannel->mutex != NULL)
 			apr_thread_mutex_lock(schannel->mutex);
 
@@ -664,6 +716,12 @@ int speech_channel_write(speech_channel_t *schannel, void *data, apr_size_t *len
 
 		if (schannel->mutex != NULL)
 			apr_thread_mutex_unlock(schannel->mutex);
+
+#if SPEECH_CHANNEL_TRACE
+		ast_log(LOG_DEBUG, "(%s) channel_write() status=%d req=%"APR_SIZE_T_FMT" written=%"APR_SIZE_T_FMT"\n", 
+				schannel->name, status, req_len, *len);
+#endif
+
 	} else {
 		ast_log(LOG_ERROR, "Speech channel structure pointer is NULL\n");
 		return -1;

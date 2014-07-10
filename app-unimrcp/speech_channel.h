@@ -18,6 +18,24 @@
 #ifndef SPEECH_CHANNEL_H
 #define SPEECH_CHANNEL_H
 
+/*
+ * Set SPEECH_CHANNEL_DUMP to 1 to store input and output streams 
+ * in raw header-less files for further debugging.
+ */
+#define SPEECH_CHANNEL_DUMP   0
+
+/*
+ * Specifies the output directory to store streams in, used if 
+ * SPEECH_CHANNEL_DUMP is enabled.
+ */
+#define SPEECH_CHANNEL_DUMP_DIR   UNIMRCP_DIR_LOCATION"/data"
+
+/*
+ * Set SPEECH_CHANNEL_TARCE to 1 to trace a statement per 
+ * a channel read or write attempt.
+ */
+#define SPEECH_CHANNEL_TRACE   0
+
 #define SPEECH_CHANNEL_TIMEOUT_USEC				(30 * 1000000)
 
 /* Type of MRCP channel. */
@@ -90,6 +108,11 @@ struct speech_channel_t {
 	void *data;
 	/* Asterisk channel. Needed to stop playback on barge-in. */
 	struct ast_channel *chan;
+
+#if SPEECH_CHANNEL_DUMP
+	FILE *stream_in;
+	FILE *stream_out;
+#endif
 };
 typedef struct speech_channel_t speech_channel_t;
 
