@@ -631,10 +631,9 @@ int speech_channel_read(speech_channel_t *schannel, void *data, apr_size_t *len,
 		if (schannel->mutex != NULL)
 			apr_thread_mutex_lock(schannel->mutex);
 
-		if (schannel->state == SPEECH_CHANNEL_PROCESSING) {
-			if ((queue != NULL) && (data != NULL) && (len > 0))
-				audio_queue_read(queue, data, len, block);
-		} else
+		if (schannel->state == SPEECH_CHANNEL_PROCESSING)
+			status = audio_queue_read(queue, data, len, block);
+		else
 			status = 1;
 
 		if (schannel->mutex != NULL)
@@ -650,27 +649,18 @@ int speech_channel_read(speech_channel_t *schannel, void *data, apr_size_t *len,
 /* Write synthesized speech / speech to be recognized. */
 int speech_channel_write(speech_channel_t *schannel, void *data, apr_size_t *len)
 {
-	apr_size_t	mylen;
-	int			res = 0;
+	int status = 0;
 
-	if (len != NULL)
-		mylen = *len;
-	else
-		mylen = 0;
-
-	if ((schannel != NULL) && (mylen > 0)) {
+	if ((schannel != NULL) && (*len > 0)) {
 		if (schannel->mutex != NULL)
 			apr_thread_mutex_lock(schannel->mutex);
 
 		audio_queue_t *queue = schannel->audio_queue;
 
-		if (schannel->state == SPEECH_CHANNEL_PROCESSING) {
-			if ((queue != NULL) && (data != NULL) && (mylen > 0)) {
-				audio_queue_write(queue, data, &mylen);
-				*len = mylen;
-			}
-		} else
-			res = -1;
+		if (schannel->state == SPEECH_CHANNEL_PROCESSING)
+			status = audio_queue_write(queue, data, len);
+		else
+			status = -1;
 
 		if (schannel->mutex != NULL)
 			apr_thread_mutex_unlock(schannel->mutex);
@@ -679,7 +669,7 @@ int speech_channel_write(speech_channel_t *schannel, void *data, apr_size_t *len
 		return -1;
 	}
 
-	return res;
+	return status;
 }
 
 /* Trim any leading and trailing whitespaces and unquote the input string. */
