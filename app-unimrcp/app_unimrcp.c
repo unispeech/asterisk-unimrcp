@@ -120,9 +120,9 @@ static apt_bool_t unimrcp_log(const char *file, int line, const char *id, apt_lo
 			level = __LOG_WARNING;
 			break;
 		case APT_PRIO_NOTICE:
+		case APT_PRIO_INFO:
 			level = __LOG_NOTICE;
 			break;
-		case APT_PRIO_INFO:
 		case APT_PRIO_DEBUG:
 			level = __LOG_DEBUG;
 			break;
