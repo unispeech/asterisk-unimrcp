@@ -1,3 +1,53 @@
+Changes for Asterisk UniMRCP Modules 1.2.0
+
+1. Generic Speech Recognition API (res_speech_unimrcp.so)
+
+    * Take into consideration CONFIG_STATUS_FILEINVALID, which ast_config_load() may return since Asterisk 1.6 and above.
+
+2. Dialplan Applications (app_unimrcp.so)
+
+  2.1. MRCPSynth()
+
+    * If ast_write() fails, store such an occurrence in the logs but do not set the SYNTHSTATUS to ERROR.
+
+  2.2. MRCPRecog()
+
+    * Fixed the detection of file play complete event.
+
+  2.3. SynthAndRecog()
+
+    * Added missing </para> tag in XML documentation.
+  
+  2.4. Framework
+  
+    * Pass along loaded request-timeout to the RTSP client stack too.
+    * Added telephone-event to the list of supported codecs in the default configuration file mrcp.conf.
+    * Provided more comments in the default configuration file mrcp.conf.
+    * Encapsulated ast_config routine in the function load_mrcp_config().
+    * Took out local functions from header file and declare them static.
+    * Hand over file and line markers received from unimrcp logger to ast_log().
+    * Simplified speech_channel_read() and speech_channel_write() a bit. All the sanity checks are performed down the road, anyway (Issue-172).
+    * Added debugging capabilities to speech_channel.
+    * Mapped APT_PRIO_INFO (UniMRCP log level) to __LOG_NOTICE (Asterisk log level) to help rule out common configuration mistakes faster.
+
+3. Miscellaneous
+
+    * Added/fixed support for DESTDIR.
+    * Enable silent build rules (--enable-silent-rules)and use silent build by default.
+    * Set ac_macro_dir variable manually, since newer versions of autoconf don't do that.
+    * Take into consideration m4 macro files generated for libtool 2.
+    * Fixed help string displayed for the option --with-asterisk-version.
+    * Pass no-define to AM_INIT_AUTOMAKE in order not to define PACKAGE and VERSION.
+    * Do not use autoconf generated compiler DEFS by replacing confdefs.h after AC_INIT, AM_INIT_AUTOMAKE and AC_PROG_LIBTOLL getting called.
+    * Updated definition of the macro AX_COMPILER_VENDOR and moved it out from configure.ac to a separate m4 file.
+    * Disabled DEFAULT_INCLUDES provided by automake.
+    * Added generic apr_common.m4 in order to use helper m4 macros APR_ADDTO() and APR_CONFIG_NICE().
+    * Generate ./config.nice to reuse ./configure command-line.
+    * Turn off the build of static libraries for Asterisk modules.
+    * Moved the target install-data-local to module specific Makefiles to install the default config file only when the corresponding module is enabled.
+    * Enhanced ./configure report.
+
+
 Changes for Asterisk UniMRCP Modules 1.1.0
 
 1. Generic Speech Recognition API (res_speech_unimrcp.so)
