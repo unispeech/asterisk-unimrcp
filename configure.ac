@@ -118,10 +118,23 @@ AC_CONFIG_FILES([
 
 AC_OUTPUT
 
-dnl Report configuration.
 echo
-echo "Modules install path.............. ${prefix}"
-echo "Configuration install path........ ${asterisk_conf_dir}"
-echo "XML doc install path.............. ${asterisk_xmldoc_dir}"
-echo "Speech resource module............ ${enable_res_speech_unimrcp}"
-echo "Application module................ ${enable_app_unimrcp}"
+echo '****************************** REPORT ******************************'
+echo
+echo Asterisk version.............. : $asterisk_version
+echo UniMRCP version............... : $uni_version
+echo UniMRCP modules version....... : $PACKAGE_VERSION
+echo
+echo Compiler...................... : $CC
+echo Compiler flags................ : $CFLAGS
+echo Preprocessor definitions...... : $CPPFLAGS
+echo Linker flags.................. : $LDFLAGS
+echo
+echo Modules install path...........: $prefix
+echo Configuration install path.....: $asterisk_conf_dir
+echo XML doc install path...........: $asterisk_xmldoc_dir
+echo
+echo Speech resource module.........: $enable_res_speech_unimrcp
+echo Application module.............: $enable_app_unimrcp
+echo
+echo '********************************************************************'
