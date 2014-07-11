@@ -10,10 +10,12 @@ Asterisk is an open source communication platform which can be used as a PBX, an
 bridge.
 
 Project website:
+
 	http://www.asterisk.org
 
 Compatible versions:
-	Asterisk 1.4, 1.6, 1.8, 10, 11
+
+	Asterisk 1.6, 1.8, 10, 11, 12
 
 2. UniMRCP
 
@@ -21,9 +23,11 @@ UniMRCP is an open source project compliant with the IETF RFC6787 (MRCPv2) and R
 specifications.
 
 Project website:
+
 	http://www.unimrcp.org
 
 Compatible versions:
+
 	UniMRCP 1.0.0 and above
 
 
