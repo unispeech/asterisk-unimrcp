@@ -57,7 +57,7 @@
 					<option name="p"> <para>Profile to use in mrcp.conf.</para> </option>
 					<option name="t"> <para>Recognition timeout (msec).</para> </option>
 					<option name="b"> <para>Bargein value (0: no barge-in, 1: enable barge-in).</para> </option>
-					<option name="dt"> <para>Grammar delimiters.</para> </option>
+					<option name="gd"> <para>Grammar delimiters.</para> </option>
 					<option name="ct"> <para>Confidence threshold (0.0 - 1.0).</para> </option>
 					<option name="sl"> <para>Sensitivity level (0.0 - 1.0).</para> </option>
 					<option name="sva"> <para>Speed vs accuracy (0.0 - 1.0).</para> </option>
@@ -1707,7 +1707,7 @@ int unload_synthandrecog_app()
 		ast_log(LOG_ERROR, "Application %s doesn't exist\n", synthandrecog_name);
 		return -1;
 	}
-	
+
 	apr_hash_set(globals.apps, synthandrecog_name, APR_HASH_KEY_STRING, NULL);
 	synthandrecog = NULL;
 
