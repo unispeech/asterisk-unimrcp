@@ -87,6 +87,7 @@
 					<option name="uer"> <para>URI-encoded results 
 						(1: URI-encode NLMSL results, 0: do not encode).</para>
 					</option>
+					<option name="od"> <para>Output (prompt) delimiters.</para> </option>
 				</optionlist>
 			</parameter>
 		</syntax>
@@ -126,7 +127,8 @@ enum sar_option_flags {
 	SAR_SYNTH_PROFILE          = (2 << 0),
 	SAR_BARGEIN                = (3 << 0),
 	SAR_GRAMMAR_DELIMITERS     = (4 << 0),
-	SAR_URI_ENCODED_RESULTS    = (5 << 0)
+	SAR_URI_ENCODED_RESULTS    = (5 << 0),
+	SAR_OUTPUT_DELIMITERS      = (6 << 0)
 };
 
 /* The enumeration of option arguments. */
@@ -136,9 +138,10 @@ enum sar_option_args {
 	OPT_ARG_BARGEIN             = 2,
 	OPT_ARG_GRAMMAR_DELIMITERS  = 3,
 	OPT_ARG_URI_ENCODED_RESULTS = 4,
+	OPT_ARG_OUTPUT_DELIMITERS   = 5,
 
 	/* This MUST be the last value in this enum! */
-	OPT_ARG_ARRAY_SIZE          = 5
+	OPT_ARG_ARRAY_SIZE          = 6
 };
 
 /* The structure which holds the application options (including the MRCP params). */
@@ -152,6 +155,14 @@ struct sar_options_t {
 
 typedef struct sar_options_t sar_options_t;
 
+/* The prompt item structure. */
+struct sar_prompt_item_t {
+	const char *content;
+	const char *content_type;
+};
+
+typedef struct sar_prompt_item_t sar_prompt_item_t;
+
 /* The application session. */
 struct sar_session_t {
 	apr_pool_t         *pool;
@@ -159,6 +170,8 @@ struct sar_session_t {
 	speech_channel_t   *recog_channel;
 	ast_format_compat  *readformat;
 	ast_format_compat  *writeformat;
+	apr_array_header_t *prompts;
+	int                 cur_prompt;
 };
 
 typedef struct sar_session_t sar_session_t;
@@ -1215,8 +1228,10 @@ static int synthandrecog_option_apply(sar_options_t *options, const char *key, c
 	} else if (strcasecmp(key, "uer") == 0) {
 		options->flags |= SAR_URI_ENCODED_RESULTS;
 		options->params[OPT_ARG_URI_ENCODED_RESULTS] = value;
-	}
-	else {
+	} else if (strcasecmp(key, "od") == 0) {
+		options->flags |= SAR_OUTPUT_DELIMITERS;
+		options->params[OPT_ARG_OUTPUT_DELIMITERS] = value;
+	} else {
 		ast_log(LOG_WARNING, "Unknown option: %s\n", key);
 	}
 	return 0;
@@ -1245,6 +1260,42 @@ static int synthandrecog_options_parse(char *str, sar_options_t *options, apr_po
 			synthandrecog_option_apply(options, name, value);
 		}
 	}
+	return 0;
+}
+
+/* Return the number of prompts which still needs to be played. */
+static APR_INLINE int synthandrecog_prompts_available(sar_session_t *sar_session)
+{
+	if(sar_session->cur_prompt >= sar_session->prompts->nelts)
+		return 0;
+	return sar_session->prompts->nelts - sar_session->cur_prompt;
+}
+
+/* Advance the current prompt index and return the number of prompts remaining. */
+static APR_INLINE int synthandrecog_prompts_advance(sar_session_t *sar_session)
+{
+	if(sar_session->cur_prompt >= sar_session->prompts->nelts)
+		return -1;
+	sar_session->cur_prompt++;
+	return sar_session->prompts->nelts - sar_session->cur_prompt;
+}
+
+/* Play the current prompt. */
+static int synthandrecog_prompt_play(sar_session_t *sar_session, sar_options_t *sar_options)
+{
+	if(sar_session->cur_prompt >= sar_session->prompts->nelts) {
+		ast_log(LOG_ERROR, "(%s) Out of bounds prompt index\n", sar_session->synth_channel->name);
+		return -1;
+	}
+
+	sar_prompt_item_t *prompt_item = &APR_ARRAY_IDX(sar_session->prompts, sar_session->cur_prompt, sar_prompt_item_t);
+
+	/* Start synthesis. */
+	if (synth_channel_speak(sar_session->synth_channel, prompt_item->content, prompt_item->content_type, sar_options->synth_hfs) != 0) {
+		ast_log(LOG_ERROR, "(%s) Unable to send SPEAK request\n", sar_session->synth_channel->name);
+		return -1;
+	}
+
 	return 0;
 }
 
@@ -1334,6 +1385,8 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 	sar_session.synth_channel = NULL;
 	sar_session.readformat = NULL;
 	sar_session.writeformat = NULL;
+	sar_session.prompts = apr_array_make(sar_session.pool, 1, sizeof(sar_prompt_item_t));
+	sar_session.cur_prompt = 0;
 
 	sar_options.recog_hfs = NULL;
 	sar_options.synth_hfs = NULL;
@@ -1482,21 +1535,41 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 		grammar_str = apr_strtok(NULL, grammar_delimiters, &last);
 	}
 
-	const char *content = NULL;
-	const char *content_type = NULL;
-	if (determine_synth_content_type(sar_session.synth_channel, args.prompt, &content, &content_type) != 0) {
-		ast_log(LOG_WARNING, "(%s) Unable to determine synthesis content type\n", synth_name);
-		return synthandrecog_exit(chan, &sar_session, SPEECH_CHANNEL_STATUS_ERROR);
+	const char *output_delimiters = "^";
+	/* Get output delimiters. */
+	if ((sar_options.flags & SAR_OUTPUT_DELIMITERS) == SAR_OUTPUT_DELIMITERS) {
+		if (!ast_strlen_zero(sar_options.params[OPT_ARG_OUTPUT_DELIMITERS])) {
+			output_delimiters = sar_options.params[OPT_ARG_OUTPUT_DELIMITERS];
+			ast_log(LOG_DEBUG, "(%s) Output delimiters: %s\n", output_delimiters, synth_name);
+		}
 	}
 
-	/* Start synthesis. */
-	if (synth_channel_speak(sar_session.synth_channel, content, content_type, sar_options.synth_hfs) != 0) {
-		ast_log(LOG_ERROR, "(%s) Unable to send SPEAK request\n", synth_name);
-		return synthandrecog_exit(chan, &sar_session, SPEECH_CHANNEL_STATUS_ERROR);
+	/* Parse the prompt argument into a list of prompts. */
+	char *prompt_arg = apr_pstrdup(sar_session.pool, args.prompt);
+	char *prompt_str = apr_strtok(prompt_arg, output_delimiters, &last);
+	while (prompt_str) {
+		ast_log(LOG_DEBUG, "(%s) Add prompt: %s\n", synth_name, prompt_str);
+		sar_prompt_item_t *prompt_item = apr_array_push(sar_session.prompts);
+
+		prompt_item->content = NULL;
+		prompt_item->content_type = NULL;
+		if (determine_synth_content_type(sar_session.synth_channel, prompt_str, &prompt_item->content, &prompt_item->content_type) != 0) {
+			ast_log(LOG_WARNING, "(%s) Unable to determine synthesis content type\n", synth_name);
+			return synthandrecog_exit(chan, &sar_session, SPEECH_CHANNEL_STATUS_ERROR);
+		}
+
+		prompt_str = apr_strtok(NULL, output_delimiters, &last);
 	}
 
-	if (!bargein) {
-		/* if bargein is not allowed, wait for synthesis to complete */
+	int prompt_processing = (synthandrecog_prompts_available(&sar_session)) ? 1 : 0;
+
+	/* If bargein is not allowed, play all the prompts and wait for for them to complete. */
+	if (!bargein && prompt_processing) {
+		/* Play first prompt. */
+		if (synthandrecog_prompt_play(&sar_session, &sar_options) != 0) {
+			return synthandrecog_exit(chan, &sar_session, SPEECH_CHANNEL_STATUS_ERROR);
+		}
+		
 		do {
 			int ms = ast_waitfor(chan, 100);
 			if (ms < 0) {
@@ -1511,12 +1584,27 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 			}
 
 			ast_frfree(f);
+
+			if (sar_session.synth_channel->state != SPEECH_CHANNEL_PROCESSING) {
+				/* End of current prompt -> advance to the next one. */
+				if (synthandrecog_prompts_advance(&sar_session) > 0) {
+					/* Play current prompt. */
+					if (synthandrecog_prompt_play(&sar_session, &sar_options) != 0) {
+						return synthandrecog_exit(chan, &sar_session, SPEECH_CHANNEL_STATUS_ERROR);
+					}
+				}
+				else {
+					/* End of prompts. */
+					break;
+				}
+			}
 		}
-		while (sar_session.synth_channel->state == SPEECH_CHANNEL_PROCESSING);
+		while (synthandrecog_prompts_available(&sar_session));
+
+		prompt_processing = 0;
 	}
 
-	int synth_processing = (sar_session.synth_channel->state == SPEECH_CHANNEL_PROCESSING) ? 1 : 0;
-	int start_input_timers = !synth_processing;
+	int start_input_timers = !prompt_processing;
 	recognizer_data_t *r = sar_session.recog_channel->data;
 
 	ast_log(LOG_NOTICE, "(%s) Recognizing, Start-Input-Timers: %d\n", recog_name, start_input_timers);
@@ -1527,8 +1615,14 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 		return synthandrecog_exit(chan, &sar_session, SPEECH_CHANNEL_STATUS_ERROR);
 	}
 
-	int waitres;
+	if (prompt_processing) {
+		/* Play first prompt. */
+		if (synthandrecog_prompt_play(&sar_session, &sar_options) != 0) {
+			return synthandrecog_exit(chan, &sar_session, SPEECH_CHANNEL_STATUS_ERROR);
+		}
+	}
 
+	int waitres;
 	/* Continue with recognition. */
 	while ((waitres = ast_waitfor(chan, 100)) >= 0) {
 		int recog_processing = 1;
@@ -1550,16 +1644,26 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 		if (recog_processing == 0)
 			break;
 
-		if (synth_processing == 1) {
+		if (prompt_processing) {
 			if (sar_session.synth_channel->state != SPEECH_CHANNEL_PROCESSING) {
-				ast_log(LOG_DEBUG, "(%s) Start input timers\n", recog_name);
-				recog_channel_start_input_timers(sar_session.recog_channel);
-				synth_processing = 0;
+				/* End of current prompt -> advance to the next one. */
+				if (synthandrecog_prompts_advance(&sar_session) > 0) {
+					/* Play current prompt. */
+					if (synthandrecog_prompt_play(&sar_session, &sar_options) != 0) {
+						return synthandrecog_exit(chan, &sar_session, SPEECH_CHANNEL_STATUS_ERROR);
+					}
+				}
+				else {
+					/* End of prompts -> start input timers. */
+					ast_log(LOG_DEBUG, "(%s) Start input timers\n", recog_name);
+					recog_channel_start_input_timers(sar_session.recog_channel);
+					prompt_processing = 0;
+				}
 			}
-			else if (r && r->start_of_input) {
+			if (prompt_processing && r && r->start_of_input) {
 				ast_log(LOG_DEBUG, "(%s) Bargein occurred\n", recog_name);
 				synth_channel_bargein_occurred(sar_session.synth_channel);
-				synth_processing = 0;
+				prompt_processing = 0;
 			}
 		}
 
