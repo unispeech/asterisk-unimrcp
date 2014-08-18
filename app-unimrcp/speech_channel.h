@@ -214,6 +214,14 @@ int determine_synth_content_type(speech_channel_t *schannel, const char *text, c
  */
 int determine_grammar_type(speech_channel_t *schannel, const char *grammar_data, const char **grammar_content, grammar_type_t *grammar_type);
 
+/* 
+ * Determine prompt type by specified text.
+ * @param text the input text
+ * @param content the output content
+ * @param is_audio_file the flag to specify an audio file prompt
+ */
+int determine_prompt_type(const char *text, const char **content, int *is_audio_file);
+
 /* Playback the specified sound file. */
 struct ast_filestream* astchan_stream_file(struct ast_channel *chan, const char *filename, off_t *filelength_out);
 

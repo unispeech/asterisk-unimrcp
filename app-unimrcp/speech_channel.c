@@ -58,6 +58,7 @@
 #define FILE_ID									"file://"
 #define INLINE_ID								"inline:"
 
+#define AUDIO_FILE_ID							"audio:"
 
 /* --- MRCP SPEECH CHANNEL --- */
 
@@ -923,6 +924,22 @@ int determine_grammar_type(speech_channel_t *schannel, const char *grammar_data,
 	if(grammar_type)
 		*grammar_type = tmp_grammar;
 	
+	return 0;
+}
+
+/* Determine prompt type by specified text (either synthesis or native audio file play). */
+int determine_prompt_type(const char *text, const char **content, int *is_audio_file)
+{
+	if (!content || !is_audio_file)
+		return -1;
+
+	*content = text;
+	*is_audio_file = 0;
+
+	if (text_starts_with(text, AUDIO_FILE_ID)) {
+		*content = text + strlen(AUDIO_FILE_ID);
+		*is_audio_file = 1;
+	}
 	return 0;
 }
 
