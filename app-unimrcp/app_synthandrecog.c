@@ -1302,6 +1302,11 @@ static sar_prompt_item_t* synthandrecog_prompt_play(sar_session_t *sar_session, 
 		if (!sar_session->filestream) {
 			return NULL;
 		}
+		/* If synth channel has already been created, destroy it at this stage in order to release an associated TTS license. */
+		if (sar_session->synth_channel) {
+			speech_channel_destroy(sar_session->synth_channel);
+			sar_session->synth_channel = NULL;
+		}
 	}
 	else {
 		if (!sar_session->synth_channel) {
