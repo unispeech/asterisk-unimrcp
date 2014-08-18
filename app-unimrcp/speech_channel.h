@@ -200,7 +200,7 @@ const char *speech_channel_status_to_string(speech_channel_status_t status);
  * Determine synthesis content type by specified text.
  * @param schannel the speech channel to use
  * @param text the input text
- * @param content_type the output content
+ * @param content the output content
  * @param content_type the output content type
  */
 int determine_synth_content_type(speech_channel_t *schannel, const char *text, const char **content, const char **content_type);
@@ -209,7 +209,7 @@ int determine_synth_content_type(speech_channel_t *schannel, const char *text, c
  * Determine grammar type by specified grammar data.
  * @param schannel the speech channel to use
  * @param grammar_data the input grammar data
- * @param grammar_type the output grammar content
+ * @param grammar_content the output grammar content
  * @param grammar_type the output grammar type
  */
 int determine_grammar_type(speech_channel_t *schannel, const char *grammar_data, const char **grammar_content, grammar_type_t *grammar_type);
