@@ -158,20 +158,27 @@ typedef struct sar_options_t sar_options_t;
 /* The prompt item structure. */
 struct sar_prompt_item_t {
 	const char *content;
-	const char *content_type;
+	int         is_audio_file;
 };
 
 typedef struct sar_prompt_item_t sar_prompt_item_t;
 
 /* The application session. */
 struct sar_session_t {
-	apr_pool_t         *pool;
-	speech_channel_t   *synth_channel;
-	speech_channel_t   *recog_channel;
-	ast_format_compat  *readformat;
-	ast_format_compat  *writeformat;
-	apr_array_header_t *prompts;
-	int                 cur_prompt;
+	apr_pool_t            *pool;               /* memory pool */
+	struct ast_channel    *chan;               /* asterisk channel */
+	apr_uint32_t           schannel_number;    /* speech channel number */
+	speech_channel_t      *recog_channel;      /* recognition channel */
+	speech_channel_t      *synth_channel;      /* synthesis channel, if any */
+	ast_format_compat     *readformat;         /* old read format, to be restored */
+	ast_format_compat     *writeformat;        /* old write format, to be restored */
+	ast_format_compat     *nreadformat;        /* new read format used for recognition */
+	ast_format_compat     *nwriteformat;       /* new write format used for synthesis */
+	int                    samplerate;         /* supported sampling rate */
+	apr_array_header_t    *prompts;            /* list of prompt items */
+	int                    cur_prompt;         /* current prompt index */
+	struct ast_filestream *filestream;         /* filestream, if any */
+	off_t                  max_filelength;     /* max file length used with file playing, if any */
 };
 
 typedef struct sar_session_t sar_session_t;
@@ -1280,23 +1287,71 @@ static APR_INLINE int synthandrecog_prompts_advance(sar_session_t *sar_session)
 	return sar_session->prompts->nelts - sar_session->cur_prompt;
 }
 
-/* Play the current prompt. */
-static int synthandrecog_prompt_play(sar_session_t *sar_session, sar_options_t *sar_options)
+/* Start playing the current prompt. */
+static sar_prompt_item_t* synthandrecog_prompt_play(sar_session_t *sar_session, sar_options_t *sar_options)
 {
 	if(sar_session->cur_prompt >= sar_session->prompts->nelts) {
 		ast_log(LOG_ERROR, "(%s) Out of bounds prompt index\n", sar_session->synth_channel->name);
-		return -1;
+		return NULL;
 	}
 
 	sar_prompt_item_t *prompt_item = &APR_ARRAY_IDX(sar_session->prompts, sar_session->cur_prompt, sar_prompt_item_t);
 
-	/* Start synthesis. */
-	if (synth_channel_speak(sar_session->synth_channel, prompt_item->content, prompt_item->content_type, sar_options->synth_hfs) != 0) {
-		ast_log(LOG_ERROR, "(%s) Unable to send SPEAK request\n", sar_session->synth_channel->name);
-		return -1;
+	if(prompt_item->is_audio_file) {
+		sar_session->filestream = astchan_stream_file(sar_session->chan, prompt_item->content, &sar_session->max_filelength);
+		if (!sar_session->filestream) {
+			return NULL;
+		}
+	}
+	else {
+		if (!sar_session->synth_channel) {
+			const char *synth_name = apr_psprintf(sar_session->pool, "TTS-%lu", (unsigned long int)sar_session->schannel_number);
+
+			/* Create speech channel for synthesis. */
+			sar_session->synth_channel = speech_channel_create(sar_session->pool, synth_name, SPEECH_CHANNEL_SYNTHESIZER, synthandrecog,
+															   format_to_str(sar_session->nwriteformat), sar_session->samplerate, sar_session->chan);
+			if (!sar_session->synth_channel) {
+				return NULL;
+			}
+
+			ast_mrcp_profile_t *synth_profile = NULL;
+			const char *synth_profile_option = NULL;
+			if ((sar_options->flags & SAR_SYNTH_PROFILE) == SAR_SYNTH_PROFILE) {
+				if (!ast_strlen_zero(sar_options->params[OPT_ARG_SYNTH_PROFILE])) {
+					synth_profile_option = sar_options->params[OPT_ARG_SYNTH_PROFILE];
+				}
+			}
+
+			/* Get synthesis profile. */
+			synth_profile = get_synth_profile(synth_profile_option);
+			if (!synth_profile) {
+				ast_log(LOG_ERROR, "(%s) Can't find profile, %s\n", sar_session->synth_channel->name, synth_profile_option);
+				return NULL;
+			}
+
+			/* Open synthesis channel. */
+			if (speech_channel_open(sar_session->synth_channel, synth_profile) != 0) {
+				ast_log(LOG_ERROR, "(%s) Unable to open speech channel\n", sar_session->synth_channel->name);
+				return NULL;
+			}
+		}
+
+		const char *content = NULL;
+		const char *content_type = NULL;
+		/* Determine synthesis content type. */
+		if (determine_synth_content_type(sar_session->synth_channel, prompt_item->content, &content, &content_type) != 0) {
+			ast_log(LOG_WARNING, "(%s) Unable to determine synthesis content type\n", sar_session->synth_channel->name);
+			return NULL;
+		}
+
+		/* Start synthesis. */
+		if (synth_channel_speak(sar_session->synth_channel, content, content_type, sar_options->synth_hfs) != 0) {
+			ast_log(LOG_ERROR, "(%s) Unable to send SPEAK request\n", sar_session->synth_channel->name);
+			return NULL;
+		}
 	}
 
-	return 0;
+	return prompt_item;
 }
 
 /* Exit the application. */
@@ -1329,15 +1384,11 @@ static int synthandrecog_exit(struct ast_channel *chan, sar_session_t *sar_sessi
 /* The entry point of the application. */
 static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 {
-	int samplerate = 8000;
 	struct ast_frame *f = NULL;
 	apr_size_t len;
 
 	ast_mrcp_profile_t *recog_profile = NULL;
 	const char *recog_name;
-	ast_mrcp_profile_t *synth_profile = NULL;
-	const char *synth_name;
-	apr_uint32_t speech_channel_number = get_next_speech_channel_number();
 	speech_channel_status_t status = SPEECH_CHANNEL_STATUS_OK;
 
 	sar_session_t sar_session;
@@ -1380,13 +1431,20 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 		ast_log(LOG_ERROR, "Unable to create memory pool for speech channel\n");
 		return synthandrecog_exit(chan, NULL, SPEECH_CHANNEL_STATUS_ERROR);
 	}
-
+	
+	sar_session.chan = chan;
+	sar_session.schannel_number = get_next_speech_channel_number();
 	sar_session.recog_channel = NULL;
 	sar_session.synth_channel = NULL;
 	sar_session.readformat = NULL;
 	sar_session.writeformat = NULL;
+	sar_session.nreadformat = NULL;
+	sar_session.nwriteformat = NULL;
+	sar_session.samplerate = 8000;
 	sar_session.prompts = apr_array_make(sar_session.pool, 1, sizeof(sar_prompt_item_t));
 	sar_session.cur_prompt = 0;
+	sar_session.filestream = NULL;
+	sar_session.max_filelength = 0;
 
 	sar_options.recog_hfs = NULL;
 	sar_options.synth_hfs = NULL;
@@ -1408,14 +1466,21 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 	/* Ensure no streams are currently playing. */
 	ast_stopstream(chan);
 
+	/* Get new read format. */
 	ast_format_compat nreadformat;
 	ast_format_clear(&nreadformat);
 	get_recog_format(chan, &nreadformat);
 
-	recog_name = apr_psprintf(sar_session.pool, "ASR-%lu", (unsigned long int)speech_channel_number);
+	/* Get new write format. */
+	ast_format_compat nwriteformat;
+	ast_format_clear(&nwriteformat);
+	get_synth_format(chan, &nwriteformat);
+
+	recog_name = apr_psprintf(sar_session.pool, "ASR-%lu", (unsigned long int)sar_session.schannel_number);
 
 	/* Create speech channel for recognition. */
-	sar_session.recog_channel = speech_channel_create(sar_session.pool, recog_name, SPEECH_CHANNEL_RECOGNIZER, synthandrecog, format_to_str(&nreadformat), samplerate, chan);
+	sar_session.recog_channel = speech_channel_create(sar_session.pool, recog_name, SPEECH_CHANNEL_RECOGNIZER, synthandrecog, 
+													  format_to_str(&nreadformat), sar_session.samplerate, chan);
 	if (sar_session.recog_channel == NULL) {
 		return synthandrecog_exit(chan, &sar_session, SPEECH_CHANNEL_STATUS_ERROR);
 	}
@@ -1439,69 +1504,44 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 		return synthandrecog_exit(chan, &sar_session, SPEECH_CHANNEL_STATUS_ERROR);
 	}
 
-	ast_format_compat nwriteformat;
-	ast_format_clear(&nwriteformat);
-	get_synth_format(chan, &nwriteformat);
-
-	synth_name = apr_psprintf(sar_session.pool, "TTS-%lu", (unsigned long int)speech_channel_number);
-
-	/* Create speech channel for synthesis. */
-	sar_session.synth_channel = speech_channel_create(sar_session.pool, synth_name, SPEECH_CHANNEL_SYNTHESIZER, synthandrecog, format_to_str(&nwriteformat), samplerate, chan);
-	if (sar_session.synth_channel == NULL) {
-		return synthandrecog_exit(chan, &sar_session, SPEECH_CHANNEL_STATUS_ERROR);
-	}
-
-	const char *synth_profile_option = NULL;
-	if ((sar_options.flags & SAR_SYNTH_PROFILE) == SAR_SYNTH_PROFILE) {
-		if (!ast_strlen_zero(sar_options.params[OPT_ARG_SYNTH_PROFILE])) {
-			synth_profile_option = sar_options.params[OPT_ARG_SYNTH_PROFILE];
-		}
-	}
-
-	/* Get synthesis profile. */
-	synth_profile = get_synth_profile(synth_profile_option);
-	if (!synth_profile) {
-		ast_log(LOG_ERROR, "(%s) Can't find profile, %s\n", synth_name, synth_profile_option);
-		return synthandrecog_exit(chan, &sar_session, SPEECH_CHANNEL_STATUS_ERROR);
-	}
-
-	/* Open synthesis channel. */
-	if (speech_channel_open(sar_session.synth_channel, synth_profile) != 0) {
-		return synthandrecog_exit(chan, &sar_session, SPEECH_CHANNEL_STATUS_ERROR);
-	}
-
-	int bargein = 1;
 	/* Check if barge-in is allowed. */
+	int bargein = 1;
 	if ((sar_options.flags & SAR_BARGEIN) == SAR_BARGEIN) {
 		if (!ast_strlen_zero(sar_options.params[OPT_ARG_BARGEIN])) {
 			bargein = (atoi(sar_options.params[OPT_ARG_BARGEIN]) == 0) ? 0 : 1;
 		}
 	}
 
+	/* Get old read format. */
 	ast_format_compat oreadformat;
 	ast_format_clear(&oreadformat);
 	ast_channel_get_readformat(chan, &oreadformat);
 
-	if (ast_channel_set_readformat(chan, &nreadformat) < 0) {
-		ast_log(LOG_WARNING, "(%s) Unable to set read format to signed linear\n", synth_name);
-		return synthandrecog_exit(chan, &sar_session, SPEECH_CHANNEL_STATUS_ERROR);
-	}
-
-	sar_session.readformat = &oreadformat;
-
+	/* Get old write format. */
 	ast_format_compat owriteformat;
 	ast_format_clear(&owriteformat);
 	ast_channel_get_writeformat(chan, &owriteformat);
 
+	/* Set read format. */
+	if (ast_channel_set_readformat(chan, &nreadformat) < 0) {
+		ast_log(LOG_WARNING, "(%s) Unable to set read format to signed linear\n", recog_name);
+		return synthandrecog_exit(chan, &sar_session, SPEECH_CHANNEL_STATUS_ERROR);
+	}
+
+	sar_session.readformat = &oreadformat;
+	sar_session.nreadformat = &nreadformat;
+
+	/* Set write format. */
 	if (ast_channel_set_writeformat(chan, &nwriteformat) < 0) {
-		ast_log(LOG_WARNING, "(%s) Unable to set write format to signed linear\n", synth_name);
+		ast_log(LOG_WARNING, "(%s) Unable to set write format to signed linear\n", recog_name);
 		return synthandrecog_exit(chan, &sar_session, SPEECH_CHANNEL_STATUS_ERROR);
 	}
 
 	sar_session.writeformat = &owriteformat;
+	sar_session.nwriteformat = &nwriteformat;
 
-	const char *grammar_delimiters = ",";
 	/* Get grammar delimiters. */
+	const char *grammar_delimiters = ",";
 	if ((sar_options.flags & SAR_GRAMMAR_DELIMITERS) == SAR_GRAMMAR_DELIMITERS) {
 		if (!ast_strlen_zero(sar_options.params[OPT_ARG_GRAMMAR_DELIMITERS])) {
 			grammar_delimiters = sar_options.params[OPT_ARG_GRAMMAR_DELIMITERS];
@@ -1535,12 +1575,12 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 		grammar_str = apr_strtok(NULL, grammar_delimiters, &last);
 	}
 
-	const char *output_delimiters = "^";
 	/* Get output delimiters. */
+	const char *output_delimiters = "^";
 	if ((sar_options.flags & SAR_OUTPUT_DELIMITERS) == SAR_OUTPUT_DELIMITERS) {
 		if (!ast_strlen_zero(sar_options.params[OPT_ARG_OUTPUT_DELIMITERS])) {
 			output_delimiters = sar_options.params[OPT_ARG_OUTPUT_DELIMITERS];
-			ast_log(LOG_DEBUG, "(%s) Output delimiters: %s\n", output_delimiters, synth_name);
+			ast_log(LOG_DEBUG, "(%s) Output delimiters: %s\n", output_delimiters, recog_name);
 		}
 	}
 
@@ -1548,13 +1588,14 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 	char *prompt_arg = apr_pstrdup(sar_session.pool, args.prompt);
 	char *prompt_str = apr_strtok(prompt_arg, output_delimiters, &last);
 	while (prompt_str) {
-		ast_log(LOG_DEBUG, "(%s) Add prompt: %s\n", synth_name, prompt_str);
+		ast_log(LOG_DEBUG, "(%s) Add prompt: %s\n", recog_name, prompt_str);
 		sar_prompt_item_t *prompt_item = apr_array_push(sar_session.prompts);
 
 		prompt_item->content = NULL;
-		prompt_item->content_type = NULL;
-		if (determine_synth_content_type(sar_session.synth_channel, prompt_str, &prompt_item->content, &prompt_item->content_type) != 0) {
-			ast_log(LOG_WARNING, "(%s) Unable to determine synthesis content type\n", synth_name);
+		prompt_item->is_audio_file = 0;
+
+		if (determine_prompt_type(prompt_str, &prompt_item->content, &prompt_item->is_audio_file) !=0 ) {
+			ast_log(LOG_WARNING, "(%s) Unable to determine prompt type\n", recog_name);
 			return synthandrecog_exit(chan, &sar_session, SPEECH_CHANNEL_STATUS_ERROR);
 		}
 
@@ -1562,34 +1603,53 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 	}
 
 	int prompt_processing = (synthandrecog_prompts_available(&sar_session)) ? 1 : 0;
+	sar_prompt_item_t *prompt_item = NULL;
+	int end_of_prompt;
 
 	/* If bargein is not allowed, play all the prompts and wait for for them to complete. */
 	if (!bargein && prompt_processing) {
-		/* Play first prompt. */
-		if (synthandrecog_prompt_play(&sar_session, &sar_options) != 0) {
+		/* Start playing first prompt. */
+		prompt_item = synthandrecog_prompt_play(&sar_session, &sar_options);
+		if (!prompt_item) {
 			return synthandrecog_exit(chan, &sar_session, SPEECH_CHANNEL_STATUS_ERROR);
 		}
-		
+
+		int ms;
 		do {
-			int ms = ast_waitfor(chan, 100);
-			if (ms < 0) {
-				ast_log(LOG_DEBUG, "(%s) Hangup detected\n", recog_name);
-				return synthandrecog_exit(chan, &sar_session, SPEECH_CHANNEL_STATUS_INTERRUPTED);
+			end_of_prompt = 0;
+			if(prompt_item->is_audio_file) {
+				if (ast_waitstream(chan, "") != 0) {
+					ast_log(LOG_WARNING, "(%s) ast_waitstream failed on %s\n", recog_name, ast_channel_name(chan));
+					return synthandrecog_exit(chan, &sar_session, SPEECH_CHANNEL_STATUS_ERROR);
+				}
+				sar_session.filestream = NULL;
+				end_of_prompt = 1;
 			}
+			else {
+				ms = ast_waitfor(chan, 100);
+				if (ms < 0) {
+					ast_log(LOG_DEBUG, "(%s) Hangup detected\n", recog_name);
+					return synthandrecog_exit(chan, &sar_session, SPEECH_CHANNEL_STATUS_INTERRUPTED);
+				}
 
-			f = ast_read(chan);
-			if (!f) {
-				ast_log(LOG_DEBUG, "(%s) Null frame. Hangup detected\n", recog_name);
-				return synthandrecog_exit(chan, &sar_session, SPEECH_CHANNEL_STATUS_INTERRUPTED);
+				f = ast_read(chan);
+				if (!f) {
+					ast_log(LOG_DEBUG, "(%s) Null frame. Hangup detected\n", recog_name);
+					return synthandrecog_exit(chan, &sar_session, SPEECH_CHANNEL_STATUS_INTERRUPTED);
+				}
+
+				ast_frfree(f);
+
+				if (sar_session.synth_channel->state != SPEECH_CHANNEL_PROCESSING) {
+					end_of_prompt = 1;
+				}
 			}
-
-			ast_frfree(f);
-
-			if (sar_session.synth_channel->state != SPEECH_CHANNEL_PROCESSING) {
+			if (end_of_prompt) {
 				/* End of current prompt -> advance to the next one. */
 				if (synthandrecog_prompts_advance(&sar_session) > 0) {
-					/* Play current prompt. */
-					if (synthandrecog_prompt_play(&sar_session, &sar_options) != 0) {
+					/* Start playing current prompt. */
+					prompt_item = synthandrecog_prompt_play(&sar_session, &sar_options);
+					if (!prompt_item) {
 						return synthandrecog_exit(chan, &sar_session, SPEECH_CHANNEL_STATUS_ERROR);
 					}
 				}
@@ -1616,12 +1676,15 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 	}
 
 	if (prompt_processing) {
-		/* Play first prompt. */
-		if (synthandrecog_prompt_play(&sar_session, &sar_options) != 0) {
+		/* Start playing first prompt. */
+		prompt_item = synthandrecog_prompt_play(&sar_session, &sar_options);
+		if (!prompt_item) {
 			return synthandrecog_exit(chan, &sar_session, SPEECH_CHANNEL_STATUS_ERROR);
 		}
 	}
 
+	off_t read_filestep = 0;
+	off_t read_filelength;
 	int waitres;
 	/* Continue with recognition. */
 	while ((waitres = ast_waitfor(chan, 100)) >= 0) {
@@ -1645,11 +1708,32 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 			break;
 
 		if (prompt_processing) {
-			if (sar_session.synth_channel->state != SPEECH_CHANNEL_PROCESSING) {
+			end_of_prompt = 0;
+			if (prompt_item->is_audio_file) {
+				if (sar_session.filestream) {
+					read_filelength = ast_tellstream(sar_session.filestream);
+					if(!read_filestep)
+						read_filestep = read_filelength;
+					if (read_filelength + read_filestep > sar_session.max_filelength) {
+						ast_log(LOG_DEBUG, "(%s) File is over, read length:%"APR_OFF_T_FMT"\n", recog_name, read_filelength);
+						end_of_prompt = 1;
+						sar_session.filestream = NULL;
+						read_filestep = 0;
+					}
+				}
+			}
+			else {
+				if (sar_session.synth_channel->state != SPEECH_CHANNEL_PROCESSING) {
+					end_of_prompt = 1;
+				}
+			}
+
+			if (end_of_prompt) {
 				/* End of current prompt -> advance to the next one. */
 				if (synthandrecog_prompts_advance(&sar_session) > 0) {
-					/* Play current prompt. */
-					if (synthandrecog_prompt_play(&sar_session, &sar_options) != 0) {
+					/* Start playing current prompt. */
+					prompt_item = synthandrecog_prompt_play(&sar_session, &sar_options);
+					if (!prompt_item) {
 						return synthandrecog_exit(chan, &sar_session, SPEECH_CHANNEL_STATUS_ERROR);
 					}
 				}
@@ -1660,9 +1744,16 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 					prompt_processing = 0;
 				}
 			}
+
 			if (prompt_processing && r && r->start_of_input) {
 				ast_log(LOG_DEBUG, "(%s) Bargein occurred\n", recog_name);
-				synth_channel_bargein_occurred(sar_session.synth_channel);
+				if (prompt_item->is_audio_file) {
+					ast_stopstream(chan);
+					sar_session.filestream = NULL;
+				}
+				else {
+					synth_channel_bargein_occurred(sar_session.synth_channel);
+				}
 				prompt_processing = 0;
 			}
 		}
@@ -1708,7 +1799,7 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 
 	if (status == SPEECH_CHANNEL_STATUS_OK) {
 		int uri_encoded_results = 0;
-		/* Check if the results should be URI-encoded */
+		/* Check if the results should be URI-encoded. */
 		if ((sar_options.flags & SAR_URI_ENCODED_RESULTS) == SAR_URI_ENCODED_RESULTS) {
 			if (!ast_strlen_zero(sar_options.params[OPT_ARG_URI_ENCODED_RESULTS])) {
 				uri_encoded_results = (atoi(sar_options.params[OPT_ARG_URI_ENCODED_RESULTS]) == 0) ? 0 : 1;
