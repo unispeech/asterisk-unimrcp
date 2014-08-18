@@ -1029,45 +1029,6 @@ static int mrcprecog_options_parse(char *str, mrcprecog_options_t *options, apr_
 	return 0;
 }
 
-/* Playback the specified sound file. */
-static struct ast_filestream* mrcprecog_streamfile(struct ast_channel *chan, const char *filename, off_t *filelength_out)
-{
-	struct ast_filestream* fs = ast_openstream(chan, filename, ast_channel_language(chan));
-	if (!fs) {
-		ast_log(LOG_WARNING, "ast_openstream failed on %s for %s\n", ast_channel_name(chan), filename);
-		return NULL;
-	}
-
-	/* Get file length. */
-	if (ast_seekstream(fs, -1, SEEK_END) == 0) {
-		off_t filelength = ast_tellstream(fs);
-		ast_log(LOG_NOTICE, "Stream file on %s length:%"APR_OFF_T_FMT"\n", ast_channel_name(chan), filelength);
-		if (filelength_out)
-			*filelength_out = filelength;
-		
-		if (ast_seekstream(fs, 0, SEEK_SET) != 0) {
-			ast_log(LOG_WARNING, "ast_seekstream failed on %s for %s\n", ast_channel_name(chan), filename);
-		}
-	}
-	else {
-		ast_log(LOG_WARNING, "ast_seekstream failed on %s for %s\n", ast_channel_name(chan), filename);
-	}
-
-	if (ast_applystream(chan, fs) != 0) {
-		ast_log(LOG_WARNING, "ast_applystream failed on %s for %s\n", ast_channel_name(chan), filename);
-		ast_closestream(fs);
-		return NULL;
-	}
-
-	if (ast_playstream(fs) != 0) {
-		ast_log(LOG_WARNING, "ast_playstream failed on %s for %s\n", ast_channel_name(chan), filename);
-		ast_closestream(fs);
-		return NULL;
-	}
-
-	return fs;
-}
-
 /* Exit the application. */
 static int mrcprecog_exit(struct ast_channel *chan, mrcprecog_session_t *mrcprecog_session, speech_channel_status_t status)
 {
@@ -1263,7 +1224,7 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 
 	if (filename) {
 		/* Play file. */
-		filestream = mrcprecog_streamfile(chan, filename, &max_filelength);
+		filestream = astchan_stream_file(chan, filename, &max_filelength);
 		if (filestream) {
 			if (bargein == 0) {
 				/* Barge-in is not allowed, wait for stream to end. */

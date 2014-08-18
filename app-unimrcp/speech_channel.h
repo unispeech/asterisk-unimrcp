@@ -214,6 +214,9 @@ int determine_synth_content_type(speech_channel_t *schannel, const char *text, c
  */
 int determine_grammar_type(speech_channel_t *schannel, const char *grammar_data, const char **grammar_content, grammar_type_t *grammar_type);
 
+/* Playback the specified sound file. */
+struct ast_filestream* astchan_stream_file(struct ast_channel *chan, const char *filename, off_t *filelength_out);
+
 /* Create a grammar object to reference in recognition requests. */
 int grammar_create(grammar_t **grammar, const char *name, grammar_type_t type, const char *data, apr_pool_t *pool);
 

@@ -34,6 +34,7 @@
 
 /* Asterisk includes. */
 #include "ast_compat_defs.h"
+#include "asterisk/file.h"
 
 /* UniMRCP includes. */
 #include "ast_unimrcp_framework.h"
@@ -728,6 +729,45 @@ int speech_channel_write(speech_channel_t *schannel, void *data, apr_size_t *len
 	}
 
 	return status;
+}
+
+/* Playback the specified sound file. */
+struct ast_filestream* astchan_stream_file(struct ast_channel *chan, const char *filename, off_t *filelength_out)
+{
+	struct ast_filestream* fs = ast_openstream(chan, filename, ast_channel_language(chan));
+	if (!fs) {
+		ast_log(LOG_WARNING, "ast_openstream failed on %s for %s\n", ast_channel_name(chan), filename);
+		return NULL;
+	}
+
+	/* Get file length. */
+	if (ast_seekstream(fs, -1, SEEK_END) == 0) {
+		off_t filelength = ast_tellstream(fs);
+		ast_log(LOG_NOTICE, "Stream file %s on %s length:%"APR_OFF_T_FMT"\n", filename, ast_channel_name(chan), filelength);
+		if (filelength_out)
+			*filelength_out = filelength;
+		
+		if (ast_seekstream(fs, 0, SEEK_SET) != 0) {
+			ast_log(LOG_WARNING, "ast_seekstream failed on %s for %s\n", ast_channel_name(chan), filename);
+		}
+	}
+	else {
+		ast_log(LOG_WARNING, "ast_seekstream failed on %s for %s\n", ast_channel_name(chan), filename);
+	}
+
+	if (ast_applystream(chan, fs) != 0) {
+		ast_log(LOG_WARNING, "ast_applystream failed on %s for %s\n", ast_channel_name(chan), filename);
+		ast_closestream(fs);
+		return NULL;
+	}
+
+	if (ast_playstream(fs) != 0) {
+		ast_log(LOG_WARNING, "ast_playstream failed on %s for %s\n", ast_channel_name(chan), filename);
+		ast_closestream(fs);
+		return NULL;
+	}
+
+	return fs;
 }
 
 /* Trim any leading and trailing whitespaces and unquote the input string. */
