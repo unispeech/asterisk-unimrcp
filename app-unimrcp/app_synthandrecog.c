@@ -1588,6 +1588,7 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 	char *prompt_arg = apr_pstrdup(sar_session.pool, args.prompt);
 	char *prompt_str = apr_strtok(prompt_arg, output_delimiters, &last);
 	while (prompt_str) {
+		prompt_str = normalize_input_string(prompt_str);
 		ast_log(LOG_DEBUG, "(%s) Add prompt: %s\n", recog_name, prompt_str);
 		sar_prompt_item_t *prompt_item = apr_array_push(sar_session.prompts);
 
