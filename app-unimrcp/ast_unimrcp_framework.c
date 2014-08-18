@@ -441,8 +441,8 @@ mrcp_client_t *mod_unimrcp_client_create(apr_pool_t *mod_pool)
 	mpf_codec_manager_t *codec_manager = NULL;
 	apr_size_t max_connection_count = 0;
 	apt_bool_t offer_new_connection = FALSE;
-	mrcp_connection_agent_t *connection_agent = NULL;
-	mpf_engine_t *media_engine = NULL;
+	mrcp_connection_agent_t *shared_connection_agent = NULL;
+	mpf_engine_t *shared_media_engine = NULL;
 
 	if (!globals.profiles) {
 		ast_log(LOG_ERROR, "Profiles hash is NULL\n");
@@ -503,40 +503,40 @@ mrcp_client_t *mod_unimrcp_client_create(apr_pool_t *mod_pool)
 		offer_new_connection = DEFAULT_UNIMRCP_OFFER_NEW_CONNECTION;
 	}
 
-	if ((connection_agent = mrcp_client_connection_agent_create("MRCPv2ConnectionAgent", max_connection_count, offer_new_connection, pool)) != NULL) {
-		if (connection_agent != NULL) {
+	if ((shared_connection_agent = mrcp_client_connection_agent_create("MRCPv2ConnectionAgent", max_connection_count, offer_new_connection, pool)) != NULL) {
+		if (shared_connection_agent != NULL) {
  			if (globals.unimrcp_rx_buffer_size != NULL) {
 				apr_size_t rx_buffer_size = (apr_size_t)atol(globals.unimrcp_rx_buffer_size);
 				if (rx_buffer_size > 0) {
-	 				mrcp_client_connection_rx_size_set(connection_agent, rx_buffer_size);
+	 				mrcp_client_connection_rx_size_set(shared_connection_agent, rx_buffer_size);
 				}
  			}
  			if (globals.unimrcp_tx_buffer_size != NULL) {
 				apr_size_t tx_buffer_size = (apr_size_t)atol(globals.unimrcp_tx_buffer_size);
 				if (tx_buffer_size > 0) {
-	 				mrcp_client_connection_tx_size_set(connection_agent, tx_buffer_size);
+	 				mrcp_client_connection_tx_size_set(shared_connection_agent, tx_buffer_size);
 				}
  			}
 			if (globals.unimrcp_request_timeout != NULL) {
 				apr_size_t request_timeout = (apr_size_t)atol(globals.unimrcp_request_timeout);
 				if (request_timeout > 0) {
-	 				mrcp_client_connection_timeout_set(connection_agent, request_timeout);
+	 				mrcp_client_connection_timeout_set(shared_connection_agent, request_timeout);
 				}
 			}
  		}
 
-		if (!mrcp_client_connection_agent_register(client, connection_agent))
+		if (!mrcp_client_connection_agent_register(client, shared_connection_agent))
 			ast_log(LOG_WARNING, "Unable to register MRCP client connection agent\n");
 	}
 
 	/* Set up the media engine that will be shared with all profiles. */
-	if ((media_engine = mpf_engine_create("MediaEngine", pool)) != NULL) {
+	if ((shared_media_engine = mpf_engine_create("MediaEngine", pool)) != NULL) {
 		unsigned long realtime_rate = 1;
 
-		if (!mpf_engine_scheduler_rate_set(media_engine, realtime_rate))
+		if (!mpf_engine_scheduler_rate_set(shared_media_engine, realtime_rate))
 			ast_log(LOG_WARNING, "Unable to set scheduler rate for MRCP client media engine\n");
 
-		if (!mrcp_client_media_engine_register(client, media_engine))
+		if (!mrcp_client_media_engine_register(client, shared_media_engine))
 			ast_log(LOG_WARNING, "Unable to register MRCP client media engine\n");
 	}
 
@@ -565,6 +565,8 @@ mrcp_client_t *mod_unimrcp_client_create(apr_pool_t *mod_pool)
 				mpf_rtp_settings_t *rtp_settings = mpf_rtp_settings_alloc(pool);
 				mrcp_sig_settings_t *sig_settings = mrcp_signaling_settings_alloc(pool);
 				ast_mrcp_profile_t *mod_profile = NULL;
+				mrcp_connection_agent_t *connection_agent = NULL;
+				mpf_engine_t *media_engine = shared_media_engine;
 
 				/* Get profile attributes. */
 				const char *name = apr_pstrdup(mod_pool, k);
@@ -681,6 +683,7 @@ mrcp_client_t *mod_unimrcp_client_create(apr_pool_t *mod_pool)
 					}
 
 					agent = mrcp_sofiasip_client_agent_create(name, config, pool);
+					connection_agent = shared_connection_agent;
 				} else {
 					ast_log(LOG_ERROR, "Version must be either \"1\" or \"2\"\n");
 					return NULL;
