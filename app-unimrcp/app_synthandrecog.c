@@ -415,7 +415,7 @@ static apt_bool_t synth_stream_write(mpf_audio_stream_t *stream, const mpf_frame
 		schannel = (speech_channel_t *)stream->obj;
 
 	if ((schannel != NULL) && (stream != NULL) && (frame != NULL)) {
-		if (frame->codec_frame.size > 0) {
+		if (frame->codec_frame.size > 0 && (frame->type & MEDIA_FRAME_TYPE_AUDIO) == MEDIA_FRAME_TYPE_AUDIO) {
 			struct ast_frame fr;
 			ast_frame_fill(schannel->chan, &fr, frame->codec_frame.buffer, frame->codec_frame.size);
 
