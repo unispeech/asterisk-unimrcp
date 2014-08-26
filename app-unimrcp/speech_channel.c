@@ -250,7 +250,8 @@ speech_channel_t *speech_channel_create(apr_pool_t *pool, const char *name, spee
 			ast_log(LOG_ERROR, "(%s) Unable to create audio queue for channel\n",schan->name);
 			status = -1;
 		} else {
-			ast_log(LOG_DEBUG, "Created speech channel: Name=%s, Type=%s, Codec=%s, Rate=%u\n", schan->name, speech_channel_type_to_string(schan->type), schan->codec, schan->rate);
+			ast_log(LOG_DEBUG, "Created speech channel: Name=%s, Type=%s, Codec=%s, Rate=%u on %s\n", schan->name, speech_channel_type_to_string(schan->type), schan->codec, schan->rate,
+				ast_channel_name(chan));
 		}
 	}
 
