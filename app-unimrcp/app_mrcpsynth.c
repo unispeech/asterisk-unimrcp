@@ -153,80 +153,77 @@ typedef struct mrcpsynth_session_t mrcpsynth_session_t;
 
 /* --- MRCP SPEECH CHANNEL INTERFACE TO UNIMRCP --- */
 
+/* Get speech channel associated with provided MRCP session. */
+static APR_INLINE speech_channel_t * get_speech_channel(mrcp_session_t *session)
+{
+	if (session)
+		return (speech_channel_t *)mrcp_application_session_object_get(session);
+
+	return NULL;
+}
+
 /* Handle the UniMRCP responses sent to session terminate requests. */
 static apt_bool_t speech_on_session_terminate(mrcp_application_t *application, mrcp_session_t *session, mrcp_sig_status_code_e status)
 {
-	speech_channel_t *schannel;
-
-	if (session != NULL)
-		schannel = (speech_channel_t *)mrcp_application_session_object_get(session);
-	else
-		schannel = NULL;
+	speech_channel_t *schannel = get_speech_channel(session);
+	if (!schannel) {
+		ast_log(LOG_ERROR, "speech_on_session_terminate: unknown channel error!\n");
+		return FALSE;
+	}
 
 	ast_log(LOG_DEBUG, "(%s) speech_on_session_terminate\n", schannel->name);
 
-	if (schannel != NULL) {
-		ast_log(LOG_DEBUG, "(%s) Destroying MRCP session\n", schannel->name);
+	ast_log(LOG_DEBUG, "(%s) Destroying MRCP session\n", schannel->name);
+	if (!mrcp_application_session_destroy(session))
+		ast_log(LOG_WARNING, "(%s) Unable to destroy application session\n", schannel->name);
 
-		if (!mrcp_application_session_destroy(session))
-			ast_log(LOG_WARNING, "(%s) Unable to destroy application session\n", schannel->name);
-
-		speech_channel_set_state(schannel, SPEECH_CHANNEL_CLOSED);
-	} else
-		ast_log(LOG_ERROR, "(unknown) channel error!\n");
-
+	speech_channel_set_state(schannel, SPEECH_CHANNEL_CLOSED);
 	return TRUE;
 }
 
 /* Handle the UniMRCP responses sent to channel add requests. */
 static apt_bool_t speech_on_channel_add(mrcp_application_t *application, mrcp_session_t *session, mrcp_channel_t *channel, mrcp_sig_status_code_e status)
 {
-	speech_channel_t *schannel;
-
-	if (channel != NULL)
-		schannel = (speech_channel_t *)mrcp_application_channel_object_get(channel);
-	else
-		schannel = NULL;
+	speech_channel_t *schannel = get_speech_channel(session);
+	if (!schannel || !channel) {
+		ast_log(LOG_ERROR, "speech_on_channel_add: unknown channel error!\n");
+		return FALSE;
+	}
 
 	ast_log(LOG_DEBUG, "(%s) speech_on_channel_add\n", schannel->name);
 
-	if ((schannel != NULL) && (application != NULL) && (session != NULL) && (channel != NULL)) {
-		if ((session != NULL) && (status == MRCP_SIG_STATUS_CODE_SUCCESS)) {
-			const mpf_codec_descriptor_t *descriptor = descriptor = mrcp_application_sink_descriptor_get(channel);
-			if (!descriptor) {
-				ast_log(LOG_ERROR, "(%s) Unable to determine codec descriptor\n", schannel->name);
-				speech_channel_set_state(schannel, SPEECH_CHANNEL_ERROR);
-				ast_log(LOG_DEBUG, "(%s) Terminating MRCP session\n", schannel->name);
-				if (!mrcp_application_session_terminate(session))
-					ast_log(LOG_WARNING, "(%s) Unable to terminate application session\n", schannel->name);
-				return FALSE;
-			}
-
-			schannel->rate = descriptor->sampling_rate;
-			const char *codec_name = NULL;
-			if (descriptor->name.length > 0)
-				codec_name = descriptor->name.buf;
-			else
-				codec_name = "unknown";
-
-			ast_log(LOG_NOTICE, "(%s) Channel ready, codec=%s, sample rate=%d\n",
-				schannel->name,
-				codec_name,
-				schannel->rate);
-			speech_channel_set_state(schannel, SPEECH_CHANNEL_READY);
-		} else {
-			ast_log(LOG_ERROR, "(%s) Channel error!\n", schannel->name);
-
-			if (session != NULL) {
-				ast_log(LOG_DEBUG, "(%s) Terminating MRCP session\n", schannel->name);
-				speech_channel_set_state(schannel, SPEECH_CHANNEL_ERROR);
-
-				if (!mrcp_application_session_terminate(session))
-					ast_log(LOG_WARNING, "(%s) Unable to terminate application session\n", schannel->name);
-			}
+	if (status == MRCP_SIG_STATUS_CODE_SUCCESS) {
+		const mpf_codec_descriptor_t *descriptor = descriptor = mrcp_application_sink_descriptor_get(channel);
+		if (!descriptor) {
+			ast_log(LOG_ERROR, "(%s) Unable to determine codec descriptor\n", schannel->name);
+			speech_channel_set_state(schannel, SPEECH_CHANNEL_ERROR);
+			
+			ast_log(LOG_DEBUG, "(%s) Terminating MRCP session\n", schannel->name);
+			if (!mrcp_application_session_terminate(session))
+				ast_log(LOG_WARNING, "(%s) Unable to terminate application session\n", schannel->name);
+			return FALSE;
 		}
-	} else
-		ast_log(LOG_ERROR, "(unknown) channel error!\n");
+
+		schannel->rate = descriptor->sampling_rate;
+		const char *codec_name = NULL;
+		if (descriptor->name.length > 0)
+			codec_name = descriptor->name.buf;
+		else
+			codec_name = "unknown";
+
+		ast_log(LOG_NOTICE, "(%s) Channel ready, codec=%s, sample rate=%d\n",
+			schannel->name,
+			codec_name,
+			schannel->rate);
+		speech_channel_set_state(schannel, SPEECH_CHANNEL_READY);
+	} else {
+		ast_log(LOG_ERROR, "(%s) Channel error!\n", schannel->name);
+		speech_channel_set_state(schannel, SPEECH_CHANNEL_ERROR);
+
+		ast_log(LOG_DEBUG, "(%s) Terminating MRCP session\n", schannel->name);
+		if (!mrcp_application_session_terminate(session))
+			ast_log(LOG_WARNING, "(%s) Unable to terminate application session\n", schannel->name);
+	}
 
 	return TRUE;
 }
@@ -234,27 +231,20 @@ static apt_bool_t speech_on_channel_add(mrcp_application_t *application, mrcp_se
 /* Handle the UniMRCP responses sent to channel remove requests. */
 static apt_bool_t speech_on_channel_remove(mrcp_application_t *application, mrcp_session_t *session, mrcp_channel_t *channel, mrcp_sig_status_code_e status)
 {
-	speech_channel_t *schannel;
-
-	if (channel != NULL)
-		schannel = (speech_channel_t *)mrcp_application_channel_object_get(channel);
-	else
-		schannel = NULL;
+	speech_channel_t *schannel = get_speech_channel(session);
+	if (!schannel) {
+		ast_log(LOG_ERROR, "speech_on_channel_remove: unknown channel error!\n");
+		return FALSE;
+	}
 
 	ast_log(LOG_DEBUG, "(%s) speech_on_channel_remove\n", schannel->name);
 
-	if (schannel != NULL) {
-		ast_log(LOG_NOTICE, "(%s) Channel removed\n", schannel->name);
-		schannel->unimrcp_channel = NULL;
+	schannel->unimrcp_channel = NULL;
 
-		if (session != NULL) {
-			ast_log(LOG_DEBUG, "(%s) Terminating MRCP session\n", schannel->name);
+	ast_log(LOG_DEBUG, "(%s) Terminating MRCP session\n", schannel->name);
 
-			if (!mrcp_application_session_terminate(session))
-				ast_log(LOG_WARNING, "(%s) Unable to terminate application session\n", schannel->name);
-		}
-	} else
-		ast_log(LOG_ERROR, "(unknown) channel error!\n");
+	if (!mrcp_application_session_terminate(session))
+		ast_log(LOG_WARNING, "(%s) Unable to terminate application session\n", schannel->name);
 
 	return TRUE;
 }
@@ -275,70 +265,66 @@ static apt_bool_t synth_message_handler(const mrcp_app_message_t *app_message)
 /* Handle the MRCP synthesizer responses/events from UniMRCP. */
 static apt_bool_t synth_on_message_receive(mrcp_application_t *application, mrcp_session_t *session, mrcp_channel_t *channel, mrcp_message_t *message)
 {
-	speech_channel_t *schannel;
+	speech_channel_t *schannel = get_speech_channel(session);
+	if (!schannel || !message) {
+		ast_log(LOG_ERROR, "synth_on_message_receive: unknown channel error!\n");
+		return FALSE;
+	}
 
-	if (channel != NULL)
-		schannel = (speech_channel_t *)mrcp_application_channel_object_get(channel);
-	else
-		schannel = NULL;
-
-	if ((schannel != NULL) && (application != NULL) && (session != NULL) && (channel != NULL) && (message != NULL)) {
-		if (message->start_line.message_type == MRCP_MESSAGE_TYPE_RESPONSE) {
-			/* Received MRCP response. */
-			if (message->start_line.method_id == SYNTHESIZER_SPEAK) {
-				/* received the response to SPEAK request */
-				if (message->start_line.request_state == MRCP_REQUEST_STATE_INPROGRESS) {
-					/* Waiting for SPEAK-COMPLETE event. */
-					ast_log(LOG_DEBUG, "(%s) REQUEST IN PROGRESS\n", schannel->name);
-					speech_channel_set_state(schannel, SPEECH_CHANNEL_PROCESSING);
-				} else {
-					/* Received unexpected request_state. */
-					ast_log(LOG_DEBUG, "(%s) Unexpected SPEAK response, request_state = %d\n", schannel->name, message->start_line.request_state);
-					speech_channel_set_state(schannel, SPEECH_CHANNEL_ERROR);
-				}
-			} else if (message->start_line.method_id == SYNTHESIZER_STOP) {
-				/* Received response to the STOP request. */
-				if (message->start_line.request_state == MRCP_REQUEST_STATE_COMPLETE) {
-					/* Got COMPLETE. */
-					ast_log(LOG_DEBUG, "(%s) COMPLETE\n", schannel->name);
-					speech_channel_set_state(schannel, SPEECH_CHANNEL_READY);
-				} else {
-					/* Received unexpected request state. */
-					ast_log(LOG_DEBUG, "(%s) Unexpected STOP response, request_state = %d\n", schannel->name, message->start_line.request_state);
-					speech_channel_set_state(schannel, SPEECH_CHANNEL_ERROR);
-				}
-			} else if (message->start_line.method_id == SYNTHESIZER_BARGE_IN_OCCURRED) {
-				/* Received response to the BARGE_IN_OCCURRED request. */
-				if (message->start_line.request_state == MRCP_REQUEST_STATE_COMPLETE) {
-					/* Got COMPLETE. */
-					ast_log(LOG_DEBUG, "(%s) COMPLETE\n", schannel->name);
-					speech_channel_set_state(schannel, SPEECH_CHANNEL_READY);
-				} else {
-					/* Received unexpected request state. */
-					ast_log(LOG_DEBUG, "(%s) Unexpected BARGE-IN-OCCURRED response, request_state = %d\n", schannel->name, message->start_line.request_state);
-					speech_channel_set_state(schannel, SPEECH_CHANNEL_ERROR);
-				}
+	if (message->start_line.message_type == MRCP_MESSAGE_TYPE_RESPONSE) {
+		/* Received MRCP response. */
+		if (message->start_line.method_id == SYNTHESIZER_SPEAK) {
+			/* received the response to SPEAK request */
+			if (message->start_line.request_state == MRCP_REQUEST_STATE_INPROGRESS) {
+				/* Waiting for SPEAK-COMPLETE event. */
+				ast_log(LOG_DEBUG, "(%s) REQUEST IN PROGRESS\n", schannel->name);
+				speech_channel_set_state(schannel, SPEECH_CHANNEL_PROCESSING);
 			} else {
-				/* Received unexpected response. */
-				ast_log(LOG_DEBUG, "(%s) Unexpected response, method_id = %d\n", schannel->name, (int)message->start_line.method_id);
-				speech_channel_set_state(schannel, SPEECH_CHANNEL_ERROR); 
+				/* Received unexpected request_state. */
+				ast_log(LOG_DEBUG, "(%s) Unexpected SPEAK response, request_state = %d\n", schannel->name, message->start_line.request_state);
+				speech_channel_set_state(schannel, SPEECH_CHANNEL_ERROR);
 			}
-		} else if (message->start_line.message_type == MRCP_MESSAGE_TYPE_EVENT) {
-			/* Received MRCP event. */
-			if (message->start_line.method_id == SYNTHESIZER_SPEAK_COMPLETE) {
-				/* Got SPEAK-COMPLETE. */
-				ast_log(LOG_DEBUG, "(%s) SPEAK-COMPLETE\n", schannel->name);
+		} else if (message->start_line.method_id == SYNTHESIZER_STOP) {
+			/* Received response to the STOP request. */
+			if (message->start_line.request_state == MRCP_REQUEST_STATE_COMPLETE) {
+				/* Got COMPLETE. */
+				ast_log(LOG_DEBUG, "(%s) COMPLETE\n", schannel->name);
 				speech_channel_set_state(schannel, SPEECH_CHANNEL_READY);
 			} else {
-				ast_log(LOG_DEBUG, "(%s) Unexpected event, method_id = %d\n", schannel->name, (int)message->start_line.method_id);
+				/* Received unexpected request state. */
+				ast_log(LOG_DEBUG, "(%s) Unexpected STOP response, request_state = %d\n", schannel->name, message->start_line.request_state);
+				speech_channel_set_state(schannel, SPEECH_CHANNEL_ERROR);
+			}
+		} else if (message->start_line.method_id == SYNTHESIZER_BARGE_IN_OCCURRED) {
+			/* Received response to the BARGE_IN_OCCURRED request. */
+			if (message->start_line.request_state == MRCP_REQUEST_STATE_COMPLETE) {
+				/* Got COMPLETE. */
+				ast_log(LOG_DEBUG, "(%s) COMPLETE\n", schannel->name);
+				speech_channel_set_state(schannel, SPEECH_CHANNEL_READY);
+			} else {
+				/* Received unexpected request state. */
+				ast_log(LOG_DEBUG, "(%s) Unexpected BARGE-IN-OCCURRED response, request_state = %d\n", schannel->name, message->start_line.request_state);
 				speech_channel_set_state(schannel, SPEECH_CHANNEL_ERROR);
 			}
 		} else {
-			ast_log(LOG_DEBUG, "(%s) Unexpected message type, message_type = %d\n", schannel->name, message->start_line.message_type);
+			/* Received unexpected response. */
+			ast_log(LOG_DEBUG, "(%s) Unexpected response, method_id = %d\n", schannel->name, (int)message->start_line.method_id);
+			speech_channel_set_state(schannel, SPEECH_CHANNEL_ERROR); 
+		}
+	} else if (message->start_line.message_type == MRCP_MESSAGE_TYPE_EVENT) {
+		/* Received MRCP event. */
+		if (message->start_line.method_id == SYNTHESIZER_SPEAK_COMPLETE) {
+			/* Got SPEAK-COMPLETE. */
+			ast_log(LOG_DEBUG, "(%s) SPEAK-COMPLETE\n", schannel->name);
+			speech_channel_set_state(schannel, SPEECH_CHANNEL_READY);
+		} else {
+			ast_log(LOG_DEBUG, "(%s) Unexpected event, method_id = %d\n", schannel->name, (int)message->start_line.method_id);
 			speech_channel_set_state(schannel, SPEECH_CHANNEL_ERROR);
 		}
-	} else
-		ast_log(LOG_ERROR, "(unknown) channel error!\n");
+	} else {
+		ast_log(LOG_DEBUG, "(%s) Unexpected message type, message_type = %d\n", schannel->name, message->start_line.message_type);
+		speech_channel_set_state(schannel, SPEECH_CHANNEL_ERROR);
+	}
 
 	return TRUE;
 }
@@ -348,16 +334,18 @@ static apt_bool_t synth_stream_write(mpf_audio_stream_t *stream, const mpf_frame
 {
 	speech_channel_t *schannel;
 
-	if (stream != NULL)
+	if (stream)
 		schannel = (speech_channel_t *)stream->obj;
-	else
+	else 
 		schannel = NULL;
 
-	if ((schannel != NULL) && (stream != NULL) && (frame != NULL)) {
-		apr_size_t size = frame->codec_frame.size;
-		speech_channel_write(schannel, frame->codec_frame.buffer, &size); 
-	} else
-		ast_log(LOG_ERROR, "(unknown) channel error!\n");
+	if(!schannel || !frame) {
+		ast_log(LOG_ERROR, "synth_stream_write: unknown channel error!\n");
+		return FALSE;
+	}
+
+	apr_size_t size = frame->codec_frame.size;
+	speech_channel_write(schannel, frame->codec_frame.buffer, &size); 
 
 	return TRUE;
 }
@@ -370,77 +358,79 @@ static int synth_channel_speak(speech_channel_t *schannel, const char *content, 
 	mrcp_generic_header_t *generic_header = NULL;
 	mrcp_synth_header_t *synth_header = NULL;
 
-	if ((schannel != NULL) && (content != NULL)  && (content_type != NULL)) {
+	if (!schannel || !content || !content_type) {
+		ast_log(LOG_ERROR, "synth_channel_speak: unknown channel error!\n");
+		return -1;
+	}
+
+	if (schannel->mutex != NULL)
+		apr_thread_mutex_lock(schannel->mutex);
+
+	if (schannel->state != SPEECH_CHANNEL_READY) {
 		if (schannel->mutex != NULL)
-			apr_thread_mutex_lock(schannel->mutex);
+			apr_thread_mutex_unlock(schannel->mutex);
 
-		if (schannel->state != SPEECH_CHANNEL_READY) {
-			if (schannel->mutex != NULL)
-				apr_thread_mutex_unlock(schannel->mutex);
+		return -1;
+	}
 
-			return -1;
-		}
-
-		if ((mrcp_message = mrcp_application_message_create(schannel->unimrcp_session, schannel->unimrcp_channel, SYNTHESIZER_SPEAK)) == NULL) {
-			ast_log(LOG_ERROR, "(%s) Failed to create SPEAK message\n", schannel->name);
-
-			if (schannel->mutex != NULL)
-				apr_thread_mutex_unlock(schannel->mutex);
-			return -1;
-		}
-
-		/* Set generic header fields (content-type). */
-		if ((generic_header = (mrcp_generic_header_t *)mrcp_generic_header_prepare(mrcp_message)) == NULL) {	
-			if (schannel->mutex != NULL)
-				apr_thread_mutex_unlock(schannel->mutex);
-
-			return -1;
-		}
-
-		apt_string_assign(&generic_header->content_type, content_type, mrcp_message->pool);
-		mrcp_generic_header_property_add(mrcp_message, GENERIC_HEADER_CONTENT_TYPE);
-
-		/* Set synthesizer header fields (voice, rate, etc.). */
-		if ((synth_header = (mrcp_synth_header_t *)mrcp_resource_header_prepare(mrcp_message)) == NULL) {
-			if (schannel->mutex != NULL)
-				apr_thread_mutex_unlock(schannel->mutex);
-
-			return -1;
-		}
-
-		/* Add params to MRCP message. */
-		speech_channel_set_params(schannel, mrcp_message, header_fields);
-
-		/* Set body (plain text or SSML). */
-		apt_string_assign(&mrcp_message->body, content, schannel->pool);
-
-		/* Empty audio queue and send SPEAK to MRCP server. */
-		audio_queue_clear(schannel->audio_queue);
-
-		if (!mrcp_application_message_send(schannel->unimrcp_session, schannel->unimrcp_channel, mrcp_message)) {
-			ast_log(LOG_ERROR,"(%s) Failed to send SPEAK message", schannel->name);
-
-			if (schannel->mutex != NULL)
-				apr_thread_mutex_unlock(schannel->mutex);
-
-			return -1;
-		}
-
-		/* Wait for IN PROGRESS. */
-		if ((schannel->mutex != NULL) && (schannel->cond != NULL))
-			apr_thread_cond_timedwait(schannel->cond, schannel->mutex, SPEECH_CHANNEL_TIMEOUT_USEC);
-
-		if (schannel->state != SPEECH_CHANNEL_PROCESSING) {
-			if (schannel->mutex != NULL)
-				apr_thread_mutex_unlock(schannel->mutex);
-
-			return -1;
-		}
+	if ((mrcp_message = mrcp_application_message_create(schannel->unimrcp_session, schannel->unimrcp_channel, SYNTHESIZER_SPEAK)) == NULL) {
+		ast_log(LOG_ERROR, "(%s) Failed to create SPEAK message\n", schannel->name);
 
 		if (schannel->mutex != NULL)
 			apr_thread_mutex_unlock(schannel->mutex);
-	} else
-		ast_log(LOG_ERROR, "(unknown) channel error!\n");
+		return -1;
+	}
+
+	/* Set generic header fields (content-type). */
+	if ((generic_header = (mrcp_generic_header_t *)mrcp_generic_header_prepare(mrcp_message)) == NULL) {	
+		if (schannel->mutex != NULL)
+			apr_thread_mutex_unlock(schannel->mutex);
+
+		return -1;
+	}
+
+	apt_string_assign(&generic_header->content_type, content_type, mrcp_message->pool);
+	mrcp_generic_header_property_add(mrcp_message, GENERIC_HEADER_CONTENT_TYPE);
+
+	/* Set synthesizer header fields (voice, rate, etc.). */
+	if ((synth_header = (mrcp_synth_header_t *)mrcp_resource_header_prepare(mrcp_message)) == NULL) {
+		if (schannel->mutex != NULL)
+			apr_thread_mutex_unlock(schannel->mutex);
+
+		return -1;
+	}
+
+	/* Add params to MRCP message. */
+	speech_channel_set_params(schannel, mrcp_message, header_fields);
+
+	/* Set body (plain text or SSML). */
+	apt_string_assign(&mrcp_message->body, content, schannel->pool);
+
+	/* Empty audio queue and send SPEAK to MRCP server. */
+	audio_queue_clear(schannel->audio_queue);
+
+	if (!mrcp_application_message_send(schannel->unimrcp_session, schannel->unimrcp_channel, mrcp_message)) {
+		ast_log(LOG_ERROR,"(%s) Failed to send SPEAK message", schannel->name);
+
+		if (schannel->mutex != NULL)
+			apr_thread_mutex_unlock(schannel->mutex);
+
+		return -1;
+	}
+
+	/* Wait for IN PROGRESS. */
+	if ((schannel->mutex != NULL) && (schannel->cond != NULL))
+		apr_thread_cond_timedwait(schannel->cond, schannel->mutex, SPEECH_CHANNEL_TIMEOUT_USEC);
+
+	if (schannel->state != SPEECH_CHANNEL_PROCESSING) {
+		if (schannel->mutex != NULL)
+			apr_thread_mutex_unlock(schannel->mutex);
+
+		return -1;
+	}
+
+	if (schannel->mutex != NULL)
+		apr_thread_mutex_unlock(schannel->mutex);
 
 	return status;
 }
