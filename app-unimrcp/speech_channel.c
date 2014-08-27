@@ -116,14 +116,12 @@ void speech_channel_set_state_unlocked(speech_channel_t *schannel, speech_channe
 /* Set the current channel state. */
 void speech_channel_set_state(speech_channel_t *schannel, speech_channel_state_t state)
 {
-	if (schannel != NULL) {
-		if (schannel->mutex != NULL)
-			apr_thread_mutex_lock(schannel->mutex);
+	if (schannel) {
+		apr_thread_mutex_lock(schannel->mutex);
 
 		speech_channel_set_state_unlocked(schannel, state);
 
-		if (schannel->mutex != NULL)
-			apr_thread_mutex_unlock(schannel->mutex);
+		apr_thread_mutex_unlock(schannel->mutex);
 	}
 }
 
@@ -132,11 +130,10 @@ int speech_channel_bargeinoccurred(speech_channel_t *schannel)
 {
 	int status = 0;
 	
-	if (schannel == NULL)
+	if (!schannel)
 		return -1;
 
-	if (schannel->mutex != NULL)
-		apr_thread_mutex_lock(schannel->mutex);
+	apr_thread_mutex_lock(schannel->mutex);
 
 	if (schannel->state == SPEECH_CHANNEL_PROCESSING) {
 		mrcp_method_id method;
@@ -176,9 +173,7 @@ int speech_channel_bargeinoccurred(speech_channel_t *schannel)
 		}
 	}
 
-	if (schannel->mutex != NULL)
-		apr_thread_mutex_unlock(schannel->mutex);
-
+	apr_thread_mutex_unlock(schannel->mutex);
 	return status;
 }
 
@@ -345,7 +340,7 @@ static mpf_termination_t *speech_channel_create_mpf_termination(speech_channel_t
 /* Destroy the speech channel. */
 int speech_channel_destroy(speech_channel_t *schannel)
 {
-	if (schannel == NULL) {
+	if (!schannel) {
 		ast_log(LOG_ERROR, "Speech channel structure pointer is NULL\n");
 		return -1;
 	}
@@ -439,17 +434,14 @@ int speech_channel_open(speech_channel_t *schannel, ast_mrcp_profile_t *profile)
 	mpf_termination_t *termination = NULL;
 	mrcp_resource_type_e resource_type;
 
-	if ((schannel == NULL) || (profile == NULL))
+	if (!schannel || !profile)
 		return -1;
 
-	if (schannel->mutex != NULL)
-		apr_thread_mutex_lock(schannel->mutex);
+	apr_thread_mutex_lock(schannel->mutex);
 
 	/* Make sure we can open channel. */
 	if (schannel->state != SPEECH_CHANNEL_CLOSED) {
-		if (schannel->mutex != NULL)
-			apr_thread_mutex_unlock(schannel->mutex);
-
+		apr_thread_mutex_unlock(schannel->mutex);
 		return -1;
 	}
 
@@ -460,9 +452,7 @@ int speech_channel_open(speech_channel_t *schannel, ast_mrcp_profile_t *profile)
 		/* Profile doesn't exist? */
 		ast_log(LOG_ERROR, "(%s) Unable to create session with %s\n", schannel->name, profile->name);
 
-		if (schannel->mutex != NULL)
-			apr_thread_mutex_unlock(schannel->mutex);
-
+		apr_thread_mutex_unlock(schannel->mutex);
 		return 2;
 	}
 	
@@ -476,9 +466,7 @@ int speech_channel_open(speech_channel_t *schannel, ast_mrcp_profile_t *profile)
 		if (!mrcp_application_session_destroy(schannel->unimrcp_session))
 			ast_log(LOG_WARNING, "(%s) Unable to destroy application session for %s\n", schannel->name, profile->name);
 
-		if (schannel->mutex != NULL)
-			apr_thread_mutex_unlock(schannel->mutex);
-
+		apr_thread_mutex_unlock(schannel->mutex);
 		return -1;
 	}
 
@@ -493,9 +481,7 @@ int speech_channel_open(speech_channel_t *schannel, ast_mrcp_profile_t *profile)
 		if (!mrcp_application_session_destroy(schannel->unimrcp_session))
 			ast_log(LOG_WARNING, "(%s) Unable to destroy application session for %s\n", schannel->name, profile->name);
 
-		if (schannel->mutex != NULL)
-			apr_thread_mutex_unlock(schannel->mutex);
-
+		apr_thread_mutex_unlock(schannel->mutex);
 		return -1;
 	}
 
@@ -506,14 +492,12 @@ int speech_channel_open(speech_channel_t *schannel, ast_mrcp_profile_t *profile)
 		if (!mrcp_application_session_destroy(schannel->unimrcp_session))
 			ast_log(LOG_WARNING, "(%s) Unable to destroy application session for %s\n", schannel->name, profile->name);
 
-		if (schannel->mutex != NULL)
-			apr_thread_mutex_unlock(schannel->mutex);
-
+		apr_thread_mutex_unlock(schannel->mutex);
 		return -1;
 	}
 
 	/* Wait for channel to be ready. */
-	while ((schannel->mutex != NULL) && (schannel->cond != NULL) && (schannel->state == SPEECH_CHANNEL_CLOSED))
+	while (schannel->state == SPEECH_CHANNEL_CLOSED)
 		apr_thread_cond_timedwait(schannel->cond, schannel->mutex, SPEECH_CHANNEL_TIMEOUT_USEC);
 
 	if (schannel->state == SPEECH_CHANNEL_READY) {
@@ -524,8 +508,7 @@ int speech_channel_open(speech_channel_t *schannel, ast_mrcp_profile_t *profile)
 		status = -1;
 	} else if (schannel->state == SPEECH_CHANNEL_ERROR) {
 		/* Wait for session to be cleaned up. */
-		if (schannel->cond != NULL)
-			apr_thread_cond_timedwait(schannel->cond, schannel->mutex, SPEECH_CHANNEL_TIMEOUT_USEC);
+		apr_thread_cond_timedwait(schannel->cond, schannel->mutex, SPEECH_CHANNEL_TIMEOUT_USEC);
 
 		if (schannel->state != SPEECH_CHANNEL_CLOSED) {
 			/* Major issue. Can't retry. */
@@ -553,9 +536,7 @@ int speech_channel_open(speech_channel_t *schannel, ast_mrcp_profile_t *profile)
 		}
 	}
 
-	if (schannel->mutex != NULL)
-		apr_thread_mutex_unlock(schannel->mutex);
-
+	apr_thread_mutex_unlock(schannel->mutex);
 	return status;
 }
 
@@ -564,11 +545,10 @@ int speech_channel_stop(speech_channel_t *schannel)
 {
 	int status = 0;
 
-	if (schannel == NULL)
+	if (!schannel)
 		return -1;
 
-	if (schannel->mutex != NULL)
-		apr_thread_mutex_lock(schannel->mutex);
+	apr_thread_mutex_lock(schannel->mutex);
 
 	if (schannel->state == SPEECH_CHANNEL_PROCESSING) {
 		mrcp_method_id method;
@@ -612,9 +592,7 @@ int speech_channel_stop(speech_channel_t *schannel)
 		}
 	}
 
-	if (schannel->mutex != NULL)
-		apr_thread_mutex_unlock(schannel->mutex);
-
+	apr_thread_mutex_unlock(schannel->mutex);
 	return status;
 }
 
@@ -656,22 +634,20 @@ int speech_channel_read(speech_channel_t *schannel, void *data, apr_size_t *len,
 {
 	int status = 0;
 
-	if (schannel != NULL) {
+	if (schannel) {
 #if SPEECH_CHANNEL_TRACE
 		apr_size_t req_len = *len;
 #endif
 		audio_queue_t *queue = schannel->audio_queue;
 
-		if (schannel->mutex != NULL)
-			apr_thread_mutex_lock(schannel->mutex);
+		apr_thread_mutex_lock(schannel->mutex);
 
 		if (schannel->state == SPEECH_CHANNEL_PROCESSING)
 			status = audio_queue_read(queue, data, len, block);
 		else
 			status = 1;
 
-		if (schannel->mutex != NULL)
-			apr_thread_mutex_unlock(schannel->mutex);
+		apr_thread_mutex_unlock(schannel->mutex);
 
 #if SPEECH_CHANNEL_DUMP
 		if(status == 0 && schannel->stream_out) {
@@ -707,8 +683,7 @@ int speech_channel_write(speech_channel_t *schannel, void *data, apr_size_t *len
 			fwrite(data, 1, *len, schannel->stream_in);
 		}
 #endif
-		if (schannel->mutex != NULL)
-			apr_thread_mutex_lock(schannel->mutex);
+		apr_thread_mutex_lock(schannel->mutex);
 
 		audio_queue_t *queue = schannel->audio_queue;
 
@@ -717,8 +692,7 @@ int speech_channel_write(speech_channel_t *schannel, void *data, apr_size_t *len
 		else
 			status = -1;
 
-		if (schannel->mutex != NULL)
-			apr_thread_mutex_unlock(schannel->mutex);
+		apr_thread_mutex_unlock(schannel->mutex);
 
 #if SPEECH_CHANNEL_TRACE
 		ast_log(LOG_DEBUG, "(%s) channel_write() status=%d req=%"APR_SIZE_T_FMT" written=%"APR_SIZE_T_FMT"\n", 

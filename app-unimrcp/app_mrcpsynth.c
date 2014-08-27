@@ -363,29 +363,23 @@ static int synth_channel_speak(speech_channel_t *schannel, const char *content, 
 		return -1;
 	}
 
-	if (schannel->mutex != NULL)
-		apr_thread_mutex_lock(schannel->mutex);
+	apr_thread_mutex_lock(schannel->mutex);
 
 	if (schannel->state != SPEECH_CHANNEL_READY) {
-		if (schannel->mutex != NULL)
-			apr_thread_mutex_unlock(schannel->mutex);
-
+		apr_thread_mutex_unlock(schannel->mutex);
 		return -1;
 	}
 
 	if ((mrcp_message = mrcp_application_message_create(schannel->unimrcp_session, schannel->unimrcp_channel, SYNTHESIZER_SPEAK)) == NULL) {
 		ast_log(LOG_ERROR, "(%s) Failed to create SPEAK message\n", schannel->name);
 
-		if (schannel->mutex != NULL)
-			apr_thread_mutex_unlock(schannel->mutex);
+		apr_thread_mutex_unlock(schannel->mutex);
 		return -1;
 	}
 
 	/* Set generic header fields (content-type). */
 	if ((generic_header = (mrcp_generic_header_t *)mrcp_generic_header_prepare(mrcp_message)) == NULL) {	
-		if (schannel->mutex != NULL)
-			apr_thread_mutex_unlock(schannel->mutex);
-
+		apr_thread_mutex_unlock(schannel->mutex);
 		return -1;
 	}
 
@@ -394,9 +388,7 @@ static int synth_channel_speak(speech_channel_t *schannel, const char *content, 
 
 	/* Set synthesizer header fields (voice, rate, etc.). */
 	if ((synth_header = (mrcp_synth_header_t *)mrcp_resource_header_prepare(mrcp_message)) == NULL) {
-		if (schannel->mutex != NULL)
-			apr_thread_mutex_unlock(schannel->mutex);
-
+		apr_thread_mutex_unlock(schannel->mutex);
 		return -1;
 	}
 
@@ -412,26 +404,19 @@ static int synth_channel_speak(speech_channel_t *schannel, const char *content, 
 	if (!mrcp_application_message_send(schannel->unimrcp_session, schannel->unimrcp_channel, mrcp_message)) {
 		ast_log(LOG_ERROR,"(%s) Failed to send SPEAK message", schannel->name);
 
-		if (schannel->mutex != NULL)
-			apr_thread_mutex_unlock(schannel->mutex);
-
+		apr_thread_mutex_unlock(schannel->mutex);
 		return -1;
 	}
 
 	/* Wait for IN PROGRESS. */
-	if ((schannel->mutex != NULL) && (schannel->cond != NULL))
-		apr_thread_cond_timedwait(schannel->cond, schannel->mutex, SPEECH_CHANNEL_TIMEOUT_USEC);
+	apr_thread_cond_timedwait(schannel->cond, schannel->mutex, SPEECH_CHANNEL_TIMEOUT_USEC);
 
 	if (schannel->state != SPEECH_CHANNEL_PROCESSING) {
-		if (schannel->mutex != NULL)
-			apr_thread_mutex_unlock(schannel->mutex);
-
+		apr_thread_mutex_unlock(schannel->mutex);
 		return -1;
 	}
 
-	if (schannel->mutex != NULL)
-		apr_thread_mutex_unlock(schannel->mutex);
-
+	apr_thread_mutex_unlock(schannel->mutex);
 	return status;
 }
 
@@ -612,7 +597,7 @@ static int app_synth_exec(struct ast_channel *chan, ast_app_data data)
 	name = apr_psprintf(mrcpsynth_session.pool, "TTS-%lu", (unsigned long int)speech_channel_number);
 
 	mrcpsynth_session.schannel = speech_channel_create(mrcpsynth_session.pool, name, SPEECH_CHANNEL_SYNTHESIZER, mrcpsynth, format_to_str(&nwriteformat), samplerate, chan);
-	if (mrcpsynth_session.schannel == NULL) {
+	if (!mrcpsynth_session.schannel) {
 		return mrcpsynth_exit(chan, &mrcpsynth_session, SPEECH_CHANNEL_STATUS_ERROR);
 	}
 

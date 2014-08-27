@@ -312,17 +312,14 @@ static int recog_channel_start_input_timers(speech_channel_t *schannel)
 		return -1;
 	}
 
-	if (schannel->mutex != NULL)
-		apr_thread_mutex_lock(schannel->mutex);
+	apr_thread_mutex_lock(schannel->mutex);
 
 	recognizer_data_t *r = (recognizer_data_t *)schannel->data;
 
 	if (r == NULL) {
 		ast_log(LOG_ERROR, "(%s) Recognizer data struct is NULL\n", schannel->name);
 
-		if (schannel->mutex != NULL)
-			apr_thread_mutex_unlock(schannel->mutex);
-
+		apr_thread_mutex_unlock(schannel->mutex);
 		return -1;
 	}
 
@@ -341,9 +338,7 @@ static int recog_channel_start_input_timers(speech_channel_t *schannel)
 		}
 	}
  
-	if (schannel->mutex != NULL)
-		apr_thread_mutex_unlock(schannel->mutex);
-
+	apr_thread_mutex_unlock(schannel->mutex);
 	return status;
 }
 
@@ -357,25 +352,20 @@ static int recog_channel_set_start_of_input(speech_channel_t *schannel)
 		return -1;
 	}
 
-	if (schannel->mutex != NULL)
-		apr_thread_mutex_lock(schannel->mutex);
+	apr_thread_mutex_lock(schannel->mutex);
 
 	recognizer_data_t *r = (recognizer_data_t *)schannel->data;
 
 	if (r == NULL) {
 		ast_log(LOG_ERROR, "(%s) Recognizer data struct is NULL\n", schannel->name);
 
-		if (schannel->mutex != NULL)
-			apr_thread_mutex_unlock(schannel->mutex);
-
+		apr_thread_mutex_unlock(schannel->mutex);
 		return -1;
 	}
 
 	r->start_of_input = 1;
 
-	if (schannel->mutex != NULL)
-		apr_thread_mutex_unlock(schannel->mutex);
-
+	apr_thread_mutex_unlock(schannel->mutex);
 	return status;
 }
 
@@ -389,26 +379,21 @@ static int recog_channel_set_results(speech_channel_t *schannel, int completion_
 		return -1;
 	}
 
-	if (schannel->mutex != NULL)
-		apr_thread_mutex_lock(schannel->mutex);
+	apr_thread_mutex_lock(schannel->mutex);
 
 	recognizer_data_t *r = (recognizer_data_t *)schannel->data;
 
 	if (r == NULL) {
 		ast_log(LOG_ERROR, "(%s) Recognizer data struct is NULL\n", schannel->name);
 
-		if (schannel->mutex != NULL)
-			apr_thread_mutex_unlock(schannel->mutex);
-
+		apr_thread_mutex_unlock(schannel->mutex);
 		return -1;
 	}
 
 	if (r->completion_cause >= 0) {
 		ast_log(LOG_DEBUG, "(%s) Result is already set\n", schannel->name);
 
-		if (schannel->mutex != NULL)
-			apr_thread_mutex_unlock(schannel->mutex);
-
+		apr_thread_mutex_unlock(schannel->mutex);
 		return -1;
 	}
 
@@ -421,9 +406,7 @@ static int recog_channel_set_results(speech_channel_t *schannel, int completion_
 	if (waveform_uri && waveform_uri->length > 0)
 		r->waveform_uri = apr_pstrndup(schannel->pool, waveform_uri->buf, waveform_uri->length);
 
-	if (schannel->mutex != NULL)
-		apr_thread_mutex_unlock(schannel->mutex);
-
+	apr_thread_mutex_unlock(schannel->mutex);
 	return status;
 }
 
@@ -435,26 +418,21 @@ static int recog_channel_get_results(speech_channel_t *schannel, int uri_encoded
 		return -1;
 	}
 
-	if (schannel->mutex != NULL)
-		apr_thread_mutex_lock(schannel->mutex);
+	apr_thread_mutex_lock(schannel->mutex);
 
 	recognizer_data_t *r = (recognizer_data_t *)schannel->data;
 
 	if (r == NULL) {
 		ast_log(LOG_ERROR, "(%s) Recognizer data struct is NULL\n", schannel->name);
-
-		if (schannel->mutex != NULL)
-			apr_thread_mutex_unlock(schannel->mutex);
-
+		
+		apr_thread_mutex_unlock(schannel->mutex);
 		return -1;
 	}
 
 	if (r->completion_cause < 0) {
 		ast_log(LOG_ERROR, "(%s) Recognition terminated prematurely\n", schannel->name);
 
-		if (schannel->mutex != NULL)
-			apr_thread_mutex_unlock(schannel->mutex);
-
+		apr_thread_mutex_unlock(schannel->mutex);
 		return -1;
 	}
 
@@ -486,9 +464,7 @@ static int recog_channel_get_results(speech_channel_t *schannel, int uri_encoded
 		r->waveform_uri = NULL;
 	}
 
-	if (schannel->mutex != NULL)
-		apr_thread_mutex_unlock(schannel->mutex);
-
+	apr_thread_mutex_unlock(schannel->mutex);
 	return 0;
 }
 
@@ -500,25 +476,20 @@ static int recog_channel_set_timers_started(speech_channel_t *schannel)
 		return -1;
 	}
 
-	if (schannel->mutex != NULL)
-		apr_thread_mutex_lock(schannel->mutex);
+	apr_thread_mutex_lock(schannel->mutex);
 
 	recognizer_data_t *r = (recognizer_data_t *)schannel->data;
 
 	if (r == NULL) {
 		ast_log(LOG_ERROR, "(%s) Recognizer data struct is NULL\n", schannel->name);
 
-		if (schannel->mutex != NULL)
-			apr_thread_mutex_unlock(schannel->mutex);
-
+		apr_thread_mutex_unlock(schannel->mutex);
 		return -1;
 	}
 
 	r->timers_started = 1;
 
-	if (schannel->mutex != NULL)
-		apr_thread_mutex_unlock(schannel->mutex);
-
+	apr_thread_mutex_unlock(schannel->mutex);
 	return 0;
 }
 
@@ -537,29 +508,22 @@ static int recog_channel_start(speech_channel_t *schannel, const char *name, int
 		return -1;
 	}
 	
-	if (schannel->mutex != NULL)
-		apr_thread_mutex_lock(schannel->mutex);
+	apr_thread_mutex_lock(schannel->mutex);
 
 	if (schannel->state != SPEECH_CHANNEL_READY) {
-		if (schannel->mutex != NULL)
-			apr_thread_mutex_unlock(schannel->mutex);
-
+		apr_thread_mutex_unlock(schannel->mutex);
 		return -1;
 	}
 
 	if (schannel->data == NULL) {
-		if (schannel->mutex != NULL)
-			apr_thread_mutex_unlock(schannel->mutex);
-
+		apr_thread_mutex_unlock(schannel->mutex);
 		return -1;
 	}
 
 	if ((r = (recognizer_data_t *)schannel->data) == NULL) {
 		ast_log(LOG_ERROR, "(%s) Recognizer data struct is NULL\n", schannel->name);
 
-		if (schannel->mutex != NULL)
-			apr_thread_mutex_unlock(schannel->mutex);
-
+		apr_thread_mutex_unlock(schannel->mutex);
 		return -1;
 	}
 
@@ -593,26 +557,20 @@ static int recog_channel_start(speech_channel_t *schannel, const char *name, int
 	if (length == 0) {
 		ast_log(LOG_ERROR, "(%s) No grammars specified\n", schannel->name);
 
-		if (schannel->mutex != NULL)
-			apr_thread_mutex_unlock(schannel->mutex);
-
+		apr_thread_mutex_unlock(schannel->mutex);
 		return -1;
 	}
 	grammar_refs[length] = '\0';
 
 	/* Create MRCP message. */
 	if ((mrcp_message = mrcp_application_message_create(schannel->unimrcp_session, schannel->unimrcp_channel, RECOGNIZER_RECOGNIZE)) == NULL) {
-		if (schannel->mutex != NULL)
-			apr_thread_mutex_unlock(schannel->mutex);
-
+		apr_thread_mutex_unlock(schannel->mutex);
 		return -1;
 	}
 
 	/* Allocate generic header. */
 	if ((generic_header = (mrcp_generic_header_t *)mrcp_generic_header_prepare(mrcp_message)) == NULL) {
-		if (schannel->mutex != NULL)
-			apr_thread_mutex_unlock(schannel->mutex);
-
+		apr_thread_mutex_unlock(schannel->mutex);
 		return -1;
 	}
 
@@ -623,9 +581,7 @@ static int recog_channel_start(speech_channel_t *schannel, const char *name, int
 
 	/* Allocate recognizer-specific header. */
 	if ((recog_header = (mrcp_recog_header_t *)mrcp_resource_header_prepare(mrcp_message)) == NULL) {
-		if (schannel->mutex != NULL)
-			apr_thread_mutex_unlock(schannel->mutex);
-
+		apr_thread_mutex_unlock(schannel->mutex);
 		return -1;
 	}
 
@@ -649,26 +605,19 @@ static int recog_channel_start(speech_channel_t *schannel, const char *name, int
 	audio_queue_clear(schannel->audio_queue);
 
 	if (mrcp_application_message_send(schannel->unimrcp_session, schannel->unimrcp_channel, mrcp_message) == FALSE) {
-		if (schannel->mutex != NULL)
-			apr_thread_mutex_unlock(schannel->mutex);
-
+		apr_thread_mutex_unlock(schannel->mutex);
 		return -1;
 	}
 
 	/* Wait for IN PROGRESS. */
-	if ((schannel->mutex != NULL) && (schannel->cond != NULL))
-		apr_thread_cond_timedwait(schannel->cond, schannel->mutex, SPEECH_CHANNEL_TIMEOUT_USEC);
+	apr_thread_cond_timedwait(schannel->cond, schannel->mutex, SPEECH_CHANNEL_TIMEOUT_USEC);
 
 	if (schannel->state != SPEECH_CHANNEL_PROCESSING) {
-		if (schannel->mutex != NULL)
-			apr_thread_mutex_unlock(schannel->mutex);
-
+		apr_thread_mutex_unlock(schannel->mutex);
 		return -1;
 	}
 
-	if (schannel->mutex != NULL)
-		apr_thread_mutex_unlock(schannel->mutex);
-
+	apr_thread_mutex_unlock(schannel->mutex);
 	return status;
 }
 
@@ -691,13 +640,10 @@ static int recog_channel_load_grammar(speech_channel_t *schannel, const char *na
 	}
 	ast_log(LOG_DEBUG, "(%s) Loading grammar name=%s, type=%s, data=%s\n", schannel->name, name, mime_type, data);
 
-	if (schannel->mutex != NULL)
-		apr_thread_mutex_lock(schannel->mutex);
+	apr_thread_mutex_lock(schannel->mutex);
 
 	if (schannel->state != SPEECH_CHANNEL_READY) {
-		if (schannel->mutex != NULL)
-			apr_thread_mutex_unlock(schannel->mutex);
-
+		apr_thread_mutex_unlock(schannel->mutex);
 		return -1;
 	}
 
@@ -708,17 +654,13 @@ static int recog_channel_load_grammar(speech_channel_t *schannel, const char *na
 
 		/* Create MRCP message. */
 		if ((mrcp_message = mrcp_application_message_create(schannel->unimrcp_session, schannel->unimrcp_channel, RECOGNIZER_DEFINE_GRAMMAR)) == NULL) {
-			if (schannel->mutex != NULL)
-				apr_thread_mutex_unlock(schannel->mutex);
-
+			apr_thread_mutex_unlock(schannel->mutex);
 			return -1;
 		}
 
 		/* Set Content-Type and Content-ID in message. */
 		if ((generic_header = (mrcp_generic_header_t *)mrcp_generic_header_prepare(mrcp_message)) == NULL) {
-			if (schannel->mutex != NULL)
-				apr_thread_mutex_unlock(schannel->mutex);
-
+			apr_thread_mutex_unlock(schannel->mutex);
 			return -1;
 		}
 
@@ -734,19 +676,14 @@ static int recog_channel_load_grammar(speech_channel_t *schannel, const char *na
 		speech_channel_set_state_unlocked(schannel, SPEECH_CHANNEL_PROCESSING);
 
 		if (mrcp_application_message_send(schannel->unimrcp_session, schannel->unimrcp_channel, mrcp_message) == FALSE) {
-			if (schannel->mutex != NULL)
-				apr_thread_mutex_unlock(schannel->mutex);
-
+			apr_thread_mutex_unlock(schannel->mutex);
 			return -1;
 		}
 
-		if ((schannel->mutex != NULL) && (schannel->cond != NULL))
-			apr_thread_cond_timedwait(schannel->cond, schannel->mutex, SPEECH_CHANNEL_TIMEOUT_USEC);
+		apr_thread_cond_timedwait(schannel->cond, schannel->mutex, SPEECH_CHANNEL_TIMEOUT_USEC);
 
 		if (schannel->state != SPEECH_CHANNEL_READY) {
-			if (schannel->mutex != NULL)
-				apr_thread_mutex_unlock(schannel->mutex);
-
+			apr_thread_mutex_unlock(schannel->mutex);
 			return -1;
 		}
 
@@ -766,9 +703,7 @@ static int recog_channel_load_grammar(speech_channel_t *schannel, const char *na
 			apr_hash_set(r->grammars, apr_pstrdup(schannel->pool, g->name), APR_HASH_KEY_STRING, g);
 	}
 
-	if (schannel->mutex != NULL)
-		apr_thread_mutex_unlock(schannel->mutex);
-
+	apr_thread_mutex_unlock(schannel->mutex);
 	return status;
 }
 
@@ -1136,7 +1071,7 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 
 	/* Create speech channel for recognition. */
 	mrcprecog_session.schannel = speech_channel_create(mrcprecog_session.pool, name, SPEECH_CHANNEL_RECOGNIZER, mrcprecog, format_to_str(&nreadformat), samplerate, chan);
-	if (mrcprecog_session.schannel == NULL) {
+	if (!mrcprecog_session.schannel) {
 		return mrcprecog_exit(chan, &mrcprecog_session, SPEECH_CHANNEL_STATUS_ERROR);
 	}
 
@@ -1263,18 +1198,14 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 	while ((waitres = ast_waitfor(chan, 100)) >= 0) {
 		int processing = 1;
 
-		if ((mrcprecog_session.schannel != NULL) && (mrcprecog_session.schannel->mutex != NULL)) {
-			if (mrcprecog_session.schannel->mutex != NULL) {
-				apr_thread_mutex_lock(mrcprecog_session.schannel->mutex);
-			}
+		if (mrcprecog_session.schannel && mrcprecog_session.schannel->mutex) {
+			apr_thread_mutex_lock(mrcprecog_session.schannel->mutex);
 
 			if (mrcprecog_session.schannel->state != SPEECH_CHANNEL_PROCESSING) {
 				processing = 0;
 			}
 
-			if (mrcprecog_session.schannel->mutex != NULL) {
-				apr_thread_mutex_unlock(mrcprecog_session.schannel->mutex);
-			}
+			apr_thread_mutex_unlock(mrcprecog_session.schannel->mutex);
 		}
 
 		if (processing == 0)
