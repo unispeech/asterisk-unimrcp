@@ -217,7 +217,8 @@ static apt_bool_t speech_on_channel_add(mrcp_application_t *application, mrcp_se
 			schannel->rate);
 		speech_channel_set_state(schannel, SPEECH_CHANNEL_READY);
 	} else {
-		ast_log(LOG_ERROR, "(%s) Channel error!\n", schannel->name);
+		int rc = mrcp_application_session_response_code_get(session);
+		ast_log(LOG_ERROR, "(%s) Channel error status=%d, response code=%d!\n", schannel->name, status, rc);
 		speech_channel_set_state(schannel, SPEECH_CHANNEL_ERROR);
 
 		ast_log(LOG_DEBUG, "(%s) Terminating MRCP session\n", schannel->name);
