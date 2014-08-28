@@ -238,10 +238,6 @@ static apt_bool_t speech_on_channel_add(mrcp_application_t *application, mrcp_se
 		if (!descriptor) {
 			ast_log(LOG_ERROR, "(%s) Unable to determine codec descriptor\n", schannel->name);
 			speech_channel_set_state(schannel, SPEECH_CHANNEL_ERROR);
-			
-			ast_log(LOG_DEBUG, "(%s) Terminating MRCP session\n", schannel->name);
-			if (!mrcp_application_session_terminate(session))
-				ast_log(LOG_WARNING, "(%s) Unable to terminate application session\n", schannel->name);
 			return FALSE;
 		}
 
@@ -271,10 +267,6 @@ static apt_bool_t speech_on_channel_add(mrcp_application_t *application, mrcp_se
 		int rc = mrcp_application_session_response_code_get(session);
 		ast_log(LOG_ERROR, "(%s) Channel error status=%d, response code=%d!\n", schannel->name, status, rc);
 		speech_channel_set_state(schannel, SPEECH_CHANNEL_ERROR);
-
-		ast_log(LOG_DEBUG, "(%s) Terminating MRCP session\n", schannel->name);
-		if (!mrcp_application_session_terminate(session))
-			ast_log(LOG_WARNING, "(%s) Unable to terminate application session\n", schannel->name);
 	}
 
 	return TRUE;

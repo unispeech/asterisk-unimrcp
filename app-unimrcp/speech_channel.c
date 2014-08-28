@@ -507,6 +507,10 @@ int speech_channel_open(speech_channel_t *schannel, ast_mrcp_profile_t *profile)
 		/* Can't retry. */
 		status = -1;
 	} else if (schannel->state == SPEECH_CHANNEL_ERROR) {
+		ast_log(LOG_DEBUG, "(%s) Terminating MRCP session\n", schannel->name);
+		if (!mrcp_application_session_terminate(schannel->unimrcp_session))
+			ast_log(LOG_WARNING, "(%s) Unable to terminate application session\n", schannel->name);
+
 		/* Wait for session to be cleaned up. */
 		apr_thread_cond_timedwait(schannel->cond, schannel->mutex, SPEECH_CHANNEL_TIMEOUT_USEC);
 
