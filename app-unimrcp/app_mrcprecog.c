@@ -280,27 +280,6 @@ static apt_bool_t speech_on_channel_add(mrcp_application_t *application, mrcp_se
 	return TRUE;
 }
 
-/* Handle the UniMRCP responses sent to channel remove requests. */
-static apt_bool_t speech_on_channel_remove(mrcp_application_t *application, mrcp_session_t *session, mrcp_channel_t *channel, mrcp_sig_status_code_e status)
-{
-	speech_channel_t *schannel = get_speech_channel(session);
-	if (!schannel) {
-		ast_log(LOG_ERROR, "speech_on_channel_remove: unknown channel error!\n");
-		return FALSE;
-	}
-
-	ast_log(LOG_DEBUG, "(%s) speech_on_channel_remove\n", schannel->name);
-
-	schannel->unimrcp_channel = NULL;
-
-	ast_log(LOG_DEBUG, "(%s) Terminating MRCP session\n", schannel->name);
-
-	if (!mrcp_application_session_terminate(session))
-		ast_log(LOG_WARNING, "(%s) Unable to terminate application session\n", schannel->name);
-
-	return TRUE;
-}
-
 /* --- MRCP ASR --- */
 
 /* Start recognizer's input timers. */
@@ -1343,7 +1322,7 @@ int load_mrcprecog_app()
 	mrcprecog->dispatcher.on_session_update = NULL;
 	mrcprecog->dispatcher.on_session_terminate = speech_on_session_terminate;
 	mrcprecog->dispatcher.on_channel_add = speech_on_channel_add;
-	mrcprecog->dispatcher.on_channel_remove = speech_on_channel_remove;
+	mrcprecog->dispatcher.on_channel_remove = NULL;
 	mrcprecog->dispatcher.on_message_receive = recog_on_message_receive;
 	mrcprecog->audio_stream_vtable.destroy = NULL;
 	mrcprecog->audio_stream_vtable.open_rx = recog_stream_open;
