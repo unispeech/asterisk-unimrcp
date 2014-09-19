@@ -1,6 +1,6 @@
 MAINTAINERCLEANFILES   = Makefile.in
 
-INCLUDES               = -I../include $(UNIMRCP_INCLUDES) $(ASTERISK_INCLUDES)
+AM_CPPFLAGS            = -I../include $(UNIMRCP_INCLUDES) $(ASTERISK_INCLUDES)
 
 mod_LTLIBRARIES        = app_unimrcp.la
 
