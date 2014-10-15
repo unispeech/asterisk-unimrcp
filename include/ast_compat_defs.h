@@ -187,7 +187,7 @@ static APR_INLINE int ast_frame_get_dtmfkey(struct ast_frame *f)
 
 static APR_INLINE void* ast_frame_get_data(const struct ast_frame *f)
 {
-#if AST_VERSION_AT_LEAST(1,6,0)
+#if AST_VERSION_AT_LEAST(1,6,1)
 	return (void *) (f->data.ptr);
 #else
 	return (void *)(f->data);
@@ -196,7 +196,7 @@ static APR_INLINE void* ast_frame_get_data(const struct ast_frame *f)
 
 static APR_INLINE void ast_frame_set_data(struct ast_frame *f, void *data)
 {
-#if AST_VERSION_AT_LEAST(1,6,0)
+#if AST_VERSION_AT_LEAST(1,6,1)
 	f->data.ptr = data;
 #else
 	f->data = data;

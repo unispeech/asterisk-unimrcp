@@ -731,7 +731,7 @@ int load_mrcp_config(const char *filename, const char *who_asked)
 		ast_log(LOG_WARNING, "No such configuration file %s\n", filename);
 		return -1;
 	}
-#if AST_VERSION_AT_LEAST(1,6,0)
+#if AST_VERSION_AT_LEAST(1,6,2)
 	if (cfg == CONFIG_STATUS_FILEINVALID) {
 		ast_log(LOG_ERROR, "Config file %s is in an invalid format\n", filename);
 		return -1;

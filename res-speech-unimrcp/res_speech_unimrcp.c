@@ -1275,7 +1275,7 @@ static apt_bool_t uni_engine_config_load(apr_pool_t *pool)
 		ast_log(LOG_WARNING, "No such configuration file %s\n", UNI_ENGINE_CONFIG);
 		return FALSE;
 	}
-#if AST_VERSION_AT_LEAST(1,6,0)
+#if AST_VERSION_AT_LEAST(1,6,2)
 	if(cfg == CONFIG_STATUS_FILEINVALID) {
 		ast_log(LOG_ERROR, "Config file %s is in an invalid format\n", UNI_ENGINE_CONFIG);
 		return FALSE;
