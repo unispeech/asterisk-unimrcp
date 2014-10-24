@@ -109,6 +109,9 @@
 					<option name="uer"> <para>URI-encoded results 
 						(1: URI-encode NLMSL results, 0: do not encode).</para>
 					</option>
+					<option name="sit"> <para>Start input timers value (0: no, 1: yes [start with RECOGNIZE], 
+						2: auto [start when prompt is finished]).</para>
+					</option>
 				</optionlist>
 			</parameter>
 		</syntax>
@@ -149,7 +152,8 @@ enum mrcprecog_option_flags {
 	MRCPRECOG_BARGEIN             = (4 << 0),
 	MRCPRECOG_GRAMMAR_DELIMITERS  = (5 << 0),
 	MRCPRECOG_EXIT_ON_PLAYERROR   = (6 << 0),
-	MRCPRECOG_URI_ENCODED_RESULTS = (7 << 0)
+	MRCPRECOG_URI_ENCODED_RESULTS = (7 << 0),
+	MRCPRECOG_INPUT_TIMERS        = (8 << 0)
 };
 
 /* The enumeration of option arguments. */
@@ -161,9 +165,17 @@ enum mrcprecog_option_args {
 	OPT_ARG_GRAMMAR_DELIMITERS   = 4,
 	OPT_ARG_EXIT_ON_PLAYERROR    = 5,
 	OPT_ARG_URI_ENCODED_RESULTS  = 6,
+	OPT_ARG_INPUT_TIMERS         = 7,
 
 	/* This MUST be the last value in this enum! */
-	OPT_ARG_ARRAY_SIZE           = 7
+	OPT_ARG_ARRAY_SIZE           = 8
+};
+
+/* The enumeration of plocies for the use of input timers. */
+enum mrcprecog_it_policies {
+	IT_POLICY_OFF               = 0, /* do not start input timers */
+	IT_POLICY_ON                = 1, /* start input timers with RECOGNIZE */
+	IT_POLICY_AUTO                   /* start input timers once prompt is finished [default] */
 };
 
 /* The structure which holds the application options (including the MRCP params). */
@@ -178,9 +190,10 @@ typedef struct mrcprecog_options_t mrcprecog_options_t;
 
 /* The application session. */
 struct mrcprecog_session_t {
-	apr_pool_t         *pool;
-	speech_channel_t   *schannel;
-	ast_format_compat  *readformat;
+	apr_pool_t         *pool;               /* memory pool */
+	speech_channel_t   *schannel;           /* recognition channel */
+	ast_format_compat  *readformat;         /* old read format, to be restored */
+	int                 it_policy;          /* input timers policy (mrcprecog_it_policies) */
 };
 
 typedef struct mrcprecog_session_t mrcprecog_session_t;
@@ -901,6 +914,9 @@ static int mrcprecog_option_apply(mrcprecog_options_t *options, const char *key,
 	} else if (strcasecmp(key, "uer") == 0) {
 		options->flags |= MRCPRECOG_URI_ENCODED_RESULTS;
 		options->params[OPT_ARG_URI_ENCODED_RESULTS] = value;
+	} else if (strcasecmp(key, "sit") == 0) {
+		options->flags |= MRCPRECOG_INPUT_TIMERS;
+		options->params[OPT_ARG_INPUT_TIMERS] = value;
 	}
 	else {
 		ast_log(LOG_WARNING, "Unknown option: %s\n", key);
@@ -995,6 +1011,7 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 
 	mrcprecog_session.schannel = NULL;
 	mrcprecog_session.readformat = NULL;
+	mrcprecog_session.it_policy = IT_POLICY_AUTO;
 
 	mrcprecog_options.recog_hfs = NULL;
 	mrcprecog_options.flags = 0;
@@ -1153,7 +1170,20 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 		}
 	}
 
+	/* Check the policy for input timers. */
+	if ((mrcprecog_options.flags & MRCPRECOG_INPUT_TIMERS) == MRCPRECOG_INPUT_TIMERS) {
+		if (!ast_strlen_zero(mrcprecog_options.params[OPT_ARG_INPUT_TIMERS])) {
+			switch(atoi(mrcprecog_options.params[OPT_ARG_INPUT_TIMERS])) {
+				case 0: mrcprecog_session.it_policy = IT_POLICY_OFF; break;
+				case 1: mrcprecog_session.it_policy = IT_POLICY_ON; break;
+				default: mrcprecog_session.it_policy = IT_POLICY_AUTO;
+			}
+		}
+	}
+
 	int start_input_timers = filestream ? 0 : 1;
+	if (mrcprecog_session.it_policy != IT_POLICY_AUTO)
+		start_input_timers = mrcprecog_session.it_policy;
 	recognizer_data_t *r = mrcprecog_session.schannel->data;
 
 	ast_log(LOG_NOTICE, "(%s) Recognizing, enable DTMFs: %d, start input timers: %d\n", name, dtmf_enable, start_input_timers);
@@ -1188,8 +1218,11 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 			if(!read_filestep)
 				read_filestep = read_filelength;
 			if (read_filelength + read_filestep > max_filelength) {
-				ast_log(LOG_DEBUG, "(%s) File is over, read length:%"APR_OFF_T_FMT" => Start input timers\n", name, read_filelength);
-				recog_channel_start_input_timers(mrcprecog_session.schannel);
+				ast_log(LOG_DEBUG, "(%s) File is over, read length:%"APR_OFF_T_FMT"\n", name, read_filelength);
+				if (mrcprecog_session.it_policy == IT_POLICY_AUTO) {
+					ast_log(LOG_DEBUG, "(%s) Start input timers\n", name);
+					recog_channel_start_input_timers(mrcprecog_session.schannel);
+				}
 				filestream = NULL;
 			}
 			else if (r && r->start_of_input) {

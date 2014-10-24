@@ -88,6 +88,9 @@
 						(1: URI-encode NLMSL results, 0: do not encode).</para>
 					</option>
 					<option name="od"> <para>Output (prompt) delimiters.</para> </option>
+					<option name="sit"> <para>Start input timers value (0: no, 1: yes [start with RECOGNIZE],
+						2: auto [start when prompt is finished]).</para>
+					</option>
 				</optionlist>
 			</parameter>
 		</syntax>
@@ -128,7 +131,8 @@ enum sar_option_flags {
 	SAR_BARGEIN                = (3 << 0),
 	SAR_GRAMMAR_DELIMITERS     = (4 << 0),
 	SAR_URI_ENCODED_RESULTS    = (5 << 0),
-	SAR_OUTPUT_DELIMITERS      = (6 << 0)
+	SAR_OUTPUT_DELIMITERS      = (6 << 0),
+	SAR_INPUT_TIMERS           = (7 << 0)
 };
 
 /* The enumeration of option arguments. */
@@ -139,9 +143,17 @@ enum sar_option_args {
 	OPT_ARG_GRAMMAR_DELIMITERS  = 3,
 	OPT_ARG_URI_ENCODED_RESULTS = 4,
 	OPT_ARG_OUTPUT_DELIMITERS   = 5,
+	OPT_ARG_INPUT_TIMERS        = 6,
 
 	/* This MUST be the last value in this enum! */
-	OPT_ARG_ARRAY_SIZE          = 6
+	OPT_ARG_ARRAY_SIZE          = 7
+};
+
+/* The enumeration of plocies for the use of input timers. */
+enum sar_it_policies {
+	IT_POLICY_OFF               = 0, /* do not start input timers */
+	IT_POLICY_ON                = 1, /* start input timers with RECOGNIZE */
+	IT_POLICY_AUTO                   /* start input timers once prompt is finished [default] */
 };
 
 /* The structure which holds the application options (including the MRCP params). */
@@ -179,6 +191,7 @@ struct sar_session_t {
 	int                    cur_prompt;         /* current prompt index */
 	struct ast_filestream *filestream;         /* filestream, if any */
 	off_t                  max_filelength;     /* max file length used with file playing, if any */
+	int                    it_policy;          /* input timers policy (sar_it_policies) */
 };
 
 typedef struct sar_session_t sar_session_t;
@@ -1132,6 +1145,9 @@ static int synthandrecog_option_apply(sar_options_t *options, const char *key, c
 	} else if (strcasecmp(key, "od") == 0) {
 		options->flags |= SAR_OUTPUT_DELIMITERS;
 		options->params[OPT_ARG_OUTPUT_DELIMITERS] = value;
+	} else if (strcasecmp(key, "sit") == 0) {
+		options->flags |= SAR_INPUT_TIMERS;
+		options->params[OPT_ARG_INPUT_TIMERS] = value;
 	} else {
 		ast_log(LOG_WARNING, "Unknown option: %s\n", key);
 	}
@@ -1344,6 +1360,7 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 	sar_session.cur_prompt = 0;
 	sar_session.filestream = NULL;
 	sar_session.max_filelength = 0;
+	sar_session.it_policy = IT_POLICY_AUTO;
 
 	sar_options.recog_hfs = NULL;
 	sar_options.synth_hfs = NULL;
@@ -1564,7 +1581,20 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 		prompt_processing = 0;
 	}
 
+	/* Check the policy for input timers. */
+	if ((sar_options.flags & SAR_INPUT_TIMERS) == SAR_INPUT_TIMERS) {
+		if (!ast_strlen_zero(sar_options.params[OPT_ARG_INPUT_TIMERS])) {
+			switch(atoi(sar_options.params[OPT_ARG_INPUT_TIMERS])) {
+				case 0: sar_session.it_policy = IT_POLICY_OFF; break;
+				case 1: sar_session.it_policy = IT_POLICY_ON; break;
+				default: sar_session.it_policy = IT_POLICY_AUTO;
+			}
+		}
+	}
+
 	int start_input_timers = !prompt_processing;
+	if (sar_session.it_policy != IT_POLICY_AUTO)
+		start_input_timers = sar_session.it_policy;
 	recognizer_data_t *r = sar_session.recog_channel->data;
 
 	ast_log(LOG_NOTICE, "(%s) Recognizing, Start-Input-Timers: %d\n", recog_name, start_input_timers);
@@ -1635,8 +1665,10 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 				}
 				else {
 					/* End of prompts -> start input timers. */
-					ast_log(LOG_DEBUG, "(%s) Start input timers\n", recog_name);
-					recog_channel_start_input_timers(sar_session.recog_channel);
+					if (sar_session.it_policy == IT_POLICY_AUTO) {
+						ast_log(LOG_DEBUG, "(%s) Start input timers\n", recog_name);
+						recog_channel_start_input_timers(sar_session.recog_channel);
+					}
 					prompt_processing = 0;
 				}
 			}
