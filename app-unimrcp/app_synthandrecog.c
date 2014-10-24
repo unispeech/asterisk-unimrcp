@@ -1536,6 +1536,13 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 			end_of_prompt = 0;
 			if(prompt_item->is_audio_file) {
 				if (ast_waitstream(chan, "") != 0) {
+					f = ast_read(chan);
+					if (!f) {
+						ast_log(LOG_DEBUG, "(%s) ast_waitstream failed on %s, channel read is a null frame. Hangup detected\n", recog_name, ast_channel_name(chan));
+						return synthandrecog_exit(chan, &sar_session, SPEECH_CHANNEL_STATUS_INTERRUPTED);
+					}
+					ast_frfree(f);
+
 					ast_log(LOG_WARNING, "(%s) ast_waitstream failed on %s\n", recog_name, ast_channel_name(chan));
 					return synthandrecog_exit(chan, &sar_session, SPEECH_CHANNEL_STATUS_ERROR);
 				}

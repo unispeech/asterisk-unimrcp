@@ -1147,6 +1147,13 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 			if (bargein == 0) {
 				/* Barge-in is not allowed, wait for stream to end. */
 				if (ast_waitstream(chan, "") != 0) {
+					f = ast_read(chan);
+					if (!f) {
+						ast_log(LOG_DEBUG, "(%s) ast_waitstream failed on %s, channel read is a null frame. Hangup detected\n", name, ast_channel_name(chan));
+						return mrcprecog_exit(chan, &mrcprecog_session, SPEECH_CHANNEL_STATUS_INTERRUPTED);
+					}
+					ast_frfree(f);
+
 					ast_log(LOG_WARNING, "(%s) ast_waitstream failed on %s\n", name, ast_channel_name(chan));
 					return mrcprecog_exit(chan, &mrcprecog_session, SPEECH_CHANNEL_STATUS_ERROR);
 				}
