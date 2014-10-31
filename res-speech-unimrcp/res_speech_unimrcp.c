@@ -1381,8 +1381,15 @@ static apt_bool_t uni_engine_load()
 	dir_layout = apt_default_dir_layout_create(UNIMRCP_DIR_LOCATION,pool);
 	/* Create singleton logger */
 	apt_log_instance_create(uni_engine.log_output, uni_engine.log_level, pool);
-	/* Open the log file */
-	apt_log_file_open(dir_layout->log_dir_path,"astuni",MAX_LOG_FILE_SIZE,MAX_LOG_FILE_COUNT,TRUE,pool);
+	if(apt_log_output_mode_check(APT_LOG_OUTPUT_FILE) == TRUE) {
+#ifdef OPAQUE_DIR_LAYOUT
+		const char *log_dir_path = apt_dir_layout_path_get(dir_layout,APT_LAYOUT_LOG_DIR);
+#else
+		const char *log_dir_path = dir_layout->log_dir_path;
+#endif
+		/* Open the log file */
+		apt_log_file_open(log_dir_path,"astuni",MAX_LOG_FILE_SIZE,MAX_LOG_FILE_COUNT,TRUE,pool);
+	}
 
 	uni_engine.client = unimrcp_client_create(dir_layout);
 	if(uni_engine.client) {
