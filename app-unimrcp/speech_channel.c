@@ -295,7 +295,6 @@ speech_channel_t *speech_channel_create(apr_pool_t *pool, const char *name, spee
 
 static mpf_termination_t *speech_channel_create_mpf_termination(speech_channel_t *schannel)
 {   
-	mpf_termination_t *termination = NULL;
 	mpf_stream_capabilities_t *capabilities = NULL;
 	int sample_rates;
 
@@ -304,8 +303,10 @@ static mpf_termination_t *speech_channel_create_mpf_termination(speech_channel_t
 	else
 		capabilities = mpf_source_stream_capabilities_create(schannel->unimrcp_session->pool);
 
-	if (capabilities == NULL)
+	if (capabilities == NULL) {
 		ast_log(LOG_ERROR, "(%s) Unable to create capabilities\n", schannel->name);
+		return NULL;
+	}
 
 	/* UniMRCP should transcode whatever the MRCP server wants to use into LPCM
 	 * (host-byte ordered L16) for us. Asterisk may not support all of these.
@@ -325,16 +326,11 @@ static mpf_termination_t *speech_channel_create_mpf_termination(speech_channel_t
 	else
 		mpf_codec_capabilities_add(&capabilities->codecs, sample_rates, schannel->codec);
 
-	termination = mrcp_application_audio_termination_create(
+	return mrcp_application_audio_termination_create(
 					schannel->unimrcp_session,                        /* Session, termination belongs to. */
 					&schannel->application->audio_stream_vtable,      /* Virtual methods table of audio stream. */
 					capabilities,                                     /* Capabilities of audio stream. */
 					schannel);                                        /* Object to associate. */
-
-	if (termination == NULL)
-		ast_log(LOG_ERROR, "(%s) Unable to create termination\n", schannel->name);
-
-	return termination;
 }
 
 /* Destroy the speech channel. */
