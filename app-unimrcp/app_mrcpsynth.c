@@ -193,7 +193,7 @@ static apt_bool_t speech_on_channel_add(mrcp_application_t *application, mrcp_se
 	ast_log(LOG_DEBUG, "(%s) speech_on_channel_add\n", schannel->name);
 
 	if (status == MRCP_SIG_STATUS_CODE_SUCCESS) {
-		const mpf_codec_descriptor_t *descriptor = descriptor = mrcp_application_sink_descriptor_get(channel);
+		const mpf_codec_descriptor_t *descriptor = mrcp_application_sink_descriptor_get(channel);
 		if (!descriptor) {
 			ast_log(LOG_ERROR, "(%s) Unable to determine codec descriptor\n", schannel->name);
 			speech_channel_set_state(schannel, SPEECH_CHANNEL_ERROR);
