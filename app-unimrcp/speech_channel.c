@@ -1023,30 +1023,32 @@ int get_recog_format(struct ast_channel *chan, ast_format_compat *format)
 
 const char* format_to_str(const ast_format_compat *format)
 {
+	const char *str;
 	switch(format->id) {
 		/*! Raw mu-law data (G.711) */
-		case AST_FORMAT_ULAW: return "PCMU";
+		case AST_FORMAT_ULAW: str = "PCMU"; break;
 		/*! Raw A-law data (G.711) */
-		case AST_FORMAT_ALAW: return "PCMA";
+		case AST_FORMAT_ALAW: str = "PCMA"; break;
 		/*! Raw 16-bit Signed Linear (8000 Hz) PCM */
-		case AST_FORMAT_SLINEAR: return "L16";
+		case AST_FORMAT_SLINEAR: str = "L16"; break;
 		/*! Use Raw 16-bit Signed Linear (8000 Hz) PCM for the rest */
-		default: return "L16";
+		default: str = "L16";
 	}
-	return "L16";
+	return str;
 }
 
 int format_to_bytes_per_sample(const ast_format_compat *format)
 {
+	int bps;
 	switch(format->id) {
 		/*! Raw mu-law data (G.711) */
-		case AST_FORMAT_ULAW: return 1;
+		case AST_FORMAT_ULAW: bps = 1; break;
 		/*! Raw A-law data (G.711) */
-		case AST_FORMAT_ALAW: return 1;
+		case AST_FORMAT_ALAW: bps = 1; break;
 		/*! Raw 16-bit Signed Linear (8000 Hz) PCM */
-		case AST_FORMAT_SLINEAR: return 2;
+		case AST_FORMAT_SLINEAR: bps = 2; break;
 		/*! Use Raw 16-bit Signed Linear (8000 Hz) PCM for the rest */
-		default: return 2;
+		default: bps = 2;
 	}
-	return 2;
+	return bps;
 }
