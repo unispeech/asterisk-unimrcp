@@ -313,7 +313,9 @@ static void uni_recog_cleanup(uni_speech_t *uni_speech)
 		uni_speech->media_buffer = NULL;
 	}
 
-	mrcp_application_session_destroy(uni_speech->session);
+	if(mrcp_application_session_destroy(uni_speech->session) != TRUE) {
+		ast_log(LOG_WARNING, "(%s) Failed to destroy application session\n",uni_speech->name);
+	}
 }
 
 /*! \brief Stop the in-progress recognition */
