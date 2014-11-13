@@ -591,6 +591,8 @@ static int load_profiles(mrcp_client_t *client, mrcp_connection_agent_t *shared_
 				ast_log(LOG_WARNING, "Unable to register MRCP client profile\n");
 		}
 	}
+
+	return 0;
 }
 
 
