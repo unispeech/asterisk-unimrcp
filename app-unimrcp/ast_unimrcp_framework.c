@@ -425,6 +425,174 @@ static int process_mrcpv2_config(mrcp_sofia_client_config_t *config, mrcp_sig_se
 }
 
 /* --- MRCP CLIENT --- */
+static int load_profiles(mrcp_client_t *client, mrcp_connection_agent_t *shared_connection_agent, mpf_engine_t *shared_media_engine, apr_pool_t *pool)
+{
+	apr_hash_index_t *hi;
+
+	for (hi = apr_hash_first(NULL, globals.profiles); hi; hi = apr_hash_next(hi)) {
+		const char *k;
+		ast_mrcp_profile_t *v;
+		const void *key;
+		void *val;
+
+		apr_hash_this(hi, &key, NULL, &val);
+
+		k = (const char *)key;
+		v = (ast_mrcp_profile_t *)val;
+
+		if (v == NULL) continue;
+
+		ast_log(LOG_DEBUG, "Processing profile %s:%s\n", k, v->version);
+
+		/* A profile is a signaling agent + termination factory + media engine + connection agent (MRCPv2 only). */
+		mrcp_sig_agent_t *agent = NULL;
+		mpf_termination_factory_t *termination_factory = NULL;
+		mrcp_profile_t * mprofile = NULL;
+		mpf_rtp_config_t *rtp_config = NULL;
+		mpf_rtp_settings_t *rtp_settings = mpf_rtp_settings_alloc(pool);
+		mrcp_sig_settings_t *sig_settings = mrcp_signaling_settings_alloc(pool);
+		ast_mrcp_profile_t *mod_profile = NULL;
+		mrcp_connection_agent_t *connection_agent = NULL;
+		mpf_engine_t *media_engine = shared_media_engine;
+
+		/* Get profile attributes. */
+		const char *name = apr_pstrdup(pool, k);
+		const char *version = apr_pstrdup(pool, v->version);
+
+		if ((name == NULL) || (strlen(name) == 0) || (version == NULL) || (strlen(version) == 0)) {
+			ast_log(LOG_ERROR, "Profile %s missing name or version attribute\n", k);
+			return -1;
+		}
+
+		/* Create RTP config, common to MRCPv1 and MRCPv2. */
+		if ((rtp_config = mpf_rtp_config_alloc(pool)) == NULL) {
+			ast_log(LOG_ERROR, "Unable to create RTP configuration\n");
+			return -1;
+		}
+
+		rtp_config->rtp_port_min = DEFAULT_RTP_PORT_MIN;
+		rtp_config->rtp_port_max = DEFAULT_RTP_PORT_MAX;
+		apt_string_set(&rtp_config->ip, DEFAULT_LOCAL_IP_ADDRESS);
+
+		if (strcmp("1", version) == 0) {
+			/* MRCPv1 configuration. */
+			rtsp_client_config_t *config = mrcp_unirtsp_client_config_alloc(pool);
+
+			if (config == NULL) {
+				ast_log(LOG_ERROR, "Unable to create RTSP configuration\n");
+				return -1;
+			}
+
+			config->origin = DEFAULT_SDP_ORIGIN;
+			if (globals.unimrcp_request_timeout != NULL) {
+				config->request_timeout = (apr_size_t)atol(globals.unimrcp_request_timeout);
+			}
+			sig_settings->resource_location = DEFAULT_RESOURCE_LOCATION;
+
+			ast_log(LOG_DEBUG, "Loading MRCPv1 profile: %s\n", name);
+
+			apr_hash_index_t *hicfg;
+
+			for (hicfg = apr_hash_first(NULL, v->cfg); hicfg; hicfg = apr_hash_next(hicfg)) {
+				const char *param_name;
+				const char *param_value;
+				const void *keyc;
+				void *valc;
+
+				apr_hash_this(hicfg, &keyc, NULL, &valc);
+
+				param_name = (const char *)keyc;
+				param_value = (const char *)valc;
+
+				if ((param_name != NULL) && (param_value != NULL)) {
+					if (strlen(param_name) == 0) {
+						ast_log(LOG_ERROR, "Missing parameter name\n");
+						return -1;
+					}
+
+					ast_log(LOG_DEBUG, "Loading parameter %s:%s\n", param_name, param_value);
+
+					if ((!process_mrcpv1_config(config, sig_settings, param_name, param_value, pool)) &&
+						(!process_rtp_config(client, rtp_config, rtp_settings, param_name, param_value, pool)) &&
+						(!process_profile_config(mod_profile, param_name, param_value, pool))) {
+						ast_log(LOG_WARNING, "Unknown parameter %s\n", param_name);
+					}
+				}
+			}
+
+			agent = mrcp_unirtsp_client_agent_create(name, config, pool);
+		} else if (strcmp("2", version) == 0) {
+			/* MRCPv2 configuration. */
+			mrcp_sofia_client_config_t *config = mrcp_sofiasip_client_config_alloc(pool);
+	
+			if (config == NULL) {
+				ast_log(LOG_ERROR, "Unable to create SIP configuration\n");
+				return -1;
+			}
+
+			config->local_ip = DEFAULT_LOCAL_IP_ADDRESS;
+			config->local_port = DEFAULT_SIP_LOCAL_PORT;
+			sig_settings->server_ip = DEFAULT_REMOTE_IP_ADDRESS;
+			sig_settings->server_port = DEFAULT_SIP_REMOTE_PORT;
+			config->ext_ip = NULL;
+			config->user_agent_name = DEFAULT_SOFIASIP_UA_NAME;
+			config->origin = DEFAULT_SDP_ORIGIN;
+
+			ast_log(LOG_DEBUG, "Loading MRCPv2 profile: %s\n", name);
+
+			apr_hash_index_t *hicfg;
+
+			for (hicfg = apr_hash_first(NULL, v->cfg); hicfg; hicfg = apr_hash_next(hicfg)) {
+				const char *param_name;
+				const char *param_value;
+				const void *keyc;
+				void *valc;
+
+				apr_hash_this(hicfg, &keyc, NULL, &valc);
+
+				param_name = (const char *)keyc;
+				param_value = (const char *)valc;
+
+				if ((param_name != NULL) && (param_value != NULL)) {
+					if (strlen(param_name) == 0) {
+						ast_log(LOG_ERROR, "Missing parameter name\n");
+						return -1;
+					}
+
+					ast_log(LOG_DEBUG, "Loading parameter %s:%s\n", param_name, param_value);
+
+					if ((!process_mrcpv2_config(config, sig_settings, param_name, param_value, pool)) &&
+						(!process_rtp_config(client, rtp_config, rtp_settings, param_name, param_value, pool)) &&
+						(!process_profile_config(mod_profile, param_name, param_value, pool))) {
+						ast_log(LOG_WARNING, "Unknown parameter %s\n", param_name);
+					}
+				}
+			}
+
+			agent = mrcp_sofiasip_client_agent_create(name, config, pool);
+			connection_agent = shared_connection_agent;
+		} else {
+			ast_log(LOG_ERROR, "Version must be either \"1\" or \"2\"\n");
+			return -1;
+		}
+
+		if ((termination_factory = mpf_rtp_termination_factory_create(rtp_config, pool)) != NULL)
+			mrcp_client_rtp_factory_register(client, termination_factory, name);
+
+		mrcp_client_rtp_settings_register(client, rtp_settings, "RTP-Settings");
+		mrcp_client_signaling_settings_register(client, sig_settings, "Signalling-Settings");
+
+		if (agent != NULL)
+			mrcp_client_signaling_agent_register(client, agent);
+
+		/* Create the profile and register it. */
+		if ((mprofile = mrcp_client_profile_create(NULL, agent, connection_agent, media_engine, termination_factory, rtp_settings, sig_settings, pool)) != NULL) {
+			if (!mrcp_client_profile_register(client, mprofile, name))
+				ast_log(LOG_WARNING, "Unable to register MRCP client profile\n");
+		}
+	}
+}
+
 
 /* Create an MRCP client.
  *
@@ -541,173 +709,8 @@ mrcp_client_t *mod_unimrcp_client_create(apr_pool_t *mod_pool)
 	}
 
 	if (globals.profiles) {
-		apr_hash_index_t *hi;
-
-		for (hi = apr_hash_first(NULL, globals.profiles); hi; hi = apr_hash_next(hi)) {
-			const char *k;
-			ast_mrcp_profile_t *v;
-			const void *key;
-			void *val;
-
-			apr_hash_this(hi, &key, NULL, &val);
-
-			k = (const char *)key;
-			v = (ast_mrcp_profile_t *)val;
-
-			if (v != NULL) {
-				ast_log(LOG_DEBUG, "Processing profile %s:%s\n", k, v->version);
-
-				/* A profile is a signaling agent + termination factory + media engine + connection agent (MRCPv2 only). */
-				mrcp_sig_agent_t *agent = NULL;
-				mpf_termination_factory_t *termination_factory = NULL;
-				mrcp_profile_t * mprofile = NULL;
-				mpf_rtp_config_t *rtp_config = NULL;
-				mpf_rtp_settings_t *rtp_settings = mpf_rtp_settings_alloc(pool);
-				mrcp_sig_settings_t *sig_settings = mrcp_signaling_settings_alloc(pool);
-				ast_mrcp_profile_t *mod_profile = NULL;
-				mrcp_connection_agent_t *connection_agent = NULL;
-				mpf_engine_t *media_engine = shared_media_engine;
-
-				/* Get profile attributes. */
-				const char *name = apr_pstrdup(mod_pool, k);
-				const char *version = apr_pstrdup(mod_pool, v->version);
-
-				if ((name == NULL) || (strlen(name) == 0) || (version == NULL) || (strlen(version) == 0)) {
-					ast_log(LOG_ERROR, "Profile %s missing name or version attribute\n", k);
-					return NULL;
-				}
-
-				/* Create RTP config, common to MRCPv1 and MRCPv2. */
-				if ((rtp_config = mpf_rtp_config_alloc(pool)) == NULL) {
-					ast_log(LOG_ERROR, "Unable to create RTP configuration\n");
-					return NULL;
-				}
-
-				rtp_config->rtp_port_min = DEFAULT_RTP_PORT_MIN;
-				rtp_config->rtp_port_max = DEFAULT_RTP_PORT_MAX;
-				apt_string_set(&rtp_config->ip, DEFAULT_LOCAL_IP_ADDRESS);
-
-				if (strcmp("1", version) == 0) {
-					/* MRCPv1 configuration. */
-					rtsp_client_config_t *config = mrcp_unirtsp_client_config_alloc(pool);
-
-					if (config == NULL) {
-						ast_log(LOG_ERROR, "Unable to create RTSP configuration\n");
-						return NULL;
-					}
-
-					config->origin = DEFAULT_SDP_ORIGIN;
-					if (globals.unimrcp_request_timeout != NULL) {
-						config->request_timeout = (apr_size_t)atol(globals.unimrcp_request_timeout);
-					}
-					sig_settings->resource_location = DEFAULT_RESOURCE_LOCATION;
-
-					ast_log(LOG_DEBUG, "Loading MRCPv1 profile: %s\n", name);
-
-					apr_hash_index_t *hicfg;
-
-					for (hicfg = apr_hash_first(NULL, v->cfg); hicfg; hicfg = apr_hash_next(hicfg)) {
-						const char *param_name;
-						const char *param_value;
-						const void *keyc;
-						void *valc;
-
-						apr_hash_this(hicfg, &keyc, NULL, &valc);
-
-						param_name = (const char *)keyc;
-						param_value = (const char *)valc;
-
-						if ((param_name != NULL) && (param_value != NULL)) {
-							if (strlen(param_name) == 0) {
-								ast_log(LOG_ERROR, "Missing parameter name\n");
-								return NULL;
-							}
-
-							ast_log(LOG_DEBUG, "Loading parameter %s:%s\n", param_name, param_value);
-
-							if ((!process_mrcpv1_config(config, sig_settings, param_name, param_value, pool)) &&
-								(!process_rtp_config(client, rtp_config, rtp_settings, param_name, param_value, pool)) &&
-								(!process_profile_config(mod_profile, param_name, param_value, mod_pool))) {
-								ast_log(LOG_WARNING, "Unknown parameter %s\n", param_name);
-							}
-						}
-					}
-
-					agent = mrcp_unirtsp_client_agent_create(name, config, pool);
-				} else if (strcmp("2", version) == 0) {
-					/* MRCPv2 configuration. */
-					mrcp_sofia_client_config_t *config = mrcp_sofiasip_client_config_alloc(pool);
-	
-					if (config == NULL) {
-						ast_log(LOG_ERROR, "Unable to create SIP configuration\n");
-						return NULL;
-					}
-
-					config->local_ip = DEFAULT_LOCAL_IP_ADDRESS;
-					config->local_port = DEFAULT_SIP_LOCAL_PORT;
-					sig_settings->server_ip = DEFAULT_REMOTE_IP_ADDRESS;
-					sig_settings->server_port = DEFAULT_SIP_REMOTE_PORT;
-					config->ext_ip = NULL;
-					config->user_agent_name = DEFAULT_SOFIASIP_UA_NAME;
-					config->origin = DEFAULT_SDP_ORIGIN;
-
-					ast_log(LOG_DEBUG, "Loading MRCPv2 profile: %s\n", name);
-
-					apr_hash_index_t *hicfg;
-
-					for (hicfg = apr_hash_first(NULL, v->cfg); hicfg; hicfg = apr_hash_next(hicfg)) {
-						const char *param_name;
-						const char *param_value;
-						const void *keyc;
-						void *valc;
-
-						apr_hash_this(hicfg, &keyc, NULL, &valc);
-
-						param_name = (const char *)keyc;
-						param_value = (const char *)valc;
-
-						if ((param_name != NULL) && (param_value != NULL)) {
-							if (strlen(param_name) == 0) {
-								ast_log(LOG_ERROR, "Missing parameter name\n");
-								return NULL;
-							}
-
-							ast_log(LOG_DEBUG, "Loading parameter %s:%s\n", param_name, param_value);
-
-							if ((!process_mrcpv2_config(config, sig_settings, param_name, param_value, pool)) &&
-								(!process_rtp_config(client, rtp_config, rtp_settings, param_name, param_value, pool)) &&
-								(!process_profile_config(mod_profile, param_name, param_value, mod_pool))) {
-								ast_log(LOG_WARNING, "Unknown parameter %s\n", param_name);
-							}
-						}
-					}
-
-					agent = mrcp_sofiasip_client_agent_create(name, config, pool);
-					connection_agent = shared_connection_agent;
-				} else {
-					ast_log(LOG_ERROR, "Version must be either \"1\" or \"2\"\n");
-					return NULL;
-				}
-
-				if ((termination_factory = mpf_rtp_termination_factory_create(rtp_config, pool)) != NULL)
-					mrcp_client_rtp_factory_register(client, termination_factory, name);
-
-				if (rtp_settings != NULL)
-					mrcp_client_rtp_settings_register(client, rtp_settings, "RTP-Settings");
-
-				if (sig_settings != NULL)
-					mrcp_client_signaling_settings_register(client, sig_settings, "Signalling-Settings");
-
-				if (agent != NULL)
-					mrcp_client_signaling_agent_register(client, agent);
-
-				/* Create the profile and register it. */
-				if ((mprofile = mrcp_client_profile_create(NULL, agent, connection_agent, media_engine, termination_factory, rtp_settings, sig_settings, pool)) != NULL) {
-					if (!mrcp_client_profile_register(client, mprofile, name))
-						ast_log(LOG_WARNING, "Unable to register MRCP client profile\n");
-				}
-			}
-		}
+		if(load_profiles(client, shared_connection_agent, shared_media_engine, pool) !=0)
+			return NULL;
 	}
 
 	return client;
@@ -746,7 +749,7 @@ int load_mrcp_config(const char *filename, const char *who_asked)
 		globals.unimrcp_default_synth_profile = apr_pstrdup(globals.pool, value);
 	} else {
 		ast_log(LOG_ERROR, "Unable to load genreal.default-tts-profile from config file, aborting\n");
-	   	ast_config_destroy(cfg);
+		ast_config_destroy(cfg);
 		return -1;
 	}
 	if ((value = ast_variable_retrieve(cfg, "general", "default-asr-profile")) != NULL) {
@@ -754,7 +757,7 @@ int load_mrcp_config(const char *filename, const char *who_asked)
 		globals.unimrcp_default_recog_profile = apr_pstrdup(globals.pool, value);
 	} else {
 		ast_log(LOG_ERROR, "Unable to load genreal.default-asr-profile from config file, aborting\n");
-	   	ast_config_destroy(cfg);
+		ast_config_destroy(cfg);
 		return -1;
 	}
 	if ((value = ast_variable_retrieve(cfg, "general", "log-level")) != NULL) {
