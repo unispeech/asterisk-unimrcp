@@ -97,8 +97,9 @@ struct speech_channel_t {
 	speech_channel_state_t state;
 	/* UniMRCP <--> Asterisk audio buffer. */
 	audio_queue_t *audio_queue;
+	/* Speech format. */
+	ast_format_compat *format;
 	/* Codec. */
-	/* BOOKMARK - Remove next line. */
 	char *codec;
 	/* Rate. */
 	apr_uint16_t rate;
@@ -173,7 +174,14 @@ void speech_channel_set_state(speech_channel_t *schannel, speech_channel_state_t
 int speech_channel_bargeinoccurred(speech_channel_t *schannel);
 
 /* Create a new speech channel. */
-speech_channel_t *speech_channel_create(apr_pool_t *pool, const char *name, speech_channel_type_t type, ast_mrcp_application_t *app, const char *codec, apr_uint16_t rate, struct ast_channel *chan);
+speech_channel_t *speech_channel_create(
+						apr_pool_t *pool,
+						const char *name,
+						speech_channel_type_t type,
+						ast_mrcp_application_t *app,
+						ast_format_compat *format,
+						apr_uint16_t rate,
+						struct ast_channel *chan);
 
 /* Destroy the speech channel. */
 int speech_channel_destroy(speech_channel_t *schannel);
@@ -233,12 +241,5 @@ const char *grammar_type_to_mime(grammar_type_t type, const ast_mrcp_profile_t *
 
 /* Trim any leading and trailing whitespaces and unquote the input string. */
 char *normalize_input_string(char *str);
-
-/* --- CODEC/FORMAT FUNCTIONS  --- */
-int get_synth_format(struct ast_channel *chan, ast_format_compat *format);
-int get_recog_format(struct ast_channel *chan, ast_format_compat *format);
-
-const char* format_to_str(const ast_format_compat *format);
-int format_to_bytes_per_sample(const ast_format_compat *format);
 
 #endif /* SPEECH_CHANNEL_H */

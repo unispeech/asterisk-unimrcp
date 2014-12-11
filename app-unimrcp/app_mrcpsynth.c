@@ -477,13 +477,6 @@ static int mrcpsynth_exit(struct ast_channel *chan, mrcpsynth_session_t *mrcpsyn
 /* The entry point of the application. */
 static int app_synth_exec(struct ast_channel *chan, ast_app_data data)
 {
-	ast_format_compat nwriteformat;
-	ast_format_clear(&nwriteformat);
-	get_synth_format(chan, &nwriteformat);
-
-	int samplerate = 8000;
-	/* int framesize = DEFAULT_FRAMESIZE; */
-	int framesize = format_to_bytes_per_sample(&nwriteformat) * (DEFAULT_FRAMESIZE / 2);
 	struct ast_frame *f;
 	struct ast_frame fr;
 	struct timeval next;
@@ -493,7 +486,6 @@ static int app_synth_exec(struct ast_channel *chan, ast_app_data data)
 	ast_mrcp_profile_t *profile;
 	apr_uint32_t speech_channel_number = get_next_speech_channel_number();
 	const char *name;
-	char buffer[framesize];
 	speech_channel_status_t status;
 	char *parse;
 	int i;
@@ -566,9 +558,21 @@ static int app_synth_exec(struct ast_channel *chan, ast_app_data data)
 			mrcpsynth_session.fp = fopen(filename, "wb");
 	}
 
+	ast_format_compat *nwriteformat = ast_channel_get_speechwriteformat(chan, mrcpsynth_session.pool);
+	int samplerate = 8000;
+	int framesize = format_to_bytes_per_sample(nwriteformat) * (DEFAULT_FRAMESIZE / 2);
+	char buffer[framesize];
+
 	name = apr_psprintf(mrcpsynth_session.pool, "TTS-%lu", (unsigned long int)speech_channel_number);
 
-	mrcpsynth_session.schannel = speech_channel_create(mrcpsynth_session.pool, name, SPEECH_CHANNEL_SYNTHESIZER, mrcpsynth, format_to_str(&nwriteformat), samplerate, chan);
+	mrcpsynth_session.schannel = speech_channel_create(
+									mrcpsynth_session.pool,
+									name,
+									SPEECH_CHANNEL_SYNTHESIZER,
+									mrcpsynth,
+									nwriteformat,
+									samplerate,
+									chan);
 	if (!mrcpsynth_session.schannel) {
 		return mrcpsynth_exit(chan, &mrcpsynth_session, SPEECH_CHANNEL_STATUS_ERROR);
 	}
@@ -590,16 +594,10 @@ static int app_synth_exec(struct ast_channel *chan, ast_app_data data)
 		return mrcpsynth_exit(chan, &mrcpsynth_session, SPEECH_CHANNEL_STATUS_ERROR);
 	}
 
-	ast_format_compat owriteformat;
-	ast_format_clear(&owriteformat);
-	ast_channel_get_writeformat(chan, &owriteformat);
 
-	if (ast_channel_set_writeformat(chan, &nwriteformat) < 0) {
-		ast_log(LOG_ERROR, "(%s) Unable to set write format to signed linear\n", name);
-		return mrcpsynth_exit(chan, &mrcpsynth_session, SPEECH_CHANNEL_STATUS_ERROR);
-	}
-
-	mrcpsynth_session.writeformat = &owriteformat;
+	ast_format_compat *owriteformat = ast_channel_get_writeformat(chan, mrcpsynth_session.pool);
+	ast_channel_set_writeformat(chan, nwriteformat);
+	mrcpsynth_session.writeformat = owriteformat;
 
 	const char *content = NULL;
 	const char *content_type = NULL;
@@ -634,10 +632,10 @@ static int app_synth_exec(struct ast_channel *chan, ast_app_data data)
 				memset(&fr, 0, sizeof(fr));
 				fr.frametype = AST_FRAME_VOICE;
 				/* fr.subclass.codec = AST_FORMAT_SLINEAR; */
-				ast_frame_set_format(&fr, &nwriteformat);
+				ast_frame_set_format(&fr, nwriteformat);
 				fr.datalen = len;
 				/* fr.samples = len / 2; */
-				fr.samples = len / format_to_bytes_per_sample(&nwriteformat);
+				fr.samples = len / format_to_bytes_per_sample(nwriteformat);
 				ast_frame_set_data(&fr, buffer);
 				fr.mallocd = 0;
 				fr.offset = AST_FRIENDLY_OFFSET;
@@ -653,7 +651,7 @@ static int app_synth_exec(struct ast_channel *chan, ast_app_data data)
 			} else {
 				if (rres == 0) {
 					/* next = ast_tvadd(next, ast_samp2tv(framesize/2, samplerate)); */
-					next = ast_tvadd(next, ast_samp2tv(framesize / format_to_bytes_per_sample(&nwriteformat), samplerate));
+					next = ast_tvadd(next, ast_samp2tv(framesize / format_to_bytes_per_sample(nwriteformat), samplerate));
 					ast_log(LOG_WARNING, "(%s) Writer starved for audio\n", name);
 				}
 			}

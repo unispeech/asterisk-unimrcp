@@ -177,7 +177,14 @@ int speech_channel_bargeinoccurred(speech_channel_t *schannel)
 	return status;
 }
 
-speech_channel_t *speech_channel_create(apr_pool_t *pool, const char *name, speech_channel_type_t type, ast_mrcp_application_t *app, const char *codec, apr_uint16_t rate, struct ast_channel *chan)
+speech_channel_t *speech_channel_create(
+						apr_pool_t *pool,
+						const char *name,
+						speech_channel_type_t type,
+						ast_mrcp_application_t *app,
+						ast_format_compat *format,
+						apr_uint16_t rate,
+						struct ast_channel *chan)
 {
 	speech_channel_t *schan = NULL;
 	int status = 0;
@@ -202,6 +209,8 @@ speech_channel_t *speech_channel_create(apr_pool_t *pool, const char *name, spee
 			schan->name = "TTS";
 		}
 
+		schan->format = format;
+		const char *codec = format_to_str(format);
 		if ((codec == NULL) || (strlen(codec) == 0)) {
 			ast_log(LOG_WARNING, "(%s) No codec specified, assuming \"L16\"\n", schan->name);
 			schan->codec = "L16";
@@ -949,102 +958,4 @@ const char *grammar_type_to_mime(grammar_type_t type, const ast_mrcp_profile_t *
 		case GRAMMAR_TYPE_JSGF: return profile->jsgf_mime_type;
 		default: return "";
 	}
-}
-
-/* --- CODEC/FORMAT FUNCTIONS  --- */
-
-static int get_speech_codec(int codec)
-{
-	switch(codec) {
-		/*! G.723.1 compression */
-		case AST_FORMAT_G723_1: return AST_FORMAT_SLINEAR;
-		/*! GSM compression */
-		case AST_FORMAT_GSM: return AST_FORMAT_SLINEAR;
-		/*! Raw mu-law data (G.711) */
-		case AST_FORMAT_ULAW: return AST_FORMAT_ULAW;
-		/*! Raw A-law data (G.711) */
-		case AST_FORMAT_ALAW: return AST_FORMAT_ALAW;
-#if AST_VERSION_AT_LEAST(1,4,0)
-		/*! ADPCM (G.726, 32kbps, AAL2 codeword packing) */
-		case AST_FORMAT_G726_AAL2: return AST_FORMAT_SLINEAR;
-#endif
-		/*! ADPCM (IMA) */
-		case AST_FORMAT_ADPCM: return AST_FORMAT_SLINEAR; 
-		/*! Raw 16-bit Signed Linear (8000 Hz) PCM */
-		case AST_FORMAT_SLINEAR: return AST_FORMAT_SLINEAR;
-		/*! LPC10, 180 samples/frame */
-		case AST_FORMAT_LPC10: return AST_FORMAT_SLINEAR;
-		/*! G.729A audio */
-		case AST_FORMAT_G729A: return AST_FORMAT_SLINEAR;
-		/*! SpeeX Free Compression */
-		case AST_FORMAT_SPEEX: return AST_FORMAT_SLINEAR;
-		/*! iLBC Free Compression */
-		case AST_FORMAT_ILBC: return AST_FORMAT_SLINEAR; 
-		/*! ADPCM (G.726, 32kbps, RFC3551 codeword packing) */
-		case AST_FORMAT_G726: return AST_FORMAT_SLINEAR;
-#if AST_VERSION_AT_LEAST(1,4,0)
-		/*! G.722 */
-		case AST_FORMAT_G722: return AST_FORMAT_SLINEAR;
-#endif
-#if AST_VERSION_AT_LEAST(1,6,2)
-		/*! G.722.1 (also known as Siren7, 32kbps assumed) */
-		case AST_FORMAT_SIREN7: return AST_FORMAT_SLINEAR;
-		/*! G.722.1 Annex C (also known as Siren14, 48kbps assumed) */
-		case AST_FORMAT_SIREN14: return AST_FORMAT_SLINEAR;
-#endif
-#if AST_VERSION_AT_LEAST(1,6,0)
-		/*! Raw 16-bit Signed Linear (16000 Hz) PCM */
-		case AST_FORMAT_SLINEAR16: return AST_FORMAT_SLINEAR;
-#endif
-		default: return AST_FORMAT_SLINEAR;
-	}
-	return AST_FORMAT_SLINEAR;
-}
-
-int get_synth_format(struct ast_channel *chan, ast_format_compat *format)
-{
-	ast_format_compat raw_format;
-	ast_channel_get_rawwriteformat(chan, &raw_format);
-	format->id = get_speech_codec(raw_format.id);
-	return 0;
-}
-
-int get_recog_format(struct ast_channel *chan, ast_format_compat *format)
-{
-	ast_format_compat raw_format;
-	ast_channel_get_rawreadformat(chan, &raw_format);
-	format->id = get_speech_codec(raw_format.id);
-	return 0;
-}
-
-const char* format_to_str(const ast_format_compat *format)
-{
-	const char *str;
-	switch(format->id) {
-		/*! Raw mu-law data (G.711) */
-		case AST_FORMAT_ULAW: str = "PCMU"; break;
-		/*! Raw A-law data (G.711) */
-		case AST_FORMAT_ALAW: str = "PCMA"; break;
-		/*! Raw 16-bit Signed Linear (8000 Hz) PCM */
-		case AST_FORMAT_SLINEAR: str = "L16"; break;
-		/*! Use Raw 16-bit Signed Linear (8000 Hz) PCM for the rest */
-		default: str = "L16";
-	}
-	return str;
-}
-
-int format_to_bytes_per_sample(const ast_format_compat *format)
-{
-	int bps;
-	switch(format->id) {
-		/*! Raw mu-law data (G.711) */
-		case AST_FORMAT_ULAW: bps = 1; break;
-		/*! Raw A-law data (G.711) */
-		case AST_FORMAT_ALAW: bps = 1; break;
-		/*! Raw 16-bit Signed Linear (8000 Hz) PCM */
-		case AST_FORMAT_SLINEAR: bps = 2; break;
-		/*! Use Raw 16-bit Signed Linear (8000 Hz) PCM for the rest */
-		default: bps = 2;
-	}
-	return bps;
 }

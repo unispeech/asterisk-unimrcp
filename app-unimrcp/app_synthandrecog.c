@@ -371,15 +371,13 @@ static apt_bool_t synth_on_message_receive(speech_channel_t *schannel, mrcp_mess
 }
 
 /* Fill the frame with data. */
-static APR_INLINE void ast_frame_fill(struct ast_channel *chan, struct ast_frame *fr, void *data, apr_size_t size)
+static APR_INLINE void ast_frame_fill(ast_format_compat *format, struct ast_frame *fr, void *data, apr_size_t size)
 {
-	ast_format_compat format;
-	get_synth_format(chan, &format);
 	memset(fr, 0, sizeof(*fr));
 	fr->frametype = AST_FRAME_VOICE;
-	ast_frame_set_format(fr, &format);
+	ast_frame_set_format(fr, format);
 	fr->datalen = size;
-	fr->samples = size / format_to_bytes_per_sample(&format);
+	fr->samples = size / format_to_bytes_per_sample(format);
 	ast_frame_set_data(fr, data);
 	fr->mallocd = 0;
 	fr->offset = AST_FRIENDLY_OFFSET;
@@ -395,7 +393,7 @@ static apt_bool_t synth_stream_write(mpf_audio_stream_t *stream, const mpf_frame
 
 	if (stream)
 		schannel = (speech_channel_t *)stream->obj;
-	else 
+	else
 		schannel = NULL;
 
 	if(!schannel || !frame) {
@@ -405,7 +403,7 @@ static apt_bool_t synth_stream_write(mpf_audio_stream_t *stream, const mpf_frame
 
 	if (frame->codec_frame.size > 0 && (frame->type & MEDIA_FRAME_TYPE_AUDIO) == MEDIA_FRAME_TYPE_AUDIO) {
 		struct ast_frame fr;
-		ast_frame_fill(schannel->chan, &fr, frame->codec_frame.buffer, frame->codec_frame.size);
+		ast_frame_fill(schannel->format, &fr, frame->codec_frame.buffer, frame->codec_frame.size);
 
 		if (ast_write(schannel->chan, &fr) < 0) {
 			ast_log(LOG_WARNING, "(%s) Unable to write frame to channel: %s\n", schannel->name, strerror(errno));
@@ -1223,8 +1221,14 @@ static sar_prompt_item_t* synthandrecog_prompt_play(sar_session_t *sar_session, 
 			const char *synth_name = apr_psprintf(sar_session->pool, "TTS-%lu", (unsigned long int)sar_session->schannel_number);
 
 			/* Create speech channel for synthesis. */
-			sar_session->synth_channel = speech_channel_create(sar_session->pool, synth_name, SPEECH_CHANNEL_SYNTHESIZER, synthandrecog,
-															   format_to_str(sar_session->nwriteformat), sar_session->samplerate, sar_session->chan);
+			sar_session->synth_channel = speech_channel_create(
+											sar_session->pool,
+											synth_name,
+											SPEECH_CHANNEL_SYNTHESIZER,
+											synthandrecog,
+											sar_session->nwriteformat,
+											sar_session->samplerate,
+											sar_session->chan);
 			if (!sar_session->synth_channel) {
 				return NULL;
 			}
@@ -1383,20 +1387,22 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 	ast_stopstream(chan);
 
 	/* Get new read format. */
-	ast_format_compat nreadformat;
-	ast_format_clear(&nreadformat);
-	get_recog_format(chan, &nreadformat);
+	ast_format_compat *nreadformat = ast_channel_get_speechreadformat(chan, sar_session.pool);
 
 	/* Get new write format. */
-	ast_format_compat nwriteformat;
-	ast_format_clear(&nwriteformat);
-	get_synth_format(chan, &nwriteformat);
+	ast_format_compat *nwriteformat = ast_channel_get_speechwriteformat(chan, sar_session.pool);
 
 	recog_name = apr_psprintf(sar_session.pool, "ASR-%lu", (unsigned long int)sar_session.schannel_number);
 
 	/* Create speech channel for recognition. */
-	sar_session.recog_channel = speech_channel_create(sar_session.pool, recog_name, SPEECH_CHANNEL_RECOGNIZER, synthandrecog, 
-													  format_to_str(&nreadformat), sar_session.samplerate, chan);
+	sar_session.recog_channel = speech_channel_create(
+										sar_session.pool,
+										recog_name,
+										SPEECH_CHANNEL_RECOGNIZER,
+										synthandrecog,
+										nreadformat,
+										sar_session.samplerate,
+										chan);
 	if (sar_session.recog_channel == NULL) {
 		return synthandrecog_exit(chan, &sar_session, SPEECH_CHANNEL_STATUS_ERROR);
 	}
@@ -1429,32 +1435,19 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 	}
 
 	/* Get old read format. */
-	ast_format_compat oreadformat;
-	ast_format_clear(&oreadformat);
-	ast_channel_get_readformat(chan, &oreadformat);
-
+	ast_format_compat *oreadformat = ast_channel_get_readformat(chan, sar_session.pool);
 	/* Get old write format. */
-	ast_format_compat owriteformat;
-	ast_format_clear(&owriteformat);
-	ast_channel_get_writeformat(chan, &owriteformat);
+	ast_format_compat *owriteformat = ast_channel_get_writeformat(chan, sar_session.pool);
 
 	/* Set read format. */
-	if (ast_channel_set_readformat(chan, &nreadformat) < 0) {
-		ast_log(LOG_WARNING, "(%s) Unable to set read format to signed linear\n", recog_name);
-		return synthandrecog_exit(chan, &sar_session, SPEECH_CHANNEL_STATUS_ERROR);
-	}
-
-	sar_session.readformat = &oreadformat;
-	sar_session.nreadformat = &nreadformat;
+	ast_channel_set_readformat(chan, nreadformat);
+	sar_session.readformat = oreadformat;
+	sar_session.nreadformat = nreadformat;
 
 	/* Set write format. */
-	if (ast_channel_set_writeformat(chan, &nwriteformat) < 0) {
-		ast_log(LOG_WARNING, "(%s) Unable to set write format to signed linear\n", recog_name);
-		return synthandrecog_exit(chan, &sar_session, SPEECH_CHANNEL_STATUS_ERROR);
-	}
-
-	sar_session.writeformat = &owriteformat;
-	sar_session.nwriteformat = &nwriteformat;
+	ast_channel_set_writeformat(chan, nwriteformat);
+	sar_session.writeformat = owriteformat;
+	sar_session.nwriteformat = nwriteformat;
 
 	/* Get grammar delimiters. */
 	const char *grammar_delimiters = ",";

@@ -1446,7 +1446,10 @@ static int load_module(void)
 	}
 
 #if AST_VERSION_AT_LEAST(10,0,0)
-#if AST_VERSION_AT_LEAST(12,0,0)
+
+#if AST_VERSION_AT_LEAST(13,0,0)
+	ast_engine.formats = ast_format_cap_alloc(AST_FORMAT_CAP_FLAG_DEFAULT);
+#elif AST_VERSION_AT_LEAST(12,0,0)
 	ast_engine.formats = ast_format_cap_alloc(AST_FORMAT_CAP_FLAG_NOLOCK);
 #else /* <= 11 */
 	ast_engine.formats = ast_format_cap_alloc_nolock();
@@ -1456,9 +1459,14 @@ static int load_module(void)
 		uni_engine_unload();
 		return AST_MODULE_LOAD_FAILURE;
 	}
+#if AST_VERSION_AT_LEAST(13,0,0)
+	ast_format_cap_append(ast_engine.formats, ast_format_slin, 0);
+#else
 	struct ast_format format;
 	ast_format_set(&format, AST_FORMAT_SLINEAR, 0);
 	ast_format_cap_add(ast_engine.formats, &format);
+#endif
+
 #else /* <= 1.8 */
 	ast_engine.formats = AST_FORMAT_SLINEAR;
 #endif

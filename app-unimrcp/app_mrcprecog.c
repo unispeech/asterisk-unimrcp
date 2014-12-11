@@ -1052,14 +1052,19 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 	/* Ensure no streams are currently playing. */
 	ast_stopstream(chan);
 
-	ast_format_compat nreadformat;
-	ast_format_clear(&nreadformat);
-	get_recog_format(chan, &nreadformat);
+	ast_format_compat *nreadformat = ast_channel_get_speechreadformat(chan, mrcprecog_session.pool);
 
 	name = apr_psprintf(mrcprecog_session.pool, "ASR-%lu", (unsigned long int)speech_channel_number);
 
 	/* Create speech channel for recognition. */
-	mrcprecog_session.schannel = speech_channel_create(mrcprecog_session.pool, name, SPEECH_CHANNEL_RECOGNIZER, mrcprecog, format_to_str(&nreadformat), samplerate, chan);
+	mrcprecog_session.schannel = speech_channel_create(
+									mrcprecog_session.pool,
+									name,
+									SPEECH_CHANNEL_RECOGNIZER,
+									mrcprecog,
+									nreadformat,
+									samplerate,
+									chan);
 	if (!mrcprecog_session.schannel) {
 		return mrcprecog_exit(chan, &mrcprecog_session, SPEECH_CHANNEL_STATUS_ERROR);
 	}
@@ -1083,16 +1088,9 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 		return mrcprecog_exit(chan, &mrcprecog_session, SPEECH_CHANNEL_STATUS_ERROR);
 	}
 
-	ast_format_compat oreadformat;
-	ast_format_clear(&oreadformat);
-	ast_channel_get_readformat(chan, &oreadformat);
-
-	if (ast_channel_set_readformat(chan, &nreadformat) < 0) {
-		ast_log(LOG_ERROR, "(%s) Unable to set read format to signed linear\n", name);
-		return mrcprecog_exit(chan, &mrcprecog_session, SPEECH_CHANNEL_STATUS_ERROR);
-	}
-
-	mrcprecog_session.readformat = &oreadformat;
+	ast_format_compat *oreadformat = ast_channel_get_readformat(chan, mrcprecog_session.pool);
+	ast_channel_set_readformat(chan, nreadformat);
+	mrcprecog_session.readformat = oreadformat;
 
 	const char *grammar_delimiters = ",";
 	/* Get grammar delimiters. */
