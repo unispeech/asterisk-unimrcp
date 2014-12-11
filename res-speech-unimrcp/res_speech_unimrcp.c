@@ -666,6 +666,17 @@ static int uni_recog_change(struct ast_speech *speech, ast_compat_const char *na
 	return 0;
 }
 
+#if AST_VERSION_AT_LEAST(12,0,0)
+/** \brief Get an engine specific attribute */
+static int uni_recog_get_settings(struct ast_speech *speech, const char *name, char *buf, size_t len)
+{
+	uni_speech_t *uni_speech = speech->data;
+
+	ast_log(LOG_NOTICE, "(%s) Get settings name: %s\n",uni_speech->name,name);
+	return -1;
+}
+#endif
+
 /** \brief Change the type of results we want back */
 static int uni_recog_change_results_type(struct ast_speech *speech,enum ast_speech_results_type results_type)
 {
@@ -1204,6 +1215,9 @@ static struct ast_speech_engine ast_engine = {
 	uni_recog_dtmf,
 	uni_recog_start,
 	uni_recog_change,
+#if AST_VERSION_AT_LEAST(12,0,0)
+	uni_recog_get_settings,
+#endif
 	uni_recog_change_results_type,
 	uni_recog_get
 };
@@ -1432,7 +1446,11 @@ static int load_module(void)
 	}
 
 #if AST_VERSION_AT_LEAST(10,0,0)
+#if AST_VERSION_AT_LEAST(12,0,0)
+	ast_engine.formats = ast_format_cap_alloc(AST_FORMAT_CAP_FLAG_NOLOCK);
+#else /* <= 11 */
 	ast_engine.formats = ast_format_cap_alloc_nolock();
+#endif
 	if(!ast_engine.formats) {
 		ast_log(LOG_ERROR, "Failed to alloc media format capabilities\n");
 		uni_engine_unload();
