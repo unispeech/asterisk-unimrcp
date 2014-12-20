@@ -109,6 +109,7 @@
 					<option name="uer"> <para>URI-encoded results 
 						(1: URI-encode NLMSL results, 0: do not encode).</para>
 					</option>
+					<option name="od"> <para>Output (prompt) delimiters.</para> </option>
 					<option name="sit"> <para>Start input timers value (0: no, 1: yes [start with RECOGNIZE], 
 						2: auto [start when prompt is finished]).</para>
 					</option>
@@ -153,7 +154,8 @@ enum mrcprecog_option_flags {
 	MRCPRECOG_GRAMMAR_DELIMITERS  = (5 << 0),
 	MRCPRECOG_EXIT_ON_PLAYERROR   = (6 << 0),
 	MRCPRECOG_URI_ENCODED_RESULTS = (7 << 0),
-	MRCPRECOG_INPUT_TIMERS        = (8 << 0)
+	MRCPRECOG_OUTPUT_DELIMITERS   = (8 << 0),
+	MRCPRECOG_INPUT_TIMERS        = (9 << 0)
 };
 
 /* The enumeration of option arguments. */
@@ -165,10 +167,11 @@ enum mrcprecog_option_args {
 	OPT_ARG_GRAMMAR_DELIMITERS   = 4,
 	OPT_ARG_EXIT_ON_PLAYERROR    = 5,
 	OPT_ARG_URI_ENCODED_RESULTS  = 6,
-	OPT_ARG_INPUT_TIMERS         = 7,
+	OPT_ARG_OUTPUT_DELIMITERS    = 7,
+	OPT_ARG_INPUT_TIMERS         = 8,
 
 	/* This MUST be the last value in this enum! */
-	OPT_ARG_ARRAY_SIZE           = 8
+	OPT_ARG_ARRAY_SIZE           = 9
 };
 
 /* The enumeration of plocies for the use of input timers. */
@@ -193,6 +196,8 @@ struct mrcprecog_session_t {
 	apr_pool_t         *pool;               /* memory pool */
 	speech_channel_t   *schannel;           /* recognition channel */
 	ast_format_compat  *readformat;         /* old read format, to be restored */
+	apr_array_header_t *prompts;            /* list of prompts */
+	int                 cur_prompt;         /* current prompt index */
 	int                 it_policy;          /* input timers policy (mrcprecog_it_policies) */
 };
 
@@ -914,6 +919,9 @@ static int mrcprecog_option_apply(mrcprecog_options_t *options, const char *key,
 	} else if (strcasecmp(key, "uer") == 0) {
 		options->flags |= MRCPRECOG_URI_ENCODED_RESULTS;
 		options->params[OPT_ARG_URI_ENCODED_RESULTS] = value;
+	} else if (strcasecmp(key, "od") == 0) {
+		options->flags |= MRCPRECOG_OUTPUT_DELIMITERS;
+		options->params[OPT_ARG_OUTPUT_DELIMITERS] = value;
 	} else if (strcasecmp(key, "sit") == 0) {
 		options->flags |= MRCPRECOG_INPUT_TIMERS;
 		options->params[OPT_ARG_INPUT_TIMERS] = value;
@@ -944,6 +952,39 @@ static int mrcprecog_options_parse(char *str, mrcprecog_options_t *options, apr_
 		}
 	}
 	return 0;
+}
+
+/* Return the number of prompts which still need to be played. */
+static APR_INLINE int mrcprecog_prompts_available(mrcprecog_session_t *mrcprecog_session)
+{
+	if(mrcprecog_session->cur_prompt >= mrcprecog_session->prompts->nelts)
+		return 0;
+	return mrcprecog_session->prompts->nelts - mrcprecog_session->cur_prompt;
+}
+
+/* Advance the current prompt index and return the number of prompts remaining. */
+static APR_INLINE int mrcprecog_prompts_advance(mrcprecog_session_t *mrcprecog_session)
+{
+	if (mrcprecog_session->cur_prompt >= mrcprecog_session->prompts->nelts)
+		return -1;
+	mrcprecog_session->cur_prompt++;
+	return mrcprecog_session->prompts->nelts - mrcprecog_session->cur_prompt;
+}
+
+/* Start playing the current prompt. */
+static struct ast_filestream* mrcprecog_prompt_play(mrcprecog_session_t *mrcprecog_session, mrcprecog_options_t *mrcprecog_options, off_t *max_filelength)
+{
+	if (mrcprecog_session->cur_prompt >= mrcprecog_session->prompts->nelts) {
+		ast_log(LOG_ERROR, "(%s) Out of bounds prompt index\n", mrcprecog_session->schannel->name);
+		return NULL;
+	}
+
+	char *filename = APR_ARRAY_IDX(mrcprecog_session->prompts, mrcprecog_session->cur_prompt, char*);
+	if (!filename) {
+		ast_log(LOG_ERROR, "(%s) Invalid file name\n", mrcprecog_session->schannel->name);
+		return NULL;
+	}
+	return astchan_stream_file(mrcprecog_session->schannel->chan, filename, max_filelength);
 }
 
 /* Exit the application. */
@@ -1011,6 +1052,8 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 
 	mrcprecog_session.schannel = NULL;
 	mrcprecog_session.readformat = NULL;
+	mrcprecog_session.prompts = apr_array_make(mrcprecog_session.pool, 1, sizeof(char*));
+	mrcprecog_session.cur_prompt = 0;
 	mrcprecog_session.it_policy = IT_POLICY_AUTO;
 
 	mrcprecog_options.recog_hfs = NULL;
@@ -1127,23 +1170,59 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 		grammar_str = apr_strtok(NULL, grammar_delimiters, &last);
 	}
 
-	off_t max_filelength = 0;
-	off_t read_filelength = 0;
-	off_t read_filestep = 0;
-	struct ast_filestream *filestream = NULL;
-	const char *filename = NULL;
+	const char *filenames = NULL;
 	if ((mrcprecog_options.flags & MRCPRECOG_FILENAME) == MRCPRECOG_FILENAME) {
 		if (!ast_strlen_zero(mrcprecog_options.params[OPT_ARG_FILENAME])) {
-			filename = mrcprecog_options.params[OPT_ARG_FILENAME];
+			filenames = mrcprecog_options.params[OPT_ARG_FILENAME];
 		}
 	}
 
-	if (filename) {
-		/* Play file. */
-		filestream = astchan_stream_file(chan, filename, &max_filelength);
-		if (filestream) {
-			if (bargein == 0) {
-				/* Barge-in is not allowed, wait for stream to end. */
+	if (filenames) {
+		/* Get output delimiters. */
+		const char *output_delimiters = "^";
+		if ((mrcprecog_options.flags & MRCPRECOG_OUTPUT_DELIMITERS) == MRCPRECOG_OUTPUT_DELIMITERS) {
+			if (!ast_strlen_zero(mrcprecog_options.params[OPT_ARG_OUTPUT_DELIMITERS])) {
+				output_delimiters = mrcprecog_options.params[OPT_ARG_OUTPUT_DELIMITERS];
+				ast_log(LOG_DEBUG, "(%s) Output delimiters: %s\n", output_delimiters, name);
+			}
+		}
+
+		/* Parse the file names into a list of files. */
+		char *last;
+		char *filenames_arg = apr_pstrdup(mrcprecog_session.pool, filenames);
+		char *filename = apr_strtok(filenames_arg, output_delimiters, &last);
+		while (filename) {
+			filename = normalize_input_string(filename);
+			ast_log(LOG_DEBUG, "(%s) Add prompt: %s\n", name, filename);
+			APR_ARRAY_PUSH(mrcprecog_session.prompts, char*) = filename;
+
+			filename = apr_strtok(NULL, output_delimiters, &last);
+		}
+	}
+
+	int exit_on_playerror = 0;
+	if ((mrcprecog_options.flags & MRCPRECOG_EXIT_ON_PLAYERROR) == MRCPRECOG_EXIT_ON_PLAYERROR) {
+		if (!ast_strlen_zero(mrcprecog_options.params[OPT_ARG_EXIT_ON_PLAYERROR])) {
+			exit_on_playerror = atoi(mrcprecog_options.params[OPT_ARG_EXIT_ON_PLAYERROR]);
+			if ((exit_on_playerror < 0) || (exit_on_playerror > 2))
+				exit_on_playerror = 1;
+		}
+	}
+
+	int prompt_processing = (mrcprecog_prompts_available(&mrcprecog_session)) ? 1 : 0;
+	struct ast_filestream *filestream = NULL;
+	off_t max_filelength;
+
+	/* If bargein is not allowed, play all the prompts and wait for for them to complete. */
+	if (!bargein && prompt_processing) {
+		/* Start playing first prompt. */
+		filestream = mrcprecog_prompt_play(&mrcprecog_session, &mrcprecog_options, &max_filelength);
+		if (!filestream && exit_on_playerror) {
+			return mrcprecog_exit(chan, &mrcprecog_session, SPEECH_CHANNEL_STATUS_ERROR);
+		}
+
+		do {
+			if (filestream) {
 				if (ast_waitstream(chan, "") != 0) {
 					f = ast_read(chan);
 					if (!f) {
@@ -1157,22 +1236,23 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 				}
 				filestream = NULL;
 			}
-		}
-		else {
-			int exit_on_playerror = 0;
-			if ((mrcprecog_options.flags & MRCPRECOG_EXIT_ON_PLAYERROR) == MRCPRECOG_EXIT_ON_PLAYERROR) {
-				if (!ast_strlen_zero(mrcprecog_options.params[OPT_ARG_EXIT_ON_PLAYERROR])) {
-					exit_on_playerror = atoi(mrcprecog_options.params[OPT_ARG_EXIT_ON_PLAYERROR]);
-					if ((exit_on_playerror < 0) || (exit_on_playerror > 2))
-						exit_on_playerror = 1;
+
+			/* End of current prompt -> advance to the next one. */
+			if (mrcprecog_prompts_advance(&mrcprecog_session) > 0) {
+				/* Start playing current prompt. */
+				filestream = mrcprecog_prompt_play(&mrcprecog_session, &mrcprecog_options, &max_filelength);
+				if (!filestream && exit_on_playerror) {
+					return mrcprecog_exit(chan, &mrcprecog_session, SPEECH_CHANNEL_STATUS_ERROR);
 				}
 			}
-
-			if (exit_on_playerror) {
-				ast_log(LOG_ERROR, "(%s) Couldn't play file %s\n", name, filename);
-				return mrcprecog_exit(chan, &mrcprecog_session, SPEECH_CHANNEL_STATUS_ERROR);
+			else {
+				/* End of prompts. */
+				break;
 			}
 		}
+		while (mrcprecog_prompts_available(&mrcprecog_session));
+
+		prompt_processing = 0;
 	}
 
 	/* Check the policy for input timers. */
@@ -1186,7 +1266,7 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 		}
 	}
 
-	int start_input_timers = filestream ? 0 : 1;
+	int start_input_timers = !prompt_processing;
 	if (mrcprecog_session.it_policy != IT_POLICY_AUTO)
 		start_input_timers = mrcprecog_session.it_policy;
 	recognizer_data_t *r = mrcprecog_session.schannel->data;
@@ -1199,41 +1279,71 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 		return mrcprecog_exit(chan, &mrcprecog_session, SPEECH_CHANNEL_STATUS_ERROR);
 	}
 
-	int waitres;
+	if (prompt_processing) {
+		/* Start playing first prompt. */
+		filestream = mrcprecog_prompt_play(&mrcprecog_session, &mrcprecog_options, &max_filelength);
+		if (!filestream && exit_on_playerror) {
+			return mrcprecog_exit(chan, &mrcprecog_session, SPEECH_CHANNEL_STATUS_ERROR);
+		}
+	}
 
+	off_t read_filestep = 0;
+	off_t read_filelength;
+	int waitres;
+	int recog_processing;
 	/* Continue with recognition. */
 	while ((waitres = ast_waitfor(chan, 100)) >= 0) {
-		int processing = 1;
+		recog_processing = 1;
 
 		if (mrcprecog_session.schannel && mrcprecog_session.schannel->mutex) {
 			apr_thread_mutex_lock(mrcprecog_session.schannel->mutex);
 
 			if (mrcprecog_session.schannel->state != SPEECH_CHANNEL_PROCESSING) {
-				processing = 0;
+				recog_processing = 0;
 			}
 
 			apr_thread_mutex_unlock(mrcprecog_session.schannel->mutex);
 		}
 
-		if (processing == 0)
+		if (recog_processing == 0)
 			break;
 
-		if (filestream) {
-			read_filelength = ast_tellstream(filestream);
-			if(!read_filestep)
-				read_filestep = read_filelength;
-			if (read_filelength + read_filestep > max_filelength) {
-				ast_log(LOG_DEBUG, "(%s) File is over, read length:%"APR_OFF_T_FMT"\n", name, read_filelength);
-				if (mrcprecog_session.it_policy == IT_POLICY_AUTO) {
-					ast_log(LOG_DEBUG, "(%s) Start input timers\n", name);
-					recog_channel_start_input_timers(mrcprecog_session.schannel);
+		if (prompt_processing) {
+			if (filestream) {
+				read_filelength = ast_tellstream(filestream);
+				if(!read_filestep)
+					read_filestep = read_filelength;
+				if (read_filelength + read_filestep > max_filelength) {
+					ast_log(LOG_DEBUG, "(%s) File is over, read length:%"APR_OFF_T_FMT"\n", name, read_filelength);
+					filestream = NULL;
+					read_filestep = 0;
 				}
-				filestream = NULL;
 			}
-			else if (r && r->start_of_input) {
+
+			if (!filestream) {
+				/* End of current prompt -> advance to the next one. */
+				if (mrcprecog_prompts_advance(&mrcprecog_session) > 0) {
+					/* Start playing current prompt. */
+					filestream = mrcprecog_prompt_play(&mrcprecog_session, &mrcprecog_options, &max_filelength);
+					if (!filestream && exit_on_playerror) {
+						return mrcprecog_exit(chan, &mrcprecog_session, SPEECH_CHANNEL_STATUS_ERROR);
+					}
+				}
+				else {
+					/* End of prompts -> start input timers. */
+					if (mrcprecog_session.it_policy == IT_POLICY_AUTO) {
+						ast_log(LOG_DEBUG, "(%s) Start input timers\n", name);
+						recog_channel_start_input_timers(mrcprecog_session.schannel);
+					}
+					prompt_processing = 0;
+				}
+			}
+
+			if (prompt_processing && r && r->start_of_input) {
 				ast_log(LOG_DEBUG, "(%s) Bargein occurred\n", name);
 				ast_stopstream(chan);
 				filestream = NULL;
+				prompt_processing = 0;
 			}
 		}
 
@@ -1281,9 +1391,6 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 
 		ast_frfree(f);
 	}
-
-	if (status != SPEECH_CHANNEL_STATUS_INTERRUPTED && filestream)
-		ast_stopstream(chan);
 
 	const char *completion_cause = NULL;
 	const char *result = NULL;
