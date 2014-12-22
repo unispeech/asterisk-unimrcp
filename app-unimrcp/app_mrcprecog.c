@@ -940,17 +940,38 @@ static int mrcprecog_options_parse(char *str, mrcprecog_options_t *options, apr_
 
 	if (!str)
 		return 0;
+
 	if ((options->recog_hfs = apr_hash_make(pool)) == NULL) {
 		return -1;
 	}
 
-	while ((s = strsep(&str, "&"))) {
-		value = s;
-		if ((name = strsep(&value, "=")) && value) {
-			ast_log(LOG_DEBUG, "Apply option %s: %s\n", name, value);
-			mrcprecog_option_apply(options, name, value);
+	do {
+		/* Skip any leading spaces. */
+		while (isspace(*str))
+			str++;
+
+		if (*str == '<') {
+			/* Special case -> found an option quoted with < > */
+			str++;
+			s = strsep(&str, ">");
+			/* Skip to the next option, if any */
+			strsep(&str, "&");
+		}
+		else {
+			/* Regular processing */
+			s = strsep(&str, "&");
+		}
+
+		if (s) {
+			value = s;
+			if ((name = strsep(&value, "=")) && value) {
+				ast_log(LOG_DEBUG, "Apply option %s: %s\n", name, value);
+				mrcprecog_option_apply(options, name, value);
+			}
 		}
 	}
+	while (str);
+
 	return 0;
 }
 
