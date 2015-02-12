@@ -11,6 +11,7 @@ res_speech_unimrcp_la_LDFLAGS = -avoid-version -no-undefined -module
 res_speech_unimrcp_la_LIBADD  = $(UNIMRCP_LIBS)
 
 install-data-local:
+	test -d $(DESTDIR)$(asterisk_conf_dir) || $(mkinstalldirs) $(DESTDIR)$(asterisk_conf_dir)
 	test -f $(DESTDIR)$(asterisk_conf_dir)/res-speech-unimrcp.conf || $(INSTALL) -m 644 $(top_srcdir)/conf/res-speech-unimrcp.conf $(DESTDIR)$(asterisk_conf_dir)
 
 load: 

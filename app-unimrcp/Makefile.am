@@ -38,6 +38,8 @@ clean-local:
 	rm -rf .xmldocs
 
 install-data-local:
+	test -d $(DESTDIR)$(asterisk_xmldoc_dir) || $(mkinstalldirs) $(DESTDIR)$(asterisk_xmldoc_dir)
+	test -d $(DESTDIR)$(asterisk_conf_dir) || $(mkinstalldirs) $(DESTDIR)$(asterisk_conf_dir)
 	$(INSTALL) -m 644 .xmldocs/*.xml $(DESTDIR)$(asterisk_xmldoc_dir)
 	test -f $(DESTDIR)$(asterisk_conf_dir)/mrcp.conf || $(INSTALL) -m 644 $(top_srcdir)/conf/mrcp.conf $(DESTDIR)$(asterisk_conf_dir)
 
