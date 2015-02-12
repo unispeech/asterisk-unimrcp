@@ -1,6 +1,6 @@
 MAINTAINERCLEANFILES   = Makefile.in
 
-AM_CPPFLAGS            = -I../include $(UNIMRCP_INCLUDES) $(ASTERISK_INCLUDES)
+AM_CPPFLAGS            = -I$(top_srcdir)/include $(UNIMRCP_INCLUDES) $(ASTERISK_INCLUDES)
 
 mod_LTLIBRARIES        = app_unimrcp.la
 
@@ -29,7 +29,7 @@ all-local: .xmldocs/app_unimrcp-en_US.xml
 	@echo "<!DOCTYPE docs SYSTEM \"appdocsxml.dtd\">" >> $@
 	@echo "<docs xmlns:xi=\"http://www.w3.org/2001/XInclude\">" >> $@
 	@for i in $(XMLDOC_FILES); do \
-		$(AWK) -f ../build/xmldocs/get_documentation $$i >> $@ ; \
+		$(AWK) -f $(top_srcdir)/build/xmldocs/get_documentation $$i >> $@ ; \
 	done ;
 	@echo
 	@echo "</docs>" >> $@ 
@@ -39,7 +39,7 @@ clean-local:
 
 install-data-local:
 	$(INSTALL) -m 644 .xmldocs/*.xml $(DESTDIR)$(asterisk_xmldoc_dir)
-	test -f $(DESTDIR)$(asterisk_conf_dir)/mrcp.conf || $(INSTALL) -m 644 ../conf/mrcp.conf $(DESTDIR)$(asterisk_conf_dir)
+	test -f $(DESTDIR)$(asterisk_conf_dir)/mrcp.conf || $(INSTALL) -m 644 $(top_srcdir)/conf/mrcp.conf $(DESTDIR)$(asterisk_conf_dir)
 
 load: 
 	asterisk -rx "module load app_unimrcp.so"
