@@ -1,3 +1,54 @@
+Changes for Asterisk UniMRCP Modules 1.3.0
+
+1. Generic Speech Recognition API (res_speech_unimrcp.so)
+
+    * Fixed compilation against Asterisk 1.6.0 and 1.6.1 branches. Thanks Javier (issue-174).
+    * Adapted to the change in UniMRCP dir_layout interface.
+    * Made res_speech_unimrcp compatible with Asterisk 12.
+    * Added support for Asterisk 13.
+
+2. Dialplan Applications (app_unimrcp.so)
+
+  2.1. MRCPSynth()
+    
+    * Fixed a Coverity issue: a variable was declared and assigned to itself because of a typo.
+
+  2.2. MRCPRecog()
+
+    * Reincarnated the old or added a new option 'sit', which allows to specify a policy for the use of input timers.
+    * Set channel status to INTERRUPTED when user hangs up on a none-bargeinable prompt. Thanks Tony.
+    * Fixed a Coverity issue: a variable was declared and assigned to itself because of a type.
+    * Added support for multiple prompts.
+    * Individual options passed to MRCPRecog can now be quoted with <> (r2263).
+
+  2.3. SynthAndRecog()
+
+    * Corrected a misspelled option name ("dt" -> "gd") in the XML documentation.
+    * Added support for multiple prompts.
+    * Filter out silence and write only audio frames to Asterisk channel.
+    * Added support for native audio file play.
+    * Use the same synth channel for consecutive TTS prompts and destroy it on an audio file prompt.
+    * Reincarnated the old or added a new option 'sit', which allows to specify a policy for the use of input timers.
+    * Set channel status to INTERRUPTED when user hangs up on a none-bargeinable prompt. Thanks Tony.
+  
+  2.4. Framework
+  
+    * Fixed a regression in loading of MRCPv1 profiles introduced since 1.2.0 release (issue-173).
+    * Print out the associated Asterisk channel name while creating a new speech channel.
+    * Retrieve and print out status and response code in case of an error in on_channel_add().
+    * Took out unused handler on_channel_remove().
+    * Fixed a potential race condition issue, where the applications could get stuck indefinitely in speech_channel_open() (r2168).
+    * Fixed compilation against Asterisk 1.6.0 and 1.6.1 branches. Thanks Javier (issue-174).
+    * Fixed a Coverity issue: dereference after NULL check.
+    * Added support for Asterisk 13.
+
+3. Miscellaneous
+
+    * Use AM_CPPFLAGS instead of deprecated INCLUDES.
+    * Fixed support for out of source build.
+    * Test and create asterisk conf and xmldoc dirs on make install, if needed.
+
+
 Changes for Asterisk UniMRCP Modules 1.2.0
 
 1. Generic Speech Recognition API (res_speech_unimrcp.so)
