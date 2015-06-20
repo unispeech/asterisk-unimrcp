@@ -1403,7 +1403,8 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 				/* Stop streaming if within i chars. */
 				if (strchr(mrcprecog_options.params[OPT_ARG_INTERRUPT], dtmfkey) || (strcmp(mrcprecog_options.params[OPT_ARG_INTERRUPT],"any"))) {
 					ast_frfree(f);
-					break;
+					mrcprecog_exit(chan, &mrcprecog_session, SPEECH_CHANNEL_STATUS_OK);
+					return dtmfkey;
 				}
 
 				/* Continue if not an i-key. */
