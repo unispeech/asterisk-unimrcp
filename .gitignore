@@ -1,0 +1,53 @@
+*~
+*.o
+*.so
+*.lo
+*.a
+*.la
+*.loT
+*.orig
+*.rej
+.libs
+.deps
+
+# /
+/configure
+/config.log
+/config.nice
+/config.status
+/autom4te.cache
+/aclocal.m4
+/libtool
+/Makefile.in
+/Makefile
+
+# /app-unimrcp/
+/app-unimrcp/.libs
+/app-unimrcp/.deps
+/app-unimrcp/.xmldocs
+/app-unimrcp/Makefile.in
+/app-unimrcp/Makefile
+
+# /build/
+/build/ltmain.sh
+/build/depcomp
+/build/missing
+/build/config.guess
+/build/config.sub
+/build/compile
+/build/install-sh
+/build/Makefile.in
+/build/Makefile
+
+# /build/acmacros/
+/build/acmacros/libtool.m4
+/build/acmacros/ltoptions.m4
+/build/acmacros/ltsugar.m4
+/build/acmacros/ltversion.m4
+/build/acmacros/lt~obsolete.m4
+
+# /res-speech-unimrcp/
+/res-speech-unimrcp/.libs
+/res-speech-unimrcp/.deps
+/res-speech-unimrcp/Makefile.in
+/res-speech-unimrcp/Makefile
