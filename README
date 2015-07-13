@@ -19,6 +19,30 @@ INSTALLATION
 See the file INSTALL for installation tips.
 
 
+REFERENCES
+==========
+
+Websites:
+   http://www.unimrcp.org/asterisk
+   http://www.asterisk.org
+
+Downloads:
+   http://www.unimrcp.org/project/component-view/asterisk
+   
+GitHub:
+   https://github.com/unispeech/asterisk-unimrcp
+   
+Issue Tracker:
+   https://github.com/unispeech/asterisk-unimrcp/issues
+   
+Discussion Group:
+   http://groups.google.com/group/unimrcp
+
+Source Changes:
+   https://github.com/unispeech/asterisk-unimrcp/commits/master
+   http://groups.google.com/group/unimrcp-svn-commits
+
+   
 LICENSING
 =========
 
@@ -27,9 +51,4 @@ directly interface with Asterisk, the GPLv2 license applies to the UniMRCP modul
 
 See the file COPYING for more information regarding the license.
 
-
-REFERENCES
-==========
-
-http://www.unimrcp.org
-http://www.asterisk.org
+Copyright 2008 - 2015 Arsen Chaloyan
