@@ -1,3 +1,24 @@
+Changes for Asterisk UniMRCP Modules 1.3.1
+
+1. Generic Speech Recognition API (res_speech_unimrcp.so)
+
+    * N/A.
+
+2. Dialplan Applications (app_unimrcp.so)
+
+  2.1. MRCPSynth()
+
+    * Re-factored the application to feed synthesized speech to Asterisk directly from MPF callback.
+
+  2.2. MRCPRecog()
+
+    * Fixed support for the option i=any (Issue-168).
+
+3. Miscellaneous
+
+    * Updated README of Asterisk modules to include references to GitHub.
+
+
 Changes for Asterisk UniMRCP Modules 1.3.0
 
 1. Generic Speech Recognition API (res_speech_unimrcp.so)
@@ -10,7 +31,7 @@ Changes for Asterisk UniMRCP Modules 1.3.0
 2. Dialplan Applications (app_unimrcp.so)
 
   2.1. MRCPSynth()
-    
+
     * Fixed a Coverity issue: a variable was declared and assigned to itself because of a typo.
 
   2.2. MRCPRecog()
@@ -30,9 +51,9 @@ Changes for Asterisk UniMRCP Modules 1.3.0
     * Use the same synth channel for consecutive TTS prompts and destroy it on an audio file prompt.
     * Reincarnated the old or added a new option 'sit', which allows to specify a policy for the use of input timers.
     * Set channel status to INTERRUPTED when user hangs up on a none-bargeinable prompt. Thanks Tony.
-  
+
   2.4. Framework
-  
+
     * Fixed a regression in loading of MRCPv1 profiles introduced since 1.2.0 release (issue-173).
     * Print out the associated Asterisk channel name while creating a new speech channel.
     * Retrieve and print out status and response code in case of an error in on_channel_add().
@@ -68,9 +89,9 @@ Changes for Asterisk UniMRCP Modules 1.2.0
   2.3. SynthAndRecog()
 
     * Added missing </para> tag in XML documentation.
-  
+
   2.4. Framework
-  
+
     * Pass along loaded request-timeout to the RTSP client stack too.
     * Added telephone-event to the list of supported codecs in the default configuration file mrcp.conf.
     * Provided more comments in the default configuration file mrcp.conf.
