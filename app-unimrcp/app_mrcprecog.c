@@ -1015,8 +1015,12 @@ static int mrcprecog_exit(struct ast_channel *chan, mrcprecog_session_t *mrcprec
 		if (mrcprecog_session->readformat)
 			ast_channel_set_readformat(chan, mrcprecog_session->readformat);
 
-		if (mrcprecog_session->schannel)
+		if (mrcprecog_session->schannel) {
+			const char *session_id = speech_channel_get_id(mrcprecog_session->schannel);
+			if(session_id)
+				pbx_builtin_setvar_helper(chan, "RECOG_SID", session_id);
 			speech_channel_destroy(mrcprecog_session->schannel);
+		}
 
 		if (mrcprecog_session->pool)
 			apr_pool_destroy(mrcprecog_session->pool);

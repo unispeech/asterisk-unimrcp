@@ -1286,8 +1286,12 @@ static int synthandrecog_exit(struct ast_channel *chan, sar_session_t *sar_sessi
 		if (sar_session->synth_channel)
 			speech_channel_destroy(sar_session->synth_channel);
 
-		if (sar_session->recog_channel)
+		if (sar_session->recog_channel) {
+			const char *session_id = speech_channel_get_id(sar_session->recog_channel);
+			if(session_id)
+				pbx_builtin_setvar_helper(chan, "RECOG_SID", session_id);
 			speech_channel_destroy(sar_session->recog_channel);
+		}
 
 		if (sar_session->pool)
 			apr_pool_destroy(sar_session->pool);
