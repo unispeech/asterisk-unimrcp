@@ -716,6 +716,20 @@ int speech_channel_write(speech_channel_t *schannel, void *data, apr_size_t *len
 	return status;
 }
 
+/* Get MRCP session identifier of speech channel, when avaialble. */
+const char* speech_channel_get_id(speech_channel_t *schannel)
+{
+	const apt_str_t *session_id;
+	if(!schannel->unimrcp_session)
+		return NULL;
+
+	session_id = mrcp_application_session_id_get(schannel->unimrcp_session);
+	if(!session_id)
+		return NULL;
+
+	return session_id->buf;
+}
+
 /* Playback the specified sound file. */
 struct ast_filestream* astchan_stream_file(struct ast_channel *chan, const char *filename, off_t *filelength_out)
 {
