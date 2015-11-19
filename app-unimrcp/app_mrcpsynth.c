@@ -235,6 +235,8 @@ static apt_bool_t synth_on_message_receive(mrcp_application_t *application, mrcp
 		return FALSE;
 	}
 
+	mrcp_synth_header_t *synth_header = (mrcp_synth_header_t *)mrcp_resource_header_get(message);
+
 	if (message->start_line.message_type == MRCP_MESSAGE_TYPE_RESPONSE) {
 		/* Received MRCP response. */
 		if (message->start_line.method_id == SYNTHESIZER_SPEAK) {
@@ -279,6 +281,8 @@ static apt_bool_t synth_on_message_receive(mrcp_application_t *application, mrcp
 		/* Received MRCP event. */
 		if (message->start_line.method_id == SYNTHESIZER_SPEAK_COMPLETE) {
 			/* Got SPEAK-COMPLETE. */
+			const char *completion_cause = apr_psprintf(schannel->pool, "%03d", synth_header->completion_cause);
+			pbx_builtin_setvar_helper(schannel->chan, "SYNTH_COMPLETION_CAUSE", completion_cause);
 			ast_log(LOG_DEBUG, "(%s) SPEAK-COMPLETE\n", schannel->name);
 			speech_channel_set_state(schannel, SPEECH_CHANNEL_READY);
 		} else {
