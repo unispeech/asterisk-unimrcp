@@ -418,6 +418,14 @@ static int process_mrcpv2_config(mrcp_sofia_client_config_t *config, mrcp_sig_se
 		config->user_agent_name = apr_pstrdup(pool, val);
 	else if (strcasecmp(param, "sdp-origin") == 0)
 		config->origin = apr_pstrdup(pool, val);
+	else if(strcasecmp(param, "sip-t1") == 0)
+		config->sip_t1 = atol(val);
+	else if(strcasecmp(param, "sip-t2") == 0)
+		config->sip_t2 = atol(val);
+	else if(strcasecmp(param, "sip-t4") == 0)
+		config->sip_t4 = atol(val);
+	else if(strcasecmp(param, "sip-t1x64") == 0)
+		config->sip_t1x64 = atol(val);
 	else
 		mine = 0;
 
