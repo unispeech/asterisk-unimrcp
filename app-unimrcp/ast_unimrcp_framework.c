@@ -38,6 +38,7 @@
 #include "asterisk/config.h"
 
 /* UniMRCP includes. */
+#include "uni_revision.h"
 #include "ast_unimrcp_framework.h"
 
 #define DEFAULT_UNIMRCP_MAX_CONNECTION_COUNT	120
@@ -426,6 +427,12 @@ static int process_mrcpv2_config(mrcp_sofia_client_config_t *config, mrcp_sig_se
 		config->sip_t4 = atol(val);
 	else if(strcasecmp(param, "sip-t1x64") == 0)
 		config->sip_t1x64 = atol(val);
+#ifdef UNI_FULL_VERSION_AT_LEAST
+#if  UNI_FULL_VERSION_AT_LEAST(1,3,0,41)
+	else if(strcasecmp(param, "sip-timer-c") == 0)
+		config->sip_timer_c = atol(val);
+#endif
+#endif
 	else
 		mine = 0;
 
