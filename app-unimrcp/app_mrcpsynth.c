@@ -297,22 +297,6 @@ static apt_bool_t synth_on_message_receive(mrcp_application_t *application, mrcp
 	return TRUE;
 }
 
-/* Fill the frame with data. */
-static APR_INLINE void ast_frame_fill(ast_format_compat *format, struct ast_frame *fr, void *data, apr_size_t size)
-{
-	memset(fr, 0, sizeof(*fr));
-	fr->frametype = AST_FRAME_VOICE;
-	ast_frame_set_format(fr, format);
-	fr->datalen = size;
-	fr->samples = size / format_to_bytes_per_sample(format);
-	ast_frame_set_data(fr, data);
-	fr->mallocd = 0;
-	fr->offset = AST_FRIENDLY_OFFSET;
-	fr->src = __PRETTY_FUNCTION__;
-	fr->delivery.tv_sec = 0;
-	fr->delivery.tv_usec = 0;
-}
-
 /* Incoming TTS data from UniMRCP. */
 static apt_bool_t synth_stream_write(mpf_audio_stream_t *stream, const mpf_frame_t *frame)
 {
@@ -329,12 +313,7 @@ static apt_bool_t synth_stream_write(mpf_audio_stream_t *stream, const mpf_frame
 	}
 
 	if (frame->codec_frame.size > 0 && (frame->type & MEDIA_FRAME_TYPE_AUDIO) == MEDIA_FRAME_TYPE_AUDIO) {
-		struct ast_frame fr;
-		ast_frame_fill(schannel->format, &fr, frame->codec_frame.buffer, frame->codec_frame.size);
-
-		if (ast_write(schannel->chan, &fr) < 0) {
-			ast_log(LOG_WARNING, "(%s) Unable to write frame to channel: %s\n", schannel->name, strerror(errno));
-		}
+		speech_channel_ast_write(schannel, frame->codec_frame.buffer, frame->codec_frame.size);
 	}
 
 	return TRUE;

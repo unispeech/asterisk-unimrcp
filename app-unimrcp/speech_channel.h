@@ -201,7 +201,10 @@ int speech_channel_read(speech_channel_t *schannel, void *data, apr_size_t *len,
 /* Write synthesized speech / speech to be recognized. */
 int speech_channel_write(speech_channel_t *schannel, void *data, apr_size_t *len);
 
-/* Get MRCP session identifier of speech channel, when avaialble. */
+/* Write synthesized speech to Asterisk. */
+int speech_channel_ast_write(speech_channel_t *schannel, void *data, apr_size_t len);
+
+/* Get MRCP session identifier of speech channel, when available. */
 const char* speech_channel_get_id(speech_channel_t *schannel);
 
 /* Convert channel status to string. */

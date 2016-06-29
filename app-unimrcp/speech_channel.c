@@ -716,7 +716,36 @@ int speech_channel_write(speech_channel_t *schannel, void *data, apr_size_t *len
 	return status;
 }
 
-/* Get MRCP session identifier of speech channel, when avaialble. */
+/* Fill the frame with data. */
+static APR_INLINE void ast_frame_fill(ast_format_compat *format, struct ast_frame *fr, void *data, apr_size_t size)
+{
+	memset(fr, 0, sizeof(*fr));
+	fr->frametype = AST_FRAME_VOICE;
+	ast_frame_set_format(fr, format);
+	fr->datalen = size;
+	fr->samples = size / format_to_bytes_per_sample(format);
+	ast_frame_set_data(fr, data);
+	fr->mallocd = 0;
+	fr->offset = AST_FRIENDLY_OFFSET;
+	fr->src = __PRETTY_FUNCTION__;
+	fr->delivery.tv_sec = 0;
+	fr->delivery.tv_usec = 0;
+}
+
+int speech_channel_ast_write(speech_channel_t *schannel, void *data, apr_size_t len)
+{
+	struct ast_frame fr;
+	ast_frame_fill(schannel->format, &fr, data, len);
+
+	if (ast_write(schannel->chan, &fr) < 0) {
+		ast_log(LOG_WARNING, "(%s) Unable to write frame to channel: %s\n", schannel->name, strerror(errno));
+		return -1;
+	}
+	
+	return 0;
+}
+
+/* Get MRCP session identifier of speech channel, when available. */
 const char* speech_channel_get_id(speech_channel_t *schannel)
 {
 	const apt_str_t *session_id;
