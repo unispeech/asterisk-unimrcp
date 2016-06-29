@@ -89,9 +89,11 @@
 		</syntax>
 		<description>
 			<para>This application establishes an MRCP session for speech synthesis.</para>
-			<para>If synthesis completed successfully, the variable ${SYNTHSTATUS} is set to "OK"; otherwise, if an error occurred, 
+			<para>If synthesis completed, the variable ${SYNTHSTATUS} is set to "OK"; otherwise, if an error occurred, 
 			the variable ${SYNTHSTATUS} is set to "ERROR". If the caller hung up while the synthesis was in-progress, 
 			the variable ${SYNTHSTATUS} is set to "INTERRUPTED".</para>
+			<para>The variable ${SYNTH_COMPLETION_CAUSE} indicates whether synthesis completed normally or with an error.
+			("000" - normal, "001" - barge-in, "002" - parse-failure, ...) </para>
 		</description>
 		<see-also>
 			<ref type="application">MRCPRecog</ref>
