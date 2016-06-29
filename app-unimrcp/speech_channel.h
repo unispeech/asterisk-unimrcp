@@ -109,6 +109,8 @@ struct speech_channel_t {
 	void *data;
 	/* Asterisk channel. Needed to stop playback on barge-in. */
 	struct ast_channel *chan;
+	/* File to store data streamed to Asterisk. */
+	FILE *rec_file;
 
 #if SPEECH_CHANNEL_DUMP
 	FILE *stream_in;
@@ -181,6 +183,7 @@ speech_channel_t *speech_channel_create(
 						ast_mrcp_application_t *app,
 						ast_format_compat *format,
 						apr_uint16_t rate,
+						const char *rec_file_path,
 						struct ast_channel *chan);
 
 /* Destroy the speech channel. */

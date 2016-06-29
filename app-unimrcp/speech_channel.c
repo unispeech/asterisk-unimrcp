@@ -184,6 +184,7 @@ speech_channel_t *speech_channel_create(
 						ast_mrcp_application_t *app,
 						ast_format_compat *format,
 						apr_uint16_t rate,
+						const char *rec_file_path,
 						struct ast_channel *chan)
 {
 	speech_channel_t *schan = NULL;
@@ -236,6 +237,7 @@ speech_channel_t *speech_channel_create(
 		schan->rate = rate;
 		schan->data = NULL;
 		schan->chan = chan;
+		schan->rec_file = NULL;
 
 		if (strstr("L16", schan->codec)) {
 			schan->silence = 0;
@@ -256,6 +258,13 @@ speech_channel_t *speech_channel_create(
 		} else {
 			ast_log(LOG_DEBUG, "Created speech channel: Name=%s, Type=%s, Codec=%s, Rate=%u on %s\n", schan->name, speech_channel_type_to_string(schan->type), schan->codec, schan->rate,
 				ast_channel_name(chan));
+		}
+		
+		if (!ast_strlen_zero(rec_file_path)) {
+			schan->rec_file = fopen(rec_file_path, "wb");
+			if(!schan->rec_file) {
+				ast_log(LOG_WARNING, "(%s) Unable to open recording file for writing: %s\n", schan->name, rec_file_path);
+			}
 		}
 	}
 
@@ -385,14 +394,17 @@ int speech_channel_destroy(speech_channel_t *schannel)
 			}
 		}
 	}
-
+	
 	if (schannel->state != SPEECH_CHANNEL_CLOSED) {
 		ast_log(LOG_ERROR, "(%s) Failed to destroy channel.  Continuing\n", schannel->name);
 	}
 
+	if (schannel->rec_file) {
+		fclose(schannel->rec_file);
+	}
+
 	if (schannel->dtmf_generator != NULL) {
 		mpf_dtmf_generator_destroy(schannel->dtmf_generator);
-		schannel->dtmf_generator = NULL;
 		ast_log(LOG_DEBUG, "(%s) DTMF generator destroyed\n", schannel->name);
 	}
 
@@ -428,6 +440,7 @@ int speech_channel_destroy(speech_channel_t *schannel)
 	schannel->codec = NULL;
 	schannel->data = NULL;
 	schannel->chan = NULL;
+	schannel->rec_file = NULL;
 
 	return 0;
 }
@@ -737,6 +750,9 @@ int speech_channel_ast_write(speech_channel_t *schannel, void *data, apr_size_t 
 	struct ast_frame fr;
 	ast_frame_fill(schannel->format, &fr, data, len);
 
+	if (schannel->rec_file)
+		fwrite(data, 1, len, schannel->rec_file);
+	
 	if (ast_write(schannel->chan, &fr) < 0) {
 		ast_log(LOG_WARNING, "(%s) Unable to write frame to channel: %s\n", schannel->name, strerror(errno));
 		return -1;

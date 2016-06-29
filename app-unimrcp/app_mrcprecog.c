@@ -1132,6 +1132,7 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 									mrcprecog,
 									nreadformat,
 									samplerate,
+									NULL,
 									chan);
 	if (!mrcprecog_session.schannel) {
 		return mrcprecog_exit(chan, &mrcprecog_session, SPEECH_CHANNEL_STATUS_ERROR);

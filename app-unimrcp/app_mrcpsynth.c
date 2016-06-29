@@ -137,7 +137,6 @@ typedef struct mrcpsynth_options_t mrcpsynth_options_t;
 struct mrcpsynth_session_t {
 	apr_pool_t         *pool;
 	speech_channel_t   *schannel;
-	FILE               *fp;
 	ast_format_compat  *writeformat;
 };
 
@@ -451,9 +450,6 @@ static int mrcpsynth_options_parse(char *str, mrcpsynth_options_t *options, apr_
 static int mrcpsynth_exit(struct ast_channel *chan, mrcpsynth_session_t *mrcpsynth_session, speech_channel_status_t status)
 {
 	if (mrcpsynth_session) {
-		if (mrcpsynth_session->fp)
-			fclose(mrcpsynth_session->fp);
-
 		if (mrcpsynth_session->writeformat)
 			ast_channel_set_writeformat(chan, mrcpsynth_session->writeformat);
 
@@ -512,7 +508,6 @@ static int app_synth_exec(struct ast_channel *chan, ast_app_data data)
 	}
 
 	mrcpsynth_session.schannel = NULL;
-	mrcpsynth_session.fp = NULL;
 	mrcpsynth_session.writeformat = NULL;
 
 	mrcpsynth_options.synth_hfs = NULL;
@@ -544,10 +539,9 @@ static int app_synth_exec(struct ast_channel *chan, ast_app_data data)
 		ast_answer(chan);
 	ast_stopstream(chan);
 
+	const char *filename = NULL;
 	if ((mrcpsynth_options.flags & MRCPSYNTH_FILENAME) == MRCPSYNTH_FILENAME) {
-		const char *filename = mrcpsynth_options.params[OPT_ARG_FILENAME];
-		if (!ast_strlen_zero(filename))
-			mrcpsynth_session.fp = fopen(filename, "wb");
+		filename = mrcpsynth_options.params[OPT_ARG_FILENAME];
 	}
 
 	ast_format_compat *nwriteformat = ast_channel_get_speechwriteformat(chan, mrcpsynth_session.pool);
@@ -562,6 +556,7 @@ static int app_synth_exec(struct ast_channel *chan, ast_app_data data)
 									mrcpsynth,
 									nwriteformat,
 									samplerate,
+									filename,
 									chan);
 	if (!mrcpsynth_session.schannel) {
 		return mrcpsynth_exit(chan, &mrcpsynth_session, SPEECH_CHANNEL_STATUS_ERROR);

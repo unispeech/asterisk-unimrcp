@@ -1207,6 +1207,7 @@ static sar_prompt_item_t* synthandrecog_prompt_play(sar_session_t *sar_session, 
 											synthandrecog,
 											sar_session->nwriteformat,
 											sar_session->samplerate,
+											NULL,
 											sar_session->chan);
 			if (!sar_session->synth_channel) {
 				return NULL;
@@ -1385,6 +1386,7 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 										synthandrecog,
 										nreadformat,
 										sar_session.samplerate,
+										NULL,
 										chan);
 	if (sar_session.recog_channel == NULL) {
 		return synthandrecog_exit(chan, &sar_session, SPEECH_CHANNEL_STATUS_ERROR);
