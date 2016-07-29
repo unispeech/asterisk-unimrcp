@@ -1,3 +1,36 @@
+Changes for Asterisk UniMRCP Modules 1.4.0
+
+1. Generic Speech Recognition API (res_speech_unimrcp.so)
+
+    * N/A.
+
+2. Dialplan Applications (app_unimrcp.so)
+
+  2.1. MRCPSynth()
+
+    * Added a new dialplan variable SYNTH_COMPLETION_CAUSE to get the Completion-Cause header field value received with the SPEAK-COMPLETE event.
+    * Fixed support for the option "f" (Issue-4).
+
+  2.2. MRCPRecog()
+
+    * Added a new dialplan variable RECOG_SID set upon application termination, when available.
+
+  2.3. SynthAndRecog()
+
+    * Added a new dialplan variable RECOG_SID set upon application termination, when available.
+
+  2.4. Framework
+
+    * Added a new function speech_channel_get_id() to retrieve an associated MRCP session identifier, when available.
+    * Allow sip-t1, sip-t2, sip-t4 and sip-t1x64 timeouts be specified via mrcp.conf.
+    * Allow NTATAG_TIMER_C be specified via mrcp.conf.
+    * Encapsulated the function ast_write() into the speech channel interface.
+
+3. Miscellaneous
+
+    * N/A.
+
+
 Changes for Asterisk UniMRCP Modules 1.3.1
 
 1. Generic Speech Recognition API (res_speech_unimrcp.so)
