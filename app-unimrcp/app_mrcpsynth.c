@@ -111,8 +111,8 @@ static ast_mrcp_application_t *mrcpsynth = NULL;
 /* The enumeration of application options (excluding the MRCP params). */
 enum mrcpsynth_option_flags {
 	MRCPSYNTH_PROFILE        = (1 << 0),
-	MRCPSYNTH_INTERRUPT      = (2 << 0),
-	MRCPSYNTH_FILENAME       = (3 << 0)
+	MRCPSYNTH_INTERRUPT      = (1 << 1),
+	MRCPSYNTH_FILENAME       = (1 << 2)
 };
 
 /* The enumeration of option arguments. */

@@ -127,12 +127,12 @@ static ast_mrcp_application_t *synthandrecog = NULL;
 /* The enumeration of application options (excluding the MRCP params). */
 enum sar_option_flags {
 	SAR_RECOG_PROFILE          = (1 << 0),
-	SAR_SYNTH_PROFILE          = (2 << 0),
-	SAR_BARGEIN                = (3 << 0),
-	SAR_GRAMMAR_DELIMITERS     = (4 << 0),
-	SAR_URI_ENCODED_RESULTS    = (5 << 0),
-	SAR_OUTPUT_DELIMITERS      = (6 << 0),
-	SAR_INPUT_TIMERS           = (7 << 0)
+	SAR_SYNTH_PROFILE          = (1 << 1),
+	SAR_BARGEIN                = (1 << 2),
+	SAR_GRAMMAR_DELIMITERS     = (1 << 3),
+	SAR_URI_ENCODED_RESULTS    = (1 << 4),
+	SAR_OUTPUT_DELIMITERS      = (1 << 5),
+	SAR_INPUT_TIMERS           = (1 << 6)
 };
 
 /* The enumeration of option arguments. */

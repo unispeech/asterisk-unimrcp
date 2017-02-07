@@ -148,14 +148,14 @@ static ast_mrcp_application_t *mrcprecog = NULL;
 /* The enumeration of application options (excluding the MRCP params). */
 enum mrcprecog_option_flags {
 	MRCPRECOG_PROFILE             = (1 << 0),
-	MRCPRECOG_INTERRUPT           = (2 << 0),
-	MRCPRECOG_FILENAME            = (3 << 0),
-	MRCPRECOG_BARGEIN             = (4 << 0),
-	MRCPRECOG_GRAMMAR_DELIMITERS  = (5 << 0),
-	MRCPRECOG_EXIT_ON_PLAYERROR   = (6 << 0),
-	MRCPRECOG_URI_ENCODED_RESULTS = (7 << 0),
-	MRCPRECOG_OUTPUT_DELIMITERS   = (8 << 0),
-	MRCPRECOG_INPUT_TIMERS        = (9 << 0)
+	MRCPRECOG_INTERRUPT           = (1 << 1),
+	MRCPRECOG_FILENAME            = (1 << 2),
+	MRCPRECOG_BARGEIN             = (1 << 3),
+	MRCPRECOG_GRAMMAR_DELIMITERS  = (1 << 4),
+	MRCPRECOG_EXIT_ON_PLAYERROR   = (1 << 5),
+	MRCPRECOG_URI_ENCODED_RESULTS = (1 << 6),
+	MRCPRECOG_OUTPUT_DELIMITERS   = (1 << 7),
+	MRCPRECOG_INPUT_TIMERS        = (1 << 8)
 };
 
 /* The enumeration of option arguments. */
