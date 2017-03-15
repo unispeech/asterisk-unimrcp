@@ -76,7 +76,7 @@ static void globals_null(void)
 	globals.apps = NULL;
 	globals.mutex = NULL;
 	globals.speech_channel_number = 0;
-	globals.speech_channel_timeout_usec = (30 * 1000000);
+	globals.speech_channel_timeout_usec = 30000000;
 	globals.profiles = NULL;
 }
 
@@ -130,7 +130,7 @@ static void globals_default(void)
 	globals.unimrcp_offer_new_connection = NULL;
 	globals.unimrcp_log_level = DEFAULT_UNIMRCP_LOG_LEVEL;
 	globals.speech_channel_number = 0;
-	globals.speech_channel_timeout_usec = (30 * 1000000);
+	globals.speech_channel_timeout_usec = 30000000;
 }
 
 void globals_destroy(void)
