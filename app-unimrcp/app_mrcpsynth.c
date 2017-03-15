@@ -379,7 +379,7 @@ static int synth_channel_speak(speech_channel_t *schannel, const char *content, 
 	}
 
 	/* Wait for IN PROGRESS. */
-	apr_thread_cond_timedwait(schannel->cond, schannel->mutex, SPEECH_CHANNEL_TIMEOUT_USEC);
+	apr_thread_cond_timedwait(schannel->cond, schannel->mutex, globals.speech-channel-timeout-usec);
 
 	if (schannel->state != SPEECH_CHANNEL_PROCESSING) {
 		apr_thread_mutex_unlock(schannel->mutex);
