@@ -90,6 +90,8 @@ struct ast_mrcp_globals_t {
 	char *unimrcp_default_recog_profile;
 	/* Log level to use for the UniMRCP library. */
 	char *unimrcp_log_level;
+	/* The speech channel timeout configuration. */
+	char *speech_channel_timeout_usec;
 
 	/* The MRCP client stack. */
 	mrcp_client_t *mrcp_client;

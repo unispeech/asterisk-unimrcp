@@ -76,6 +76,7 @@ static void globals_null(void)
 	globals.apps = NULL;
 	globals.mutex = NULL;
 	globals.speech_channel_number = 0;
+	globals.speech_channel_timeout_usec = 30000000;
 	globals.profiles = NULL;
 }
 
@@ -129,6 +130,7 @@ static void globals_default(void)
 	globals.unimrcp_offer_new_connection = NULL;
 	globals.unimrcp_log_level = DEFAULT_UNIMRCP_LOG_LEVEL;
 	globals.speech_channel_number = 0;
+	globals.speech_channel_timeout_usec = 30000000;
 }
 
 void globals_destroy(void)
@@ -800,6 +802,10 @@ int load_mrcp_config(const char *filename, const char *who_asked)
 	if ((value = ast_variable_retrieve(cfg, "general", "request-timeout")) != NULL) {
 		ast_log(LOG_DEBUG, "general.request-timeout=%s\n",  value);
 		globals.unimrcp_request_timeout = apr_pstrdup(globals.pool, value);
+	}
+	if ((value = ast_variable_retrieve(cfg, "general", "speech-channel-timeout-usec")) != NULL) {
+		ast_log(LOG_DEBUG, "general.speech-channel-timeout-usec=%s\n",  value);
+		globals.speech_channel_timeout_usec = apr_pstrdup(globals.pool, value);
 	}
 
 	while ((cat = ast_category_browse(cfg, cat)) != NULL) {
