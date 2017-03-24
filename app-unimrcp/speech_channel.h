@@ -31,12 +31,10 @@
 #define SPEECH_CHANNEL_DUMP_DIR   UNIMRCP_DIR_LOCATION"/data"
 
 /*
- * Set SPEECH_CHANNEL_TARCE to 1 to trace a statement per 
- * a channel read or write attempt.
+ * Set SPEECH_CHANNEL_TRACE to 1 to trace a statement per 
+ * channel read or write attempt.
  */
 #define SPEECH_CHANNEL_TRACE   0
-
-#define SPEECH_CHANNEL_TIMEOUT_USEC				(30 * 1000000)
 
 /* Type of MRCP channel. */
 enum speech_channel_type_t {

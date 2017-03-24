@@ -451,7 +451,7 @@ static int synth_channel_speak(speech_channel_t *schannel, const char *content, 
 	}
 
 	/* Wait for IN PROGRESS. */
-	apr_thread_cond_timedwait(schannel->cond, schannel->mutex, SPEECH_CHANNEL_TIMEOUT_USEC);
+	apr_thread_cond_timedwait(schannel->cond, schannel->mutex, globals.speech_channel_timeout);
 
 	if (schannel->state != SPEECH_CHANNEL_PROCESSING) {
 		apr_thread_mutex_unlock(schannel->mutex);
@@ -810,7 +810,7 @@ static int recog_channel_start(speech_channel_t *schannel, const char *name, int
 	}
 
 	/* Wait for IN PROGRESS. */
-	apr_thread_cond_timedwait(schannel->cond, schannel->mutex, SPEECH_CHANNEL_TIMEOUT_USEC);
+	apr_thread_cond_timedwait(schannel->cond, schannel->mutex, globals.speech_channel_timeout);
 
 	if (schannel->state != SPEECH_CHANNEL_PROCESSING) {
 		apr_thread_mutex_unlock(schannel->mutex);
@@ -880,7 +880,7 @@ static int recog_channel_load_grammar(speech_channel_t *schannel, const char *na
 			return -1;
 		}
 
-		apr_thread_cond_timedwait(schannel->cond, schannel->mutex, SPEECH_CHANNEL_TIMEOUT_USEC);
+		apr_thread_cond_timedwait(schannel->cond, schannel->mutex, globals.speech_channel_timeout);
 
 		if (schannel->state != SPEECH_CHANNEL_READY) {
 			apr_thread_mutex_unlock(schannel->mutex);

@@ -153,7 +153,7 @@ int speech_channel_bargeinoccurred(speech_channel_t *schannel)
 				ast_log(LOG_WARNING, "(%s) [speech_channel_bargeinoccurred] Failed to send BARGE_IN_OCCURRED message\n", schannel->name);
 			else if (schannel->cond != NULL) {
 				while (schannel->state == SPEECH_CHANNEL_PROCESSING) {
-					if (apr_thread_cond_timedwait(schannel->cond, schannel->mutex, SPEECH_CHANNEL_TIMEOUT_USEC) == APR_TIMEUP) {
+					if (apr_thread_cond_timedwait(schannel->cond, schannel->mutex, globals.speech_channel_timeout) == APR_TIMEUP) {
 						break;
 					}
 				}
@@ -387,9 +387,9 @@ int speech_channel_destroy(speech_channel_t *schannel)
 		ast_log(LOG_DEBUG, "(%s) Waiting for MRCP session to terminate\n", schannel->name);
 		while (schannel->state != SPEECH_CHANNEL_CLOSED) {
 			if (schannel->cond != NULL) {
-				if ((apr_thread_cond_timedwait(schannel->cond, schannel->mutex, SPEECH_CHANNEL_TIMEOUT_USEC) == APR_TIMEUP) && (!warned)) {
+				if ((apr_thread_cond_timedwait(schannel->cond, schannel->mutex, globals.speech_channel_timeout) == APR_TIMEUP) && (!warned)) {
 					warned = 1;
-					ast_log(LOG_WARNING, "(%s) MRCP session has not terminated after %d ms\n", schannel->name, SPEECH_CHANNEL_TIMEOUT_USEC / 1000);
+					ast_log(LOG_WARNING, "(%s) MRCP session has not terminated after %" APR_TIME_T_FMT " ms\n", schannel->name, apr_time_as_msec(globals.speech_channel_timeout));
 				}
 			}
 		}
@@ -516,7 +516,7 @@ int speech_channel_open(speech_channel_t *schannel, ast_mrcp_profile_t *profile)
 
 	/* Wait for channel to be ready. */
 	while (schannel->state == SPEECH_CHANNEL_CLOSED)
-		apr_thread_cond_timedwait(schannel->cond, schannel->mutex, SPEECH_CHANNEL_TIMEOUT_USEC);
+		apr_thread_cond_timedwait(schannel->cond, schannel->mutex, globals.speech_channel_timeout);
 
 	if (schannel->state == SPEECH_CHANNEL_READY) {
 		ast_log(LOG_DEBUG, "(%s) channel is ready\n", schannel->name);
@@ -530,7 +530,7 @@ int speech_channel_open(speech_channel_t *schannel, ast_mrcp_profile_t *profile)
 			ast_log(LOG_WARNING, "(%s) Unable to terminate application session\n", schannel->name);
 
 		/* Wait for session to be cleaned up. */
-		apr_thread_cond_timedwait(schannel->cond, schannel->mutex, SPEECH_CHANNEL_TIMEOUT_USEC);
+		apr_thread_cond_timedwait(schannel->cond, schannel->mutex, globals.speech_channel_timeout);
 
 		if (schannel->state != SPEECH_CHANNEL_CLOSED) {
 			/* Major issue. Can't retry. */
@@ -594,7 +594,7 @@ int speech_channel_stop(speech_channel_t *schannel)
 				ast_log(LOG_WARNING, "(%s) Failed to send STOP message\n", schannel->name);
 			else if (schannel->cond != NULL) {
 				while (schannel->state == SPEECH_CHANNEL_PROCESSING) {
-					if (apr_thread_cond_timedwait(schannel->cond, schannel->mutex, SPEECH_CHANNEL_TIMEOUT_USEC) == APR_TIMEUP) {
+					if (apr_thread_cond_timedwait(schannel->cond, schannel->mutex, globals.speech_channel_timeout) == APR_TIMEUP) {
 						break;
 					}
 				}

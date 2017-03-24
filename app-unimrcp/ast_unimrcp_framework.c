@@ -41,21 +41,22 @@
 #include "uni_revision.h"
 #include "ast_unimrcp_framework.h"
 
-#define DEFAULT_UNIMRCP_MAX_CONNECTION_COUNT	120
-#define DEFAULT_UNIMRCP_OFFER_NEW_CONNECTION	1
-#define DEFAULT_UNIMRCP_LOG_LEVEL				"DEBUG"
+#define DEFAULT_UNIMRCP_MAX_CONNECTION_COUNT   120
+#define DEFAULT_UNIMRCP_OFFER_NEW_CONNECTION   1
+#define DEFAULT_UNIMRCP_LOG_LEVEL              "DEBUG"
 
-#define DEFAULT_LOCAL_IP_ADDRESS				"127.0.0.1"
-#define DEFAULT_REMOTE_IP_ADDRESS				"127.0.0.1"
-#define DEFAULT_SIP_LOCAL_PORT					5090
-#define DEFAULT_SIP_REMOTE_PORT					5060
-#define DEFAULT_RTP_PORT_MIN					4000
-#define DEFAULT_RTP_PORT_MAX					5000
+#define DEFAULT_SPEECH_CHANNEL_TIMEOUT         apr_time_from_msec(30000)
 
-#define DEFAULT_SOFIASIP_UA_NAME				"Asterisk"
-#define DEFAULT_SDP_ORIGIN						"Asterisk"
-#define DEFAULT_RESOURCE_LOCATION				"media"
+#define DEFAULT_LOCAL_IP_ADDRESS               "127.0.0.1"
+#define DEFAULT_REMOTE_IP_ADDRESS              "127.0.0.1"
+#define DEFAULT_SIP_LOCAL_PORT                 5090
+#define DEFAULT_SIP_REMOTE_PORT                5060
+#define DEFAULT_RTP_PORT_MIN                   4000
+#define DEFAULT_RTP_PORT_MAX                   5000
 
+#define DEFAULT_SOFIASIP_UA_NAME               "Asterisk"
+#define DEFAULT_SDP_ORIGIN                     "Asterisk"
+#define DEFAULT_RESOURCE_LOCATION              "media"
 
 /* Global variables. */
 ast_mrcp_globals_t globals;
@@ -76,6 +77,7 @@ static void globals_null(void)
 	globals.apps = NULL;
 	globals.mutex = NULL;
 	globals.speech_channel_number = 0;
+	globals.speech_channel_timeout = 0;
 	globals.profiles = NULL;
 }
 
@@ -129,6 +131,7 @@ static void globals_default(void)
 	globals.unimrcp_offer_new_connection = NULL;
 	globals.unimrcp_log_level = DEFAULT_UNIMRCP_LOG_LEVEL;
 	globals.speech_channel_number = 0;
+	globals.speech_channel_timeout = DEFAULT_SPEECH_CHANNEL_TIMEOUT;
 }
 
 void globals_destroy(void)
@@ -800,6 +803,14 @@ int load_mrcp_config(const char *filename, const char *who_asked)
 	if ((value = ast_variable_retrieve(cfg, "general", "request-timeout")) != NULL) {
 		ast_log(LOG_DEBUG, "general.request-timeout=%s\n",  value);
 		globals.unimrcp_request_timeout = apr_pstrdup(globals.pool, value);
+	}
+	if ((value = ast_variable_retrieve(cfg, "general", "speech-channel-timeout")) != NULL) {
+		ast_log(LOG_DEBUG, "general.speech-channel-timeout=%s\n",  value);
+		globals.speech_channel_timeout = apr_time_from_msec(atol(value));
+		if (globals.speech_channel_timeout < DEFAULT_SPEECH_CHANNEL_TIMEOUT) {
+			ast_log(LOG_DEBUG, "Reset general.speech-channel-timeout to default\n");
+			globals.speech_channel_timeout = DEFAULT_SPEECH_CHANNEL_TIMEOUT;
+		}
 	}
 
 	while ((cat = ast_category_browse(cfg, cat)) != NULL) {
