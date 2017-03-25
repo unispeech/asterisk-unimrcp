@@ -32,14 +32,17 @@ AC_DEFUN([FIND_ASTERISK], [
         asterisk_xmldoc_dir="${asterisk_dir}/var/lib/asterisk/documentation/thirdparty"
     fi
     asterisk_mod_dir="${asterisk_dir}/lib/asterisk/modules"
+    asterisk_include_dir="${asterisk_dir}/include"
 
     dnl Determine Asterisk version.
     if test "${asterisk_version}" = ""; then
         if test -f "$asterisk_dir/sbin/asterisk"; then
             asterisk_version=$($asterisk_dir/sbin/asterisk -V | grep Asterisk | cut -d' ' -f2)
         else
-            echo "Asterisk binary not found, using version.h to detect version"
-            asterisk_version=$(cat $asterisk_dir/include/asterisk/version.h | sed -n 's/#define ASTERISK_VERSION "\(.*\)"/\1/p')
+            if test -f "$asterisk_include_dir/asterisk/version.h"; then
+               echo "Asterisk binary not found, using version.h to determine version"
+               asterisk_version=$(cat $asterisk_include_dir/asterisk/version.h | sed -n 's/#define ASTERISK_VERSION "\(.*\)"/\1/p')
+            fi
         fi
     fi
 
@@ -48,6 +51,9 @@ AC_DEFUN([FIND_ASTERISK], [
     fi
 
     AC_MSG_RESULT([$asterisk_version])
+
+    dnl Strip off trailing characters, if present.
+    asterisk_version=$(echo $asterisk_version | cut -d- -f1 | cut -d~ -f1)
 
     case $asterisk_version in
         SVN*)
@@ -65,8 +71,18 @@ AC_DEFUN([FIND_ASTERISK], [
     AC_DEFINE_UNQUOTED(ASTERISK_MINOR_VERSION, $ASTERISK_MINOR_VERSION)
     AC_DEFINE_UNQUOTED(ASTERISK_PATCH_VERSION, $ASTERISK_PATCH_VERSION)
 
+    dnl Test Asterisk include directory and header file.
+    if test -f "$asterisk_include_dir/asterisk.h"; then
+        if test -d "$asterisk_include_dir/asterisk"; then
+            ASTERISK_INCLUDES="-I$asterisk_include_dir"
+        else
+            AC_MSG_ERROR([Could not find Asterisk include directory, make sure Asterisk development package is installed])
+        fi
+    else
+        AC_MSG_ERROR([Could not find asterisk.h, make sure Asterisk development package is installed])
+    fi
+
     dnl Set Asterisk includes, conf and xmldoc directories.
-    ASTERISK_INCLUDES="-I$asterisk_dir/include"
     AC_SUBST(ASTERISK_INCLUDES)
     AC_SUBST(asterisk_conf_dir)
     AC_SUBST(asterisk_xmldoc_dir)
