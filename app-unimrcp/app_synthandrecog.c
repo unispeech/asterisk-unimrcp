@@ -1792,6 +1792,8 @@ int load_synthandrecog_app()
 	synthandrecog->dispatcher.on_channel_add = speech_on_channel_add;
 	synthandrecog->dispatcher.on_channel_remove = NULL;
 	synthandrecog->dispatcher.on_message_receive = speech_on_message_receive;
+	synthandrecog->dispatcher.on_terminate_event = NULL;
+	synthandrecog->dispatcher.on_resource_discover = NULL;
 	synthandrecog->audio_stream_vtable.destroy = NULL;
 	synthandrecog->audio_stream_vtable.open_rx = recog_stream_open;
 	synthandrecog->audio_stream_vtable.close_rx = NULL;

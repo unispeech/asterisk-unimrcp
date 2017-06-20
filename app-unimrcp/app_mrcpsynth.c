@@ -677,6 +677,8 @@ int load_mrcpsynth_app()
 	mrcpsynth->dispatcher.on_channel_add = speech_on_channel_add;
 	mrcpsynth->dispatcher.on_channel_remove = NULL;
 	mrcpsynth->dispatcher.on_message_receive = synth_on_message_receive;
+	mrcpsynth->dispatcher.on_terminate_event = NULL;
+	mrcpsynth->dispatcher.on_resource_discover = NULL;
 	mrcpsynth->audio_stream_vtable.destroy = NULL;
 	mrcpsynth->audio_stream_vtable.open_rx = NULL;
 	mrcpsynth->audio_stream_vtable.close_rx = NULL;

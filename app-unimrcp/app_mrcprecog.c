@@ -1494,6 +1494,8 @@ int load_mrcprecog_app()
 	mrcprecog->dispatcher.on_channel_add = speech_on_channel_add;
 	mrcprecog->dispatcher.on_channel_remove = NULL;
 	mrcprecog->dispatcher.on_message_receive = recog_on_message_receive;
+	mrcprecog->dispatcher.on_terminate_event = NULL;
+	mrcprecog->dispatcher.on_resource_discover = NULL;
 	mrcprecog->audio_stream_vtable.destroy = NULL;
 	mrcprecog->audio_stream_vtable.open_rx = recog_stream_open;
 	mrcprecog->audio_stream_vtable.close_rx = NULL;
