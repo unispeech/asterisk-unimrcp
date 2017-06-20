@@ -229,6 +229,7 @@ speech_channel_t *speech_channel_create(
 		schan->unimrcp_channel = NULL;
 		schan->stream = NULL;
 		schan->dtmf_generator = NULL;
+		schan->session_id = NULL;
 		schan->pool = pool;
 		schan->mutex = NULL;
 		schan->cond = NULL;
@@ -433,6 +434,7 @@ int speech_channel_destroy(speech_channel_t *schannel)
 	schannel->unimrcp_channel = NULL;
 	schannel->stream = NULL;
 	schannel->dtmf_generator = NULL;
+	schannel->session_id = NULL;
 	schannel->pool = NULL;
 	schannel->mutex = NULL;
 	schannel->cond = NULL;
@@ -759,20 +761,6 @@ int speech_channel_ast_write(speech_channel_t *schannel, void *data, apr_size_t 
 	}
 	
 	return 0;
-}
-
-/* Get MRCP session identifier of speech channel, when available. */
-const char* speech_channel_get_id(speech_channel_t *schannel)
-{
-	const apt_str_t *session_id;
-	if(!schannel->unimrcp_session)
-		return NULL;
-
-	session_id = mrcp_application_session_id_get(schannel->unimrcp_session);
-	if(!session_id)
-		return NULL;
-
-	return session_id->buf;
 }
 
 /* Playback the specified sound file. */

@@ -85,6 +85,8 @@ struct speech_channel_t {
 	mpf_audio_stream_t *stream;
 	/* UniMRCP DTMF digit generator. */
 	mpf_dtmf_generator_t *dtmf_generator;
+	/* MRCP session identifier. */
+	char *session_id;
 	/* Memory pool. */
 	apr_pool_t *pool;
 	/* Synchronizes channel state/ */
@@ -204,9 +206,6 @@ int speech_channel_write(speech_channel_t *schannel, void *data, apr_size_t *len
 
 /* Write synthesized speech to Asterisk. */
 int speech_channel_ast_write(speech_channel_t *schannel, void *data, apr_size_t len);
-
-/* Get MRCP session identifier of speech channel, when available. */
-const char* speech_channel_get_id(speech_channel_t *schannel);
 
 /* Convert channel status to string. */
 const char *speech_channel_status_to_string(speech_channel_status_t status);

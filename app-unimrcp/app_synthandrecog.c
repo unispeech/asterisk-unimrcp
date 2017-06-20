@@ -276,6 +276,13 @@ static apt_bool_t speech_on_channel_add(mrcp_application_t *application, mrcp_se
 		else
 			codec_name = "unknown";
 
+		if (!schannel->session_id) {
+			const apt_str_t *session_id = mrcp_application_session_id_get(session);
+			if (session_id && session_id->buf) {
+				schannel->session_id = apr_pstrdup(schannel->pool, session_id->buf);
+			}
+		}
+		
 		ast_log(LOG_NOTICE, "(%s) Channel ready codec=%s, sample rate=%d\n",
 			schannel->name,
 			codec_name,
@@ -1267,9 +1274,8 @@ static int synthandrecog_exit(struct ast_channel *chan, sar_session_t *sar_sessi
 			speech_channel_destroy(sar_session->synth_channel);
 
 		if (sar_session->recog_channel) {
-			const char *session_id = speech_channel_get_id(sar_session->recog_channel);
-			if(session_id)
-				pbx_builtin_setvar_helper(chan, "RECOG_SID", session_id);
+			if (sar_session->recog_channel->session_id)
+				pbx_builtin_setvar_helper(chan, "RECOG_SID", sar_session->recog_channel->session_id);
 			speech_channel_destroy(sar_session->recog_channel);
 		}
 
