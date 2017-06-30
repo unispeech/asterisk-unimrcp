@@ -975,7 +975,8 @@ static apt_bool_t on_message_receive(mrcp_application_t *application, mrcp_sessi
 /** \brief Received unexpected session/channel termination event */
 static apt_bool_t on_terminate_event(mrcp_application_t *application, mrcp_session_t *session, mrcp_channel_t *channel)
 {
-	uni_speech_t *uni_speech = mrcp_application_channel_object_get(channel);
+	struct ast_speech *speech = mrcp_application_session_object_get(session);
+	uni_speech_t *uni_speech = speech->data;
 	ast_log(LOG_WARNING, "(%s) Received unexpected session termination event\n",uni_speech->name);
 	return TRUE;
 }
