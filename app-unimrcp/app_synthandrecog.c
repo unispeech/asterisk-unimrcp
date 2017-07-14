@@ -1604,8 +1604,10 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 		}
 	}
 
+#if !AST_VERSION_AT_LEAST(11,0,0)
 	off_t read_filestep = 0;
 	off_t read_filelength;
+#endif
 	int waitres;
 	/* Continue with recognition. */
 	while ((waitres = ast_waitfor(chan, 100)) >= 0) {
@@ -1628,6 +1630,12 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 			end_of_prompt = 0;
 			if (prompt_item->is_audio_file) {
 				if (sar_session.filestream) {
+#if AST_VERSION_AT_LEAST(11,0,0)
+					if (ast_channel_streamid(chan) == -1 && ast_channel_timingfunc(chan) == NULL) {
+						ast_stopstream(chan);
+						sar_session.filestream = NULL;
+					}
+#else
 					read_filelength = ast_tellstream(sar_session.filestream);
 					if(!read_filestep)
 						read_filestep = read_filelength;
@@ -1637,6 +1645,7 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 						sar_session.filestream = NULL;
 						read_filestep = 0;
 					}
+#endif
 				}
 			}
 			else {

@@ -1319,8 +1319,10 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 		}
 	}
 
+#if !AST_VERSION_AT_LEAST(11,0,0)
 	off_t read_filestep = 0;
 	off_t read_filelength;
+#endif
 	int waitres;
 	int recog_processing;
 	/* Continue with recognition. */
@@ -1342,6 +1344,12 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 
 		if (prompt_processing) {
 			if (filestream) {
+#if AST_VERSION_AT_LEAST(11,0,0)
+				if (ast_channel_streamid(chan) == -1 && ast_channel_timingfunc(chan) == NULL) {
+					ast_stopstream(chan);
+					filestream = NULL;
+				}
+#else
 				read_filelength = ast_tellstream(filestream);
 				if(!read_filestep)
 					read_filestep = read_filelength;
@@ -1350,6 +1358,7 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 					filestream = NULL;
 					read_filestep = 0;
 				}
+#endif
 			}
 
 			if (!filestream) {
