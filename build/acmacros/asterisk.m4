@@ -4,17 +4,22 @@ AC_DEFUN([FIND_ASTERISK], [
     AC_MSG_NOTICE([Asterisk configuration])
 
     AC_ARG_WITH([asterisk],
-        [  --with-asterisk=DIR         specify Asterisk location],
+        [  --with-asterisk=DIR         specify location of Asterisk],
         [asterisk_dir=$withval],
         [asterisk_dir=""])
 
     AC_ARG_WITH([asterisk-conf],
-        [  --with-asterisk-conf=DIR    specify Asterisk config location],
+        [  --with-asterisk-conf=DIR    specify location of Asterisk config dir],
         [asterisk_conf_dir=$withval],
         [asterisk_conf_dir=""])
 
+    AC_ARG_WITH([asterisk-doc],
+        [  --with-asterisk-doc=DIR     specify location of Asterisk doc dir],
+        [asterisk_xmldoc_dir=$withval],
+        [asterisk_xmldoc_dir=""])
+
     AC_ARG_WITH([asterisk-version],
-        [  --with-asterisk-version=VER specify Asterisk version],
+        [  --with-asterisk-version=VER specify version of Asterisk],
         [asterisk_version=$withval],
         [asterisk_version=""])
 
@@ -24,12 +29,16 @@ AC_DEFUN([FIND_ASTERISK], [
         if test "${asterisk_conf_dir}" = ""; then
             asterisk_conf_dir="/etc/asterisk"
         fi
-        asterisk_xmldoc_dir="/var/lib/asterisk/documentation/thirdparty"
+        if test "${asterisk_xmldoc_dir}" = ""; then
+            asterisk_xmldoc_dir="/var/lib/asterisk/documentation/thirdparty"
+        fi
     else
         if test "${asterisk_conf_dir}" = ""; then
             asterisk_conf_dir="${asterisk_dir}/etc/asterisk"
         fi
-        asterisk_xmldoc_dir="${asterisk_dir}/var/lib/asterisk/documentation/thirdparty"
+        if test "${asterisk_xmldoc_dir}" = ""; then
+            asterisk_xmldoc_dir="${asterisk_dir}/var/lib/asterisk/documentation/thirdparty"
+        fi
     fi
     asterisk_mod_dir="${asterisk_dir}/lib/asterisk/modules"
     asterisk_include_dir="${asterisk_dir}/include"
