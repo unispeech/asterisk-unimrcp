@@ -604,7 +604,6 @@ static int uni_recog_start(struct ast_speech *speech)
 		apr_hash_index_t *it;
 		void *val;
 		const char *grammar_name;
-		const char *content = NULL;
 		apt_bool_t first_line = TRUE;
 
 		/* Set generic header fields */
