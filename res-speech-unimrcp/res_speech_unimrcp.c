@@ -27,18 +27,21 @@
 /* Asterisk includes. */
 #include "ast_compat_defs.h"
 
-#define AST_MODULE "res_speech_unimrcp" 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: $")
+ASTERISK_REGISTER_FILE()
 
+#define AST_MODULE "res_speech_unimrcp"
 #include <asterisk/module.h>
 #include <asterisk/config.h>
 #include <asterisk/frame.h>
 #include <asterisk/speech.h>
 
+/* APR includes. */
 #include <apr_thread_cond.h>
 #include <apr_thread_proc.h>
 #include <apr_tables.h>
 #include <apr_hash.h>
+
+/* UniMRCP includes. */
 #include <unimrcp_client.h>
 #include <mrcp_application.h>
 #include <mrcp_message.h>
