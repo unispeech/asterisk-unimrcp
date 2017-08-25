@@ -182,7 +182,6 @@ speech_channel_t *speech_channel_create(
 						speech_channel_type_t type,
 						ast_mrcp_application_t *app,
 						ast_format_compat *format,
-						apr_uint16_t rate,
 						const char *rec_file_path,
 						struct ast_channel *chan);
 

@@ -186,7 +186,6 @@ struct sar_session_t {
 	ast_format_compat     *writeformat;        /* old write format, to be restored */
 	ast_format_compat     *nreadformat;        /* new read format used for recognition */
 	ast_format_compat     *nwriteformat;       /* new write format used for synthesis */
-	int                    samplerate;         /* supported sampling rate */
 	apr_array_header_t    *prompts;            /* list of prompt items */
 	int                    cur_prompt;         /* current prompt index */
 	struct ast_filestream *filestream;         /* filestream, if any */
@@ -1213,7 +1212,6 @@ static sar_prompt_item_t* synthandrecog_prompt_play(sar_session_t *sar_session, 
 											SPEECH_CHANNEL_SYNTHESIZER,
 											synthandrecog,
 											sar_session->nwriteformat,
-											sar_session->samplerate,
 											NULL,
 											sar_session->chan);
 			if (!sar_session->synth_channel) {
@@ -1349,7 +1347,6 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 	sar_session.writeformat = NULL;
 	sar_session.nreadformat = NULL;
 	sar_session.nwriteformat = NULL;
-	sar_session.samplerate = 8000;
 	sar_session.prompts = apr_array_make(sar_session.pool, 1, sizeof(sar_prompt_item_t));
 	sar_session.cur_prompt = 0;
 	sar_session.filestream = NULL;
@@ -1391,7 +1388,6 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 										SPEECH_CHANNEL_RECOGNIZER,
 										synthandrecog,
 										nreadformat,
-										sar_session.samplerate,
 										NULL,
 										chan);
 	if (sar_session.recog_channel == NULL) {

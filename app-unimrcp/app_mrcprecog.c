@@ -1042,7 +1042,6 @@ static int mrcprecog_exit(struct ast_channel *chan, mrcprecog_session_t *mrcprec
 /* The entry point of the application. */
 static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 {
-	int samplerate = 8000;
 	int dtmf_enable;
 	struct ast_frame *f = NULL;
 	ast_mrcp_profile_t *profile = NULL;
@@ -1137,7 +1136,6 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 									SPEECH_CHANNEL_RECOGNIZER,
 									mrcprecog,
 									nreadformat,
-									samplerate,
 									NULL,
 									chan);
 	if (!mrcprecog_session.schannel) {

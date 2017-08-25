@@ -183,7 +183,6 @@ speech_channel_t *speech_channel_create(
 						speech_channel_type_t type,
 						ast_mrcp_application_t *app,
 						ast_format_compat *format,
-						apr_uint16_t rate,
 						const char *rec_file_path,
 						struct ast_channel *chan)
 {
@@ -213,14 +212,16 @@ speech_channel_t *speech_channel_create(
 		schan->format = format;
 		const char *codec = format_to_str(format);
 		if ((codec == NULL) || (strlen(codec) == 0)) {
-			ast_log(LOG_WARNING, "(%s) No codec specified, assuming \"L16\"\n", schan->name);
-			schan->codec = "L16";
+			ast_log(LOG_WARNING, "(%s) No codec specified, assuming \"LPCM\"\n", schan->name);
+			schan->codec = "LPCM";
 		} else
 			schan->codec = apr_pstrdup(pool, codec);
 		if ((schan->codec == NULL) || (strlen(schan->codec) == 0)) {
-			ast_log(LOG_WARNING, "(%s) Unable to allocate codec for channel, using \"L16\"\n", schan->name);
-			schan->codec = "L16";
+			ast_log(LOG_WARNING, "(%s) Unable to allocate codec for channel, using \"LPCM\"\n", schan->name);
+			schan->codec = "LPCM";
 		}
+
+		schan->rate = ast_format_get_sample_rate(format);
 
 		schan->profile = NULL;
 		schan->type = type;
@@ -235,12 +236,11 @@ speech_channel_t *speech_channel_create(
 		schan->cond = NULL;
 		schan->state = SPEECH_CHANNEL_CLOSED;
 		schan->audio_queue = NULL;
-		schan->rate = rate;
 		schan->data = NULL;
 		schan->chan = chan;
 		schan->rec_file = NULL;
 
-		if (strstr("L16", schan->codec)) {
+		if (strstr("LPCM", schan->codec)) {
 			schan->silence = 0;
 		} else {
 			/* 8-bit PCMU, PCMA. */
@@ -315,7 +315,7 @@ speech_channel_t *speech_channel_create(
 static mpf_termination_t *speech_channel_create_mpf_termination(speech_channel_t *schannel)
 {   
 	mpf_stream_capabilities_t *capabilities = NULL;
-	int sample_rates;
+	int sample_rate;
 
 	if (schannel->type == SPEECH_CHANNEL_SYNTHESIZER)
 		capabilities = mpf_sink_stream_capabilities_create(schannel->unimrcp_session->pool);
@@ -327,23 +327,8 @@ static mpf_termination_t *speech_channel_create_mpf_termination(speech_channel_t
 		return NULL;
 	}
 
-	/* UniMRCP should transcode whatever the MRCP server wants to use into LPCM
-	 * (host-byte ordered L16) for us. Asterisk may not support all of these.
-	 */
-	if (schannel->rate == 16000)
-		sample_rates = MPF_SAMPLE_RATE_8000 | MPF_SAMPLE_RATE_16000;
-	else if (schannel->rate == 32000)
-		sample_rates = MPF_SAMPLE_RATE_8000 | MPF_SAMPLE_RATE_16000 | MPF_SAMPLE_RATE_32000;
-	else if (schannel->rate == 48000)
-		sample_rates = MPF_SAMPLE_RATE_8000 | MPF_SAMPLE_RATE_16000 | MPF_SAMPLE_RATE_48000;
-	else
-		sample_rates = MPF_SAMPLE_RATE_8000;
-
-	/* TO DO : Check if all of these are supported on Asterisk for all codecs. */
-	if (strcasecmp(schannel->codec, "L16") == 0)
-		mpf_codec_capabilities_add(&capabilities->codecs, sample_rates, "LPCM");
-	else
-		mpf_codec_capabilities_add(&capabilities->codecs, sample_rates, schannel->codec);
+	sample_rate = mpf_sample_rate_mask_get(schannel->rate);
+	mpf_codec_capabilities_add(&capabilities->codecs, sample_rate, schannel->codec);
 
 	return mrcp_application_audio_termination_create(
 					schannel->unimrcp_session,                        /* Session, termination belongs to. */

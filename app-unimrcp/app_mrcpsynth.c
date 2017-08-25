@@ -547,7 +547,6 @@ static int app_synth_exec(struct ast_channel *chan, ast_app_data data)
 	}
 
 	ast_format_compat *nwriteformat = ast_channel_get_speechwriteformat(chan, mrcpsynth_session.pool);
-	int samplerate = 8000;
 
 	name = apr_psprintf(mrcpsynth_session.pool, "TTS-%lu", (unsigned long int)speech_channel_number);
 
@@ -557,7 +556,6 @@ static int app_synth_exec(struct ast_channel *chan, ast_app_data data)
 									SPEECH_CHANNEL_SYNTHESIZER,
 									mrcpsynth,
 									nwriteformat,
-									samplerate,
 									filename,
 									chan);
 	if (!mrcpsynth_session.schannel) {
