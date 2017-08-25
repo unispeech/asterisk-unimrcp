@@ -28,7 +28,7 @@
  * Specifies the output directory to store streams in, used if 
  * SPEECH_CHANNEL_DUMP is enabled.
  */
-#define SPEECH_CHANNEL_DUMP_DIR   UNIMRCP_DIR_LOCATION"/data"
+#define SPEECH_CHANNEL_DUMP_DIR   UNIMRCP_DIR_LOCATION"/var"
 
 /*
  * Set SPEECH_CHANNEL_TRACE to 1 to trace a statement per 
