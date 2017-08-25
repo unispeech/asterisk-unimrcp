@@ -100,7 +100,7 @@ struct speech_channel_t {
 	/* Speech format. */
 	ast_format_compat *format;
 	/* Codec. */
-	char *codec;
+	const char *codec;
 	/* Rate. */
 	apr_uint16_t rate;
 	/* Silence byte. */

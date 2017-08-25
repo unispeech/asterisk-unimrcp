@@ -210,17 +210,7 @@ speech_channel_t *speech_channel_create(
 		}
 
 		schan->format = format;
-		const char *codec = format_to_str(format);
-		if ((codec == NULL) || (strlen(codec) == 0)) {
-			ast_log(LOG_WARNING, "(%s) No codec specified, assuming \"LPCM\"\n", schan->name);
-			schan->codec = "LPCM";
-		} else
-			schan->codec = apr_pstrdup(pool, codec);
-		if ((schan->codec == NULL) || (strlen(schan->codec) == 0)) {
-			ast_log(LOG_WARNING, "(%s) Unable to allocate codec for channel, using \"LPCM\"\n", schan->name);
-			schan->codec = "LPCM";
-		}
-
+		schan->codec = ast_format_get_unicodec(format);
 		schan->rate = ast_format_get_sample_rate(format);
 
 		schan->profile = NULL;
@@ -723,7 +713,7 @@ static APR_INLINE void ast_frame_fill(ast_format_compat *format, struct ast_fram
 	fr->frametype = AST_FRAME_VOICE;
 	ast_frame_set_format(fr, format);
 	fr->datalen = size;
-	fr->samples = size / format_to_bytes_per_sample(format);
+	fr->samples = size / ast_format_get_bytes_per_sample(format);
 	ast_frame_set_data(fr, data);
 	fr->mallocd = 0;
 	fr->offset = AST_FRIENDLY_OFFSET;

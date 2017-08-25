@@ -127,19 +127,21 @@ static APR_INLINE ast_format_compat* ast_get_speechformat(ast_format_compat *raw
 	int sample_rate = ast_format_get_sample_rate(raw_format);
 	return ast_format_cache_get_slin_by_rate(sample_rate);
 }
-static APR_INLINE const char* format_to_str(const ast_format_compat *format)
+static APR_INLINE const char* ast_format_get_unicodec(const ast_format_compat *format)
 {
 	if(format == ast_format_ulaw)
 		return "PCMU";
 	if(format == ast_format_alaw)
 		return "PCMA";
+	/*! Use Raw 16-bit Signed Linear PCM for the rest */
 	return "LPCM";
 }
-static APR_INLINE int format_to_bytes_per_sample(const ast_format_compat *format)
+static APR_INLINE int ast_format_get_bytes_per_sample(const ast_format_compat *format)
 {
+	/*! Raw mu-law and A-law data (G.711) */
 	if(format == ast_format_ulaw || format == ast_format_alaw)
 		return 1;
-	/* linear */
+	/*! Use Raw 16-bit Signed Linear PCM for the rest */
 	return 2 * ast_format_get_sample_rate(format) / 8000;
 }
 #else
@@ -164,31 +166,22 @@ static APR_INLINE ast_format_compat* ast_get_speechformat(ast_format_compat *raw
 	}
 	return speech_format;
 }
-static APR_INLINE const char* format_to_str(const ast_format_compat *format)
+static APR_INLINE const char* ast_format_get_unicodec(const ast_format_compat *format)
 {
-	const char *str;
-	switch(format->id) {
-		/*! Raw mu-law and A-law data (G.711) */
-		case AST_FORMAT_ULAW: str = "PCMU"; break;
-		case AST_FORMAT_ALAW: str = "PCMA"; break;
-		/*! Use Raw 16-bit Signed Linear (8 kHz or 16 kHz) PCM for the rest */
-		default: str = "LPCM";
-	}
-	return str;
+	if(format->id == AST_FORMAT_ULAW)
+		return "PCMU";
+	if(format->id == AST_FORMAT_ALAW)
+		return "PCMA";
+	/*! Use Raw 16-bit Signed Linear PCM for the rest */
+	return "LPCM";
 }
-static APR_INLINE int format_to_bytes_per_sample(const ast_format_compat *format)
+static APR_INLINE int ast_format_get_bytes_per_sample(const ast_format_compat *format)
 {
-	int bps;
-	switch(format->id) {
-		/*! Raw mu-law and A-law data (G.711) */
-		case AST_FORMAT_ULAW:
-		case AST_FORMAT_ALAW:
-			bps = 1;
-			break;
-		/*! Use Raw 16-bit Signed Linear (8 kHz or 16 kHz) PCM for the rest */
-		default: bps = 2 * ast_format_get_sample_rate(format) / 8000;
-	}
-	return bps;
+	/*! Raw mu-law and A-law data (G.711) */
+	if(format->id == AST_FORMAT_ULAW || format->id == AST_FORMAT_ALAW)
+		return 1;
+	/*! Use Raw 16-bit Signed Linear PCM for the rest */
+	return 2 * ast_format_get_sample_rate(format) / 8000;
 }
 #endif
 
