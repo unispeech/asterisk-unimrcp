@@ -195,6 +195,14 @@ static APR_INLINE void ast_channel_set_writeformat(struct ast_channel *chan, ast
 {
 	ast_set_write_format(chan, format);
 }
+static APR_INLINE void ast_channel_set_rawreadformat(struct ast_channel *chan, ast_format_compat *format)
+{
+	// Do nothing, defined for >= 13 only
+}
+static APR_INLINE void ast_channel_set_rawwriteformat(struct ast_channel *chan, ast_format_compat *format)
+{
+	// Do nothing, defined for >= 13 only
+}
 #else /* <= 1.8 */
 static APR_INLINE void ast_channel_set_readformat(struct ast_channel *chan, ast_format_compat *format)
 {
@@ -203,6 +211,14 @@ static APR_INLINE void ast_channel_set_readformat(struct ast_channel *chan, ast_
 static APR_INLINE void ast_channel_set_writeformat(struct ast_channel *chan, ast_format_compat *format)
 {
 	ast_set_write_format(chan, format->id);
+}
+static APR_INLINE void ast_channel_set_rawreadformat(struct ast_channel *chan, ast_format_compat *format)
+{
+	// Do nothing, defined for >= 13 only
+}
+static APR_INLINE void ast_channel_set_rawwriteformat(struct ast_channel *chan, ast_format_compat *format)
+{
+	// Do nothing, defined for >= 13 only
 }
 #endif
 
@@ -225,6 +241,14 @@ static APR_INLINE ast_format_compat* ast_channel_get_writeformat(struct ast_chan
 {
 	return ast_channel_writeformat(chan);
 }
+static APR_INLINE ast_format_compat* ast_channel_get_rawreadformat(struct ast_channel *chan, apr_pool_t *pool)
+{
+	return ast_channel_rawreadformat(chan);
+}
+static APR_INLINE ast_format_compat* ast_channel_get_rawwriteformat(struct ast_channel *chan, apr_pool_t *pool)
+{
+	return ast_channel_rawwriteformat(chan);
+}
 #elif AST_VERSION_AT_LEAST(10,0,0)
 static APR_INLINE ast_format_compat* ast_channel_get_speechreadformat(struct ast_channel *chan, apr_pool_t *pool)
 {
@@ -241,6 +265,14 @@ static APR_INLINE ast_format_compat* ast_channel_get_readformat(struct ast_chann
 static APR_INLINE ast_format_compat* ast_channel_get_writeformat(struct ast_channel *chan, apr_pool_t *pool)
 {
 	return chan->writeformat;
+}
+static APR_INLINE ast_format_compat* ast_channel_get_rawreadformat(struct ast_channel *chan, apr_pool_t *pool)
+{
+	return chan->rawreadformat;
+}
+static APR_INLINE ast_format_compat* ast_channel_get_rawwriteformat(struct ast_channel *chan, apr_pool_t *pool)
+{
+	return chan->rawwriteformat;
 }
 #else /* <= 1.8 */
 static APR_INLINE ast_format_compat* ast_channel_get_speechreadformat(struct ast_channel *chan, apr_pool_t *pool)
@@ -269,6 +301,20 @@ static APR_INLINE ast_format_compat* ast_channel_get_writeformat(struct ast_chan
 	ast_format_compat *format = apr_palloc(pool, sizeof(ast_format_compat));
 	ast_format_clear(format);
 	format->id = chan->writeformat;
+	return format;
+}
+static APR_INLINE ast_format_compat* ast_channel_get_rawreadformat(struct ast_channel *chan, apr_pool_t *pool)
+{
+	ast_format_compat *format = apr_palloc(pool, sizeof(ast_format_compat));
+	ast_format_clear(format);
+	format->id = chan->rawreadformat;
+	return format;
+}
+static APR_INLINE ast_format_compat* ast_channel_get_rawwriteformat(struct ast_channel *chan, apr_pool_t *pool)
+{
+	ast_format_compat *format = apr_palloc(pool, sizeof(ast_format_compat));
+	ast_format_clear(format);
+	format->id = chan->rawwriteformat;
 	return format;
 }
 #endif

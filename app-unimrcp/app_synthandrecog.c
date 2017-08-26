@@ -183,7 +183,9 @@ struct sar_session_t {
 	speech_channel_t      *recog_channel;      /* recognition channel */
 	speech_channel_t      *synth_channel;      /* synthesis channel, if any */
 	ast_format_compat     *readformat;         /* old read format, to be restored */
+	ast_format_compat     *rawreadformat;      /* old raw read format, to be restored (>= Asterisk 13) */
 	ast_format_compat     *writeformat;        /* old write format, to be restored */
+	ast_format_compat     *rawwriteformat;     /* old raw write format, to be restored (>= Asterisk 13) */
 	ast_format_compat     *nreadformat;        /* new read format used for recognition */
 	ast_format_compat     *nwriteformat;       /* new write format used for synthesis */
 	apr_array_header_t    *prompts;            /* list of prompt items */
@@ -1264,9 +1266,13 @@ static int synthandrecog_exit(struct ast_channel *chan, sar_session_t *sar_sessi
 	if (sar_session) {
 		if (sar_session->writeformat)
 			ast_channel_set_writeformat(chan, sar_session->writeformat);
+		if (sar_session->rawwriteformat)
+			ast_channel_set_rawwriteformat(chan, sar_session->rawwriteformat);
 
 		if (sar_session->readformat)
 			ast_channel_set_readformat(chan, sar_session->readformat);
+		if (sar_session->rawreadformat)
+			ast_channel_set_rawreadformat(chan, sar_session->rawreadformat);
 
 		if (sar_session->synth_channel)
 			speech_channel_destroy(sar_session->synth_channel);
@@ -1344,7 +1350,9 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 	sar_session.recog_channel = NULL;
 	sar_session.synth_channel = NULL;
 	sar_session.readformat = NULL;
+	sar_session.rawreadformat = NULL;
 	sar_session.writeformat = NULL;
+	sar_session.rawwriteformat = NULL;
 	sar_session.nreadformat = NULL;
 	sar_session.nwriteformat = NULL;
 	sar_session.prompts = apr_array_make(sar_session.pool, 1, sizeof(sar_prompt_item_t));
@@ -1423,17 +1431,23 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 
 	/* Get old read format. */
 	ast_format_compat *oreadformat = ast_channel_get_readformat(chan, sar_session.pool);
+	ast_format_compat *orawreadformat = ast_channel_get_rawreadformat(chan, sar_session.pool);
 	/* Get old write format. */
 	ast_format_compat *owriteformat = ast_channel_get_writeformat(chan, sar_session.pool);
+	ast_format_compat *orawwriteformat = ast_channel_get_rawwriteformat(chan, sar_session.pool);
 
 	/* Set read format. */
 	ast_channel_set_readformat(chan, nreadformat);
+	ast_channel_set_rawreadformat(chan, nreadformat);
 	sar_session.readformat = oreadformat;
+	sar_session.rawreadformat = orawreadformat;
 	sar_session.nreadformat = nreadformat;
 
 	/* Set write format. */
 	ast_channel_set_writeformat(chan, nwriteformat);
+	ast_channel_set_rawwriteformat(chan, nwriteformat);
 	sar_session.writeformat = owriteformat;
+	sar_session.rawwriteformat = orawwriteformat;
 	sar_session.nwriteformat = nwriteformat;
 
 	/* Get grammar delimiters. */

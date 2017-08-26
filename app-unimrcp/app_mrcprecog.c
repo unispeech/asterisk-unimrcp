@@ -196,6 +196,7 @@ struct mrcprecog_session_t {
 	apr_pool_t         *pool;               /* memory pool */
 	speech_channel_t   *schannel;           /* recognition channel */
 	ast_format_compat  *readformat;         /* old read format, to be restored */
+	ast_format_compat  *rawreadformat;      /* old raw read format, to be restored (>= Asterisk 13) */
 	apr_array_header_t *prompts;            /* list of prompts */
 	int                 cur_prompt;         /* current prompt index */
 	int                 it_policy;          /* input timers policy (mrcprecog_it_policies) */
@@ -1021,6 +1022,8 @@ static int mrcprecog_exit(struct ast_channel *chan, mrcprecog_session_t *mrcprec
 	if (mrcprecog_session) {
 		if (mrcprecog_session->readformat)
 			ast_channel_set_readformat(chan, mrcprecog_session->readformat);
+		if (mrcprecog_session->rawreadformat)
+			ast_channel_set_rawreadformat(chan, mrcprecog_session->rawreadformat);
 
 		if (mrcprecog_session->schannel) {
 			if (mrcprecog_session->schannel->session_id)
@@ -1082,6 +1085,7 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 
 	mrcprecog_session.schannel = NULL;
 	mrcprecog_session.readformat = NULL;
+	mrcprecog_session.rawreadformat = NULL;
 	mrcprecog_session.prompts = apr_array_make(mrcprecog_session.pool, 1, sizeof(char*));
 	mrcprecog_session.cur_prompt = 0;
 	mrcprecog_session.it_policy = IT_POLICY_AUTO;
@@ -1162,8 +1166,11 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 	}
 
 	ast_format_compat *oreadformat = ast_channel_get_readformat(chan, mrcprecog_session.pool);
+	ast_format_compat *orawreadformat = ast_channel_get_rawreadformat(chan, mrcprecog_session.pool);
 	ast_channel_set_readformat(chan, nreadformat);
+	ast_channel_set_rawreadformat(chan, nreadformat);
 	mrcprecog_session.readformat = oreadformat;
+	mrcprecog_session.rawreadformat = orawreadformat;
 
 	const char *grammar_delimiters = ",";
 	/* Get grammar delimiters. */

@@ -140,6 +140,7 @@ struct mrcpsynth_session_t {
 	apr_pool_t         *pool;
 	speech_channel_t   *schannel;
 	ast_format_compat  *writeformat;
+	ast_format_compat  *rawwriteformat;
 };
 
 typedef struct mrcpsynth_session_t mrcpsynth_session_t;
@@ -454,6 +455,8 @@ static int mrcpsynth_exit(struct ast_channel *chan, mrcpsynth_session_t *mrcpsyn
 	if (mrcpsynth_session) {
 		if (mrcpsynth_session->writeformat)
 			ast_channel_set_writeformat(chan, mrcpsynth_session->writeformat);
+		if (mrcpsynth_session->rawwriteformat)
+			ast_channel_set_rawwriteformat(chan, mrcpsynth_session->rawwriteformat);
 
 		if (mrcpsynth_session->schannel)
 			speech_channel_destroy(mrcpsynth_session->schannel);
@@ -511,6 +514,7 @@ static int app_synth_exec(struct ast_channel *chan, ast_app_data data)
 
 	mrcpsynth_session.schannel = NULL;
 	mrcpsynth_session.writeformat = NULL;
+	mrcpsynth_session.rawwriteformat = NULL;
 
 	mrcpsynth_options.synth_hfs = NULL;
 	mrcpsynth_options.flags = 0;
@@ -580,8 +584,11 @@ static int app_synth_exec(struct ast_channel *chan, ast_app_data data)
 	}
 
 	ast_format_compat *owriteformat = ast_channel_get_writeformat(chan, mrcpsynth_session.pool);
+	ast_format_compat *orawwriteformat = ast_channel_get_rawwriteformat(chan, mrcpsynth_session.pool);
 	ast_channel_set_writeformat(chan, nwriteformat);
+	ast_channel_set_rawwriteformat(chan, nwriteformat);
 	mrcpsynth_session.writeformat = owriteformat;
+	mrcpsynth_session.rawwriteformat = orawwriteformat;
 
 	const char *content = NULL;
 	const char *content_type = NULL;
