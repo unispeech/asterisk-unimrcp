@@ -103,6 +103,8 @@ struct speech_channel_t {
 	const char *codec;
 	/* Rate. */
 	apr_uint16_t rate;
+	/* Bytes per sample. */
+	apr_uint16_t bytes_per_sample;
 	/* Silence byte. */
 	apr_byte_t silence;
 	/* App specific data. */

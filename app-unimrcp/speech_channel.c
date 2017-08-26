@@ -212,6 +212,7 @@ speech_channel_t *speech_channel_create(
 		schan->format = format;
 		schan->codec = ast_format_get_unicodec(format);
 		schan->rate = ast_format_get_sample_rate(format);
+		schan->bytes_per_sample = ast_format_get_bytes_per_sample(format);
 
 		schan->profile = NULL;
 		schan->type = type;
@@ -707,13 +708,13 @@ int speech_channel_write(speech_channel_t *schannel, void *data, apr_size_t *len
 }
 
 /* Fill the frame with data. */
-static APR_INLINE void ast_frame_fill(ast_format_compat *format, struct ast_frame *fr, void *data, apr_size_t size)
+static APR_INLINE void ast_frame_fill(speech_channel_t *schannel, struct ast_frame *fr, void *data, apr_size_t size)
 {
 	memset(fr, 0, sizeof(*fr));
 	fr->frametype = AST_FRAME_VOICE;
-	ast_frame_set_format(fr, format);
+	ast_frame_set_format(fr, schannel->format);
 	fr->datalen = size;
-	fr->samples = size / ast_format_get_bytes_per_sample(format);
+	fr->samples = size / schannel->bytes_per_sample;
 	ast_frame_set_data(fr, data);
 	fr->mallocd = 0;
 	fr->offset = AST_FRIENDLY_OFFSET;
@@ -725,7 +726,7 @@ static APR_INLINE void ast_frame_fill(ast_format_compat *format, struct ast_fram
 int speech_channel_ast_write(speech_channel_t *schannel, void *data, apr_size_t len)
 {
 	struct ast_frame fr;
-	ast_frame_fill(schannel->format, &fr, data, len);
+	ast_frame_fill(schannel, &fr, data, len);
 
 	if (schannel->rec_file)
 		fwrite(data, 1, len, schannel->rec_file);
