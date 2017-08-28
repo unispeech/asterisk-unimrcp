@@ -133,7 +133,9 @@ enum grammar_type_t {
 	/* application/x-nuance-gsl. */
 	GRAMMAR_TYPE_NUANCE_GSL,
 	/* application/x-jsgf. */
-	GRAMMAR_TYPE_JSGF
+	GRAMMAR_TYPE_JSGF,
+	/* application/xml. */
+	GRAMMAR_TYPE_XML
 };  
 typedef enum grammar_type_t grammar_type_t;
 
@@ -164,7 +166,6 @@ struct recognizer_data_t {
 	int timers_started;
 };
 typedef struct recognizer_data_t recognizer_data_t;
-
 
 /* Use this function to set the current channel state without locking the 
  * speech channel.  Do this if you already have the speech channel locked.

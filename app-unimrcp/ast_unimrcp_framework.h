@@ -118,6 +118,8 @@ struct ast_mrcp_profile_t {
 	char *version;
 	/* MIME type to use for JSGF grammars. */
 	const char *jsgf_mime_type;
+	/* MIME type to use for XML applications. */
+	const char *xml_mime_type;
 	/* MIME type to use for GSL grammars. */
 	const char *gsl_mime_type;
 	/* MIME type to use for SRGS XML grammars. */

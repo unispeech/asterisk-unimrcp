@@ -42,23 +42,24 @@
 #include "audio_queue.h"
 #include "speech_channel.h"
 
-#define MIME_TYPE_PLAIN_TEXT					"text/plain"
-#define MIME_TYPE_URI_LIST						"text/uri-list"
+#define MIME_TYPE_PLAIN_TEXT   "text/plain"
+#define MIME_TYPE_URI_LIST     "text/uri-list"
 
-#define XML_ID									"<?xml"
-#define SRGS_ID									"<grammar"
-#define SSML_ID									"<speak"
-#define GSL_ID									";GSL2.0"
-#define ABNF_ID									"#ABNF"
-#define JSGF_ID									"#JSGF"
-#define BUILTIN_ID								"builtin:"
-#define SESSION_ID								"session:"
-#define HTTP_ID									"http://"
-#define HTTPS_ID								"https://"
-#define FILE_ID									"file://"
-#define INLINE_ID								"inline:"
+#define XML_ID                 "<?xml"
+#define SRGS_ID                "<grammar"
+#define SSML_ID                "<speak"
+#define GSL_ID                 ";GSL2.0"
+#define ABNF_ID                "#ABNF"
+#define JSGF_ID                "#JSGF"
+#define GSC_ID                 "<speech-context"
+#define BUILTIN_ID             "builtin:"
+#define SESSION_ID             "session:"
+#define HTTP_ID                "http://"
+#define HTTPS_ID               "https://"
+#define FILE_ID                "file://"
+#define INLINE_ID              "inline:"
 
-#define AUDIO_FILE_ID							"audio:"
+#define AUDIO_FILE_ID          "audio:"
 
 /* --- MRCP SPEECH CHANNEL --- */
 
@@ -919,6 +920,8 @@ int determine_grammar_type(speech_channel_t *schannel, const char *grammar_data,
 			tmp_grammar = GRAMMAR_TYPE_SRGS;
 		} else if (text_starts_with(grammar_data, JSGF_ID)) {
 			tmp_grammar = GRAMMAR_TYPE_JSGF;
+		} else if (text_starts_with(grammar_data, GSC_ID)) {
+			tmp_grammar = GRAMMAR_TYPE_XML;
 		} else {
 			/* Unable to determine grammar type. For backward compatibility, assume it's SRGS+XML */
 			tmp_grammar = GRAMMAR_TYPE_SRGS_XML;
@@ -979,6 +982,7 @@ const char *grammar_type_to_mime(grammar_type_t type, const ast_mrcp_profile_t *
 		case GRAMMAR_TYPE_SRGS_XML: return profile->srgs_xml_mime_type;
 		case GRAMMAR_TYPE_NUANCE_GSL: return profile->gsl_mime_type;
 		case GRAMMAR_TYPE_JSGF: return profile->jsgf_mime_type;
+		case GRAMMAR_TYPE_XML: return profile->xml_mime_type;
 		default: return "";
 	}
 }

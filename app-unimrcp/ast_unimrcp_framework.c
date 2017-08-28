@@ -105,6 +105,7 @@ static void globals_clear(void)
 				v->name = NULL;
 				v->version = NULL;
 				v->jsgf_mime_type = NULL;
+				v->xml_mime_type = NULL;
 				v->gsl_mime_type = NULL;
 				v->srgs_xml_mime_type = NULL;
 				v->srgs_mime_type = NULL;
@@ -271,6 +272,7 @@ int profile_create(ast_mrcp_profile_t **profile, const char *name, const char *v
 			lprofile->srgs_xml_mime_type = "application/srgs+xml";
 			lprofile->gsl_mime_type = "application/x-nuance-gsl";
 			lprofile->jsgf_mime_type = "application/x-jsgf";
+			lprofile->xml_mime_type = "application/xml";
 			lprofile->ssml_mime_type = "application/ssml+xml";
 			*profile = lprofile;
 		} else
@@ -295,6 +297,8 @@ static int process_profile_config(ast_mrcp_profile_t *profile, const char *param
 
 	if (strcasecmp(param, "jsgf-mime-type") == 0)
 		profile->jsgf_mime_type = apr_pstrdup(pool, val);
+	else if (strcasecmp(param, "xml-mime-type") == 0)
+		profile->xml_mime_type = apr_pstrdup(pool, val);
 	else if (strcasecmp(param, "gsl-mime-type") == 0)
 		profile->gsl_mime_type = apr_pstrdup(pool, val);
 	else if (strcasecmp(param, "srgs-xml-mime-type") == 0)
