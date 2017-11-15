@@ -1410,7 +1410,7 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 			break;
 		}
 
-		if (f->frametype == AST_FRAME_VOICE) {
+		if (f->frametype == AST_FRAME_VOICE && f->datalen) {
 			apr_size_t len = f->datalen;
 			if (speech_channel_write(mrcprecog_session.schannel, ast_frame_get_data(f), &len) != 0) {
 				ast_frfree(f);
