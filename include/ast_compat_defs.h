@@ -374,7 +374,9 @@ static APR_INLINE char *ast_uri_encode_http(const char *string, char *outbuf, in
 /**
  * Backward compatible ASTERISK_REGISTER_FILE() macro.
  */
-#if !AST_VERSION_AT_LEAST(14,0,0)
+#if AST_VERSION_AT_LEAST(15,0,0)
+#define ASTERISK_REGISTER_FILE()
+#elif !AST_VERSION_AT_LEAST(14,0,0)
 #ifndef ASTERISK_REGISTER_FILE
 #define ASTERISK_REGISTER_FILE() ASTERISK_FILE_VERSION(__FILE__, "")
 #endif
