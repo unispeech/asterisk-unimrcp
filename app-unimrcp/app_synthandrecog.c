@@ -1123,6 +1123,14 @@ static int synthandrecog_option_apply(sar_options_t *options, const char *key, c
 		options->flags |= SAR_RECOG_PROFILE | SAR_SYNTH_PROFILE;
 		options->params[OPT_ARG_RECOG_PROFILE] = value;
 		options->params[OPT_ARG_SYNTH_PROFILE] = value;
+	} else if (strcasecmp(key, "prec") == 0) {
+		/* Separate configuration option for recognizer operation */
+		options->flags |= SAR_RECOG_PROFILE;
+		options->params[OPT_ARG_RECOG_PROFILE] = value;
+	} else if (strcasecmp(key, "psyn") == 0) {
+		/* Separate configuration option for synthesizer operation */
+		options->flags |= SAR_SYNTH_PROFILE;
+		options->params[OPT_ARG_SYNTH_PROFILE] = value;
 	} else if (strcasecmp(key, "t") == 0) {
 		apr_hash_set(options->recog_hfs, "Recognition-Timeout", APR_HASH_KEY_STRING, value);
 	} else if (strcasecmp(key, "b") == 0) {
