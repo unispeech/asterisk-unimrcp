@@ -1,6 +1,7 @@
 MAINTAINERCLEANFILES          = Makefile.in
 
 AM_CPPFLAGS                   = -I$(top_srcdir)/include $(UNIMRCP_INCLUDES) $(ASTERISK_INCLUDES)
+AM_CFLAGS                     = -DAST_MODULE_SELF_SYM="__internal_res_speech_unimrcp"
 
 mod_LTLIBRARIES               = res_speech_unimrcp.la
 

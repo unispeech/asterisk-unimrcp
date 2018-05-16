@@ -49,7 +49,6 @@
 #define AST_VERSION_EQUAL(major,minor)                                      \
 	((major) == ASTERISK_MAJOR_VERSION && (minor) == ASTERISK_MINOR_VERSION)
 
-
 /**
  * Backward compatible type definition for application data parameter.
  */
@@ -77,16 +76,24 @@ static APR_INLINE const char *ast_channel_name(const struct ast_channel *chan)
 }
 #endif
 
-
 /**
  * Backward compatible media format definition and utility functions.
  */
 #if AST_VERSION_AT_LEAST(10,0,0)
 #include "asterisk/format.h"
+typedef struct ast_format ast_format_compat;
 #if AST_VERSION_AT_LEAST(13,0,0)
 #include "asterisk/format_cache.h"
+#else /* < 13 */
+static APR_INLINE unsigned int ast_format_get_sample_rate(const ast_format_compat *format)
+{
+	return ast_format_rate(format);
+}
+static APR_INLINE const char *ast_format_get_name(const ast_format_compat *format)
+{
+	return ast_getformatname(format);
+}
 #endif
-typedef struct ast_format ast_format_compat;
 #else /* <= 1.8 */
 struct ast_format_compat {
 #if AST_VERSION_AT_LEAST(1,8,0)
@@ -101,6 +108,14 @@ static APR_INLINE void ast_format_clear(ast_format_compat *format)
 {
 	format->id = 0;
 }
+static APR_INLINE unsigned int ast_format_get_sample_rate(const ast_format_compat *format)
+{
+	return ast_format_rate(format->id);
+}
+static APR_INLINE const char *ast_format_get_name(const ast_format_compat *format)
+{
+	return ast_getformatname(format->id);
+}
 #endif
 
 #if AST_VERSION_AT_LEAST(13,0,0)
@@ -108,22 +123,26 @@ static APR_INLINE ast_format_compat* ast_get_speechformat(ast_format_compat *raw
 {
 	if(raw_format == ast_format_ulaw || raw_format == ast_format_alaw)
 		return raw_format;
-	return ast_format_slin;
+
+	int sample_rate = ast_format_get_sample_rate(raw_format);
+	return ast_format_cache_get_slin_by_rate(sample_rate);
 }
-static APR_INLINE const char* format_to_str(const ast_format_compat *format)
+static APR_INLINE const char* ast_format_get_unicodec(const ast_format_compat *format)
 {
 	if(format == ast_format_ulaw)
 		return "PCMU";
 	if(format == ast_format_alaw)
 		return "PCMA";
-	return "L16";
+	/*! Use Raw 16-bit Signed Linear PCM for the rest */
+	return "LPCM";
 }
-static APR_INLINE int format_to_bytes_per_sample(const ast_format_compat *format)
+static APR_INLINE int ast_format_get_bytes_per_sample(const ast_format_compat *format)
 {
+	/*! Raw mu-law and A-law data (G.711) */
 	if(format == ast_format_ulaw || format == ast_format_alaw)
 		return 1;
-	/* linear */
-	return 2;
+	/*! Use Raw 16-bit Signed Linear PCM for the rest */
+	return 2 * ast_format_get_sample_rate(format) / 8000;
 }
 #else
 static APR_INLINE ast_format_compat* ast_get_speechformat(ast_format_compat *raw_format, apr_pool_t *pool)
@@ -137,39 +156,32 @@ static APR_INLINE ast_format_compat* ast_get_speechformat(ast_format_compat *raw
 			speech_format->id = raw_format->id;
 			break;
 		default:
-			speech_format->id = AST_FORMAT_SLINEAR;
+		{
+			int sample_rate = ast_format_get_sample_rate(raw_format);
+			if(sample_rate == 16000)
+				speech_format->id = AST_FORMAT_SLINEAR16;
+			else
+				speech_format->id = AST_FORMAT_SLINEAR;
+		}
 	}
 	return speech_format;
 }
-static APR_INLINE const char* format_to_str(const ast_format_compat *format)
+static APR_INLINE const char* ast_format_get_unicodec(const ast_format_compat *format)
 {
-	const char *str;
-	switch(format->id) {
-		/*! Raw mu-law data (G.711) */
-		case AST_FORMAT_ULAW: str = "PCMU"; break;
-		/*! Raw A-law data (G.711) */
-		case AST_FORMAT_ALAW: str = "PCMA"; break;
-		/*! Raw 16-bit Signed Linear (8000 Hz) PCM */
-		case AST_FORMAT_SLINEAR: str = "L16"; break;
-		/*! Use Raw 16-bit Signed Linear (8000 Hz) PCM for the rest */
-		default: str = "L16";
-	}
-	return str;
+	if(format->id == AST_FORMAT_ULAW)
+		return "PCMU";
+	if(format->id == AST_FORMAT_ALAW)
+		return "PCMA";
+	/*! Use Raw 16-bit Signed Linear PCM for the rest */
+	return "LPCM";
 }
-static APR_INLINE int format_to_bytes_per_sample(const ast_format_compat *format)
+static APR_INLINE int ast_format_get_bytes_per_sample(const ast_format_compat *format)
 {
-	int bps;
-	switch(format->id) {
-		/*! Raw mu-law data (G.711) */
-		case AST_FORMAT_ULAW: bps = 1; break;
-		/*! Raw A-law data (G.711) */
-		case AST_FORMAT_ALAW: bps = 1; break;
-		/*! Raw 16-bit Signed Linear (8000 Hz) PCM */
-		case AST_FORMAT_SLINEAR: bps = 2; break;
-		/*! Use Raw 16-bit Signed Linear (8000 Hz) PCM for the rest */
-		default: bps = 2;
-	}
-	return bps;
+	/*! Raw mu-law and A-law data (G.711) */
+	if(format->id == AST_FORMAT_ULAW || format->id == AST_FORMAT_ALAW)
+		return 1;
+	/*! Use Raw 16-bit Signed Linear PCM for the rest */
+	return 2 * ast_format_get_sample_rate(format) / 8000;
 }
 #endif
 
@@ -183,6 +195,14 @@ static APR_INLINE void ast_channel_set_writeformat(struct ast_channel *chan, ast
 {
 	ast_set_write_format(chan, format);
 }
+static APR_INLINE void ast_channel_set_rawreadformat(struct ast_channel *chan, ast_format_compat *format)
+{
+	// Do nothing, defined for >= 13 only
+}
+static APR_INLINE void ast_channel_set_rawwriteformat(struct ast_channel *chan, ast_format_compat *format)
+{
+	// Do nothing, defined for >= 13 only
+}
 #else /* <= 1.8 */
 static APR_INLINE void ast_channel_set_readformat(struct ast_channel *chan, ast_format_compat *format)
 {
@@ -191,6 +211,14 @@ static APR_INLINE void ast_channel_set_readformat(struct ast_channel *chan, ast_
 static APR_INLINE void ast_channel_set_writeformat(struct ast_channel *chan, ast_format_compat *format)
 {
 	ast_set_write_format(chan, format->id);
+}
+static APR_INLINE void ast_channel_set_rawreadformat(struct ast_channel *chan, ast_format_compat *format)
+{
+	// Do nothing, defined for >= 13 only
+}
+static APR_INLINE void ast_channel_set_rawwriteformat(struct ast_channel *chan, ast_format_compat *format)
+{
+	// Do nothing, defined for >= 13 only
 }
 #endif
 
@@ -213,6 +241,14 @@ static APR_INLINE ast_format_compat* ast_channel_get_writeformat(struct ast_chan
 {
 	return ast_channel_writeformat(chan);
 }
+static APR_INLINE ast_format_compat* ast_channel_get_rawreadformat(struct ast_channel *chan, apr_pool_t *pool)
+{
+	return ast_channel_rawreadformat(chan);
+}
+static APR_INLINE ast_format_compat* ast_channel_get_rawwriteformat(struct ast_channel *chan, apr_pool_t *pool)
+{
+	return ast_channel_rawwriteformat(chan);
+}
 #elif AST_VERSION_AT_LEAST(10,0,0)
 static APR_INLINE ast_format_compat* ast_channel_get_speechreadformat(struct ast_channel *chan, apr_pool_t *pool)
 {
@@ -229,6 +265,14 @@ static APR_INLINE ast_format_compat* ast_channel_get_readformat(struct ast_chann
 static APR_INLINE ast_format_compat* ast_channel_get_writeformat(struct ast_channel *chan, apr_pool_t *pool)
 {
 	return chan->writeformat;
+}
+static APR_INLINE ast_format_compat* ast_channel_get_rawreadformat(struct ast_channel *chan, apr_pool_t *pool)
+{
+	return chan->rawreadformat;
+}
+static APR_INLINE ast_format_compat* ast_channel_get_rawwriteformat(struct ast_channel *chan, apr_pool_t *pool)
+{
+	return chan->rawwriteformat;
 }
 #else /* <= 1.8 */
 static APR_INLINE ast_format_compat* ast_channel_get_speechreadformat(struct ast_channel *chan, apr_pool_t *pool)
@@ -259,8 +303,21 @@ static APR_INLINE ast_format_compat* ast_channel_get_writeformat(struct ast_chan
 	format->id = chan->writeformat;
 	return format;
 }
+static APR_INLINE ast_format_compat* ast_channel_get_rawreadformat(struct ast_channel *chan, apr_pool_t *pool)
+{
+	ast_format_compat *format = apr_palloc(pool, sizeof(ast_format_compat));
+	ast_format_clear(format);
+	format->id = chan->rawreadformat;
+	return format;
+}
+static APR_INLINE ast_format_compat* ast_channel_get_rawwriteformat(struct ast_channel *chan, apr_pool_t *pool)
+{
+	ast_format_compat *format = apr_palloc(pool, sizeof(ast_format_compat));
+	ast_format_clear(format);
+	format->id = chan->rawwriteformat;
+	return format;
+}
 #endif
-
 
 /**
  * Backward compatible frame accessors.
@@ -273,7 +330,6 @@ static APR_INLINE int ast_frame_get_dtmfkey(struct ast_frame *f)
 	return f->subclass;
 #endif
 }
-
 static APR_INLINE void* ast_frame_get_data(const struct ast_frame *f)
 {
 #if AST_VERSION_AT_LEAST(1,6,1)
@@ -282,7 +338,6 @@ static APR_INLINE void* ast_frame_get_data(const struct ast_frame *f)
 	return (void *)(f->data);
 #endif
 }
-
 static APR_INLINE void ast_frame_set_data(struct ast_frame *f, void *data)
 {
 #if AST_VERSION_AT_LEAST(1,6,1)
@@ -291,7 +346,6 @@ static APR_INLINE void ast_frame_set_data(struct ast_frame *f, void *data)
 	f->data = data;
 #endif
 }
-
 static APR_INLINE void ast_frame_set_format(struct ast_frame *f, ast_format_compat *format)
 {
 #if AST_VERSION_AT_LEAST(13,0,0)
@@ -316,5 +370,16 @@ static APR_INLINE char *ast_uri_encode_http(const char *string, char *outbuf, in
 	return ast_uri_encode(string, outbuf, buflen, 1);
 #endif
 }
+
+/**
+ * Backward compatible ASTERISK_REGISTER_FILE() macro.
+ */
+#if AST_VERSION_AT_LEAST(15,0,0)
+#define ASTERISK_REGISTER_FILE()
+#elif !AST_VERSION_AT_LEAST(14,0,0)
+#ifndef ASTERISK_REGISTER_FILE
+#define ASTERISK_REGISTER_FILE() ASTERISK_FILE_VERSION(__FILE__, "")
+#endif
+#endif
 
 #endif /* AST_COMPAT_DEFS_H */

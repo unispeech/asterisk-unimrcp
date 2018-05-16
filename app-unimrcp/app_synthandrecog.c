@@ -183,10 +183,11 @@ struct sar_session_t {
 	speech_channel_t      *recog_channel;      /* recognition channel */
 	speech_channel_t      *synth_channel;      /* synthesis channel, if any */
 	ast_format_compat     *readformat;         /* old read format, to be restored */
+	ast_format_compat     *rawreadformat;      /* old raw read format, to be restored (>= Asterisk 13) */
 	ast_format_compat     *writeformat;        /* old write format, to be restored */
+	ast_format_compat     *rawwriteformat;     /* old raw write format, to be restored (>= Asterisk 13) */
 	ast_format_compat     *nreadformat;        /* new read format used for recognition */
 	ast_format_compat     *nwriteformat;       /* new write format used for synthesis */
-	int                    samplerate;         /* supported sampling rate */
 	apr_array_header_t    *prompts;            /* list of prompt items */
 	int                    cur_prompt;         /* current prompt index */
 	struct ast_filestream *filestream;         /* filestream, if any */
@@ -276,6 +277,13 @@ static apt_bool_t speech_on_channel_add(mrcp_application_t *application, mrcp_se
 		else
 			codec_name = "unknown";
 
+		if (!schannel->session_id) {
+			const apt_str_t *session_id = mrcp_application_session_id_get(session);
+			if (session_id && session_id->buf) {
+				schannel->session_id = apr_pstrdup(schannel->pool, session_id->buf);
+			}
+		}
+		
 		ast_log(LOG_NOTICE, "(%s) Channel ready codec=%s, sample rate=%d\n",
 			schannel->name,
 			codec_name,
@@ -923,8 +931,10 @@ static apt_bool_t recog_on_message_receive(speech_channel_t *schannel, mrcp_mess
 				/* RECOGNIZE failed to start. */
 				if (recog_hdr->completion_cause == RECOGNIZER_COMPLETION_CAUSE_UNKNOWN)
 					ast_log(LOG_DEBUG, "(%s) RECOGNIZE failed: status = %d\n", schannel->name, message->start_line.status_code);
-				else
+				else {
 					ast_log(LOG_DEBUG, "(%s) RECOGNIZE failed: status = %d, completion-cause = %03d\n", schannel->name, message->start_line.status_code, recog_hdr->completion_cause);
+					recog_channel_set_results(schannel, recog_hdr->completion_cause, NULL, NULL);
+				}
 				speech_channel_set_state(schannel, SPEECH_CHANNEL_ERROR);
 			} else if (message->start_line.request_state == MRCP_REQUEST_STATE_PENDING)
 				/* RECOGNIZE is queued. */
@@ -961,7 +971,12 @@ static apt_bool_t recog_on_message_receive(speech_channel_t *schannel, mrcp_mess
 					ast_log(LOG_DEBUG, "(%s) Grammar loaded\n", schannel->name);
 					speech_channel_set_state(schannel, SPEECH_CHANNEL_READY);
 				} else {
-					ast_log(LOG_DEBUG, "(%s) Grammar failed to load, status code = %d\n", schannel->name, message->start_line.status_code);
+					if (recog_hdr->completion_cause == RECOGNIZER_COMPLETION_CAUSE_UNKNOWN)
+						ast_log(LOG_DEBUG, "(%s) Grammar failed to load, status code = %d\n", schannel->name, message->start_line.status_code);
+					else {
+						ast_log(LOG_DEBUG, "(%s) Grammar failed to load, status code = %d, completion-cause = %03d\n", schannel->name, message->start_line.status_code, recog_hdr->completion_cause);
+						recog_channel_set_results(schannel, recog_hdr->completion_cause, NULL, NULL);
+					}
 					speech_channel_set_state(schannel, SPEECH_CHANNEL_ERROR);
 				}
 			}
@@ -1206,7 +1221,6 @@ static sar_prompt_item_t* synthandrecog_prompt_play(sar_session_t *sar_session, 
 											SPEECH_CHANNEL_SYNTHESIZER,
 											synthandrecog,
 											sar_session->nwriteformat,
-											sar_session->samplerate,
 											NULL,
 											sar_session->chan);
 			if (!sar_session->synth_channel) {
@@ -1259,17 +1273,20 @@ static int synthandrecog_exit(struct ast_channel *chan, sar_session_t *sar_sessi
 	if (sar_session) {
 		if (sar_session->writeformat)
 			ast_channel_set_writeformat(chan, sar_session->writeformat);
+		if (sar_session->rawwriteformat)
+			ast_channel_set_rawwriteformat(chan, sar_session->rawwriteformat);
 
 		if (sar_session->readformat)
 			ast_channel_set_readformat(chan, sar_session->readformat);
+		if (sar_session->rawreadformat)
+			ast_channel_set_rawreadformat(chan, sar_session->rawreadformat);
 
 		if (sar_session->synth_channel)
 			speech_channel_destroy(sar_session->synth_channel);
 
 		if (sar_session->recog_channel) {
-			const char *session_id = speech_channel_get_id(sar_session->recog_channel);
-			if(session_id)
-				pbx_builtin_setvar_helper(chan, "RECOG_SID", session_id);
+			if (sar_session->recog_channel->session_id)
+				pbx_builtin_setvar_helper(chan, "RECOG_SID", sar_session->recog_channel->session_id);
 			speech_channel_destroy(sar_session->recog_channel);
 		}
 
@@ -1340,10 +1357,11 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 	sar_session.recog_channel = NULL;
 	sar_session.synth_channel = NULL;
 	sar_session.readformat = NULL;
+	sar_session.rawreadformat = NULL;
 	sar_session.writeformat = NULL;
+	sar_session.rawwriteformat = NULL;
 	sar_session.nreadformat = NULL;
 	sar_session.nwriteformat = NULL;
-	sar_session.samplerate = 8000;
 	sar_session.prompts = apr_array_make(sar_session.pool, 1, sizeof(sar_prompt_item_t));
 	sar_session.cur_prompt = 0;
 	sar_session.filestream = NULL;
@@ -1385,7 +1403,6 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 										SPEECH_CHANNEL_RECOGNIZER,
 										synthandrecog,
 										nreadformat,
-										sar_session.samplerate,
 										NULL,
 										chan);
 	if (sar_session.recog_channel == NULL) {
@@ -1421,17 +1438,23 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 
 	/* Get old read format. */
 	ast_format_compat *oreadformat = ast_channel_get_readformat(chan, sar_session.pool);
+	ast_format_compat *orawreadformat = ast_channel_get_rawreadformat(chan, sar_session.pool);
 	/* Get old write format. */
 	ast_format_compat *owriteformat = ast_channel_get_writeformat(chan, sar_session.pool);
+	ast_format_compat *orawwriteformat = ast_channel_get_rawwriteformat(chan, sar_session.pool);
 
 	/* Set read format. */
 	ast_channel_set_readformat(chan, nreadformat);
+	ast_channel_set_rawreadformat(chan, nreadformat);
 	sar_session.readformat = oreadformat;
+	sar_session.rawreadformat = orawreadformat;
 	sar_session.nreadformat = nreadformat;
 
 	/* Set write format. */
 	ast_channel_set_writeformat(chan, nwriteformat);
+	ast_channel_set_rawwriteformat(chan, nwriteformat);
 	sar_session.writeformat = owriteformat;
+	sar_session.rawwriteformat = orawwriteformat;
 	sar_session.nwriteformat = nwriteformat;
 
 	/* Get grammar delimiters. */
@@ -1598,8 +1621,10 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 		}
 	}
 
+#if !AST_VERSION_AT_LEAST(11,0,0)
 	off_t read_filestep = 0;
 	off_t read_filelength;
+#endif
 	int waitres;
 	/* Continue with recognition. */
 	while ((waitres = ast_waitfor(chan, 100)) >= 0) {
@@ -1622,6 +1647,12 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 			end_of_prompt = 0;
 			if (prompt_item->is_audio_file) {
 				if (sar_session.filestream) {
+#if AST_VERSION_AT_LEAST(11,0,0)
+					if (ast_channel_streamid(chan) == -1 && ast_channel_timingfunc(chan) == NULL) {
+						ast_stopstream(chan);
+						sar_session.filestream = NULL;
+					}
+#else
 					read_filelength = ast_tellstream(sar_session.filestream);
 					if(!read_filestep)
 						read_filestep = read_filelength;
@@ -1631,6 +1662,7 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 						sar_session.filestream = NULL;
 						read_filestep = 0;
 					}
+#endif
 				}
 			}
 			else {
@@ -1681,7 +1713,7 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 			break;
 		}
 
-		if (f->frametype == AST_FRAME_VOICE) {
+		if (f->frametype == AST_FRAME_VOICE && f->datalen) {
 			len = f->datalen;
 			if (speech_channel_write(sar_session.recog_channel, ast_frame_get_data(f), &len) != 0) {
 				ast_frfree(f);
@@ -1786,6 +1818,8 @@ int load_synthandrecog_app()
 	synthandrecog->dispatcher.on_channel_add = speech_on_channel_add;
 	synthandrecog->dispatcher.on_channel_remove = NULL;
 	synthandrecog->dispatcher.on_message_receive = speech_on_message_receive;
+	synthandrecog->dispatcher.on_terminate_event = NULL;
+	synthandrecog->dispatcher.on_resource_discover = NULL;
 	synthandrecog->audio_stream_vtable.destroy = NULL;
 	synthandrecog->audio_stream_vtable.open_rx = recog_stream_open;
 	synthandrecog->audio_stream_vtable.close_rx = NULL;

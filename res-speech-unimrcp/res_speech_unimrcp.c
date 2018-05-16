@@ -27,18 +27,21 @@
 /* Asterisk includes. */
 #include "ast_compat_defs.h"
 
-#define AST_MODULE "res_speech_unimrcp" 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: $")
+ASTERISK_REGISTER_FILE()
 
+#define AST_MODULE "res_speech_unimrcp"
 #include <asterisk/module.h>
 #include <asterisk/config.h>
 #include <asterisk/frame.h>
 #include <asterisk/speech.h>
 
+/* APR includes. */
 #include <apr_thread_cond.h>
 #include <apr_thread_proc.h>
 #include <apr_tables.h>
 #include <apr_hash.h>
+
+/* UniMRCP includes. */
 #include <unimrcp_client.h>
 #include <mrcp_application.h>
 #include <mrcp_message.h>
@@ -597,30 +600,46 @@ static int uni_recog_start(struct ast_speech *speech)
 	/* Get/allocate generic header */
 	generic_header = mrcp_generic_header_prepare(mrcp_message);
 	if(generic_header) {
+		char *tmp;
+		char buf[1024];
+		int length;
+		int total_length = 0;
 		apr_hash_index_t *it;
 		void *val;
 		const char *grammar_name;
-		const char *content = NULL;
+		apt_bool_t first_line = TRUE;
+
 		/* Set generic header fields */
 		apt_string_assign(&generic_header->content_type,"text/uri-list",mrcp_message->pool);
 		mrcp_generic_header_property_add(mrcp_message,GENERIC_HEADER_CONTENT_TYPE);
 
-		/* Construct and set message body */
-		it = apr_hash_first(mrcp_message->pool,uni_speech->active_grammars);
-		if(it) {
+		/* Compose and set message body */
+		for(it = apr_hash_first(mrcp_message->pool,uni_speech->active_grammars); it; it = apr_hash_next(it)) {
 			apr_hash_this(it,NULL,NULL,&val);
 			grammar_name = val;
-			content = apr_pstrcat(mrcp_message->pool,"session:",grammar_name,NULL);
-			it = apr_hash_next(it);
+			
+			if(first_line == TRUE)
+				first_line = FALSE;
+			else
+				buf[total_length++] = '\n';
+			
+			tmp = strchr(grammar_name,':');
+			if(tmp) {
+				ast_log(LOG_DEBUG, "(%s) Reference grammar %s\n",uni_speech->name, grammar_name);
+				length = apr_snprintf(buf + total_length, sizeof(buf) - 1 - total_length, "%s", grammar_name);
+			}
+			else {
+				ast_log(LOG_DEBUG, "(%s) Reference session grammar %s\n",uni_speech->name, grammar_name);
+				length = apr_snprintf(buf + total_length, sizeof(buf) - 1 - total_length, "session:%s", grammar_name);
+			}
+			if(length < 0) {
+				ast_log(LOG_WARNING, "(%s) Failed to compose MRCP message body\n",uni_speech->name);
+				return -1;
+			}
+			total_length += length;
 		}
-		for(; it; it = apr_hash_next(it)) {
-			apr_hash_this(it,NULL,NULL,&val);
-			grammar_name = val;
-			content = apr_pstrcat(mrcp_message->pool,content,"\nsession:",grammar_name,NULL);
-		}
-		if(content) {
-			apt_string_set(&mrcp_message->body,content);
-		}
+		buf[total_length] = '\0';
+		apt_string_assign_n(&mrcp_message->body,buf,total_length,mrcp_message->pool);
 	}
 
 	/* Get/allocate recognizer header */
@@ -958,7 +977,8 @@ static apt_bool_t on_message_receive(mrcp_application_t *application, mrcp_sessi
 /** \brief Received unexpected session/channel termination event */
 static apt_bool_t on_terminate_event(mrcp_application_t *application, mrcp_session_t *session, mrcp_channel_t *channel)
 {
-	uni_speech_t *uni_speech = mrcp_application_channel_object_get(channel);
+	struct ast_speech *speech = mrcp_application_session_object_get(session);
+	uni_speech_t *uni_speech = speech->data;
 	ast_log(LOG_WARNING, "(%s) Received unexpected session termination event\n",uni_speech->name);
 	return TRUE;
 }

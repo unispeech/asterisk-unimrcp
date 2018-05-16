@@ -82,7 +82,7 @@
 					<option name="f"> <para>Filename to play (if empty or not specified, no file is played).</para> </option>
 					<option name="t"> <para>Recognition timeout (msec).</para> </option>
 					<option name="b"> <para>Bargein value (0: no barge-in, 1: enable barge-in).</para> </option>
-					<option name="dt"> <para>Grammar delimiters.</para> </option>
+					<option name="gd"> <para>Grammar delimiters.</para> </option>
 					<option name="ct"> <para>Confidence threshold (0.0 - 1.0).</para> </option>
 					<option name="sl"> <para>Sensitivity level (0.0 - 1.0).</para> </option>
 					<option name="sva"> <para>Speed vs accuracy (0.0 - 1.0).</para> </option>
@@ -196,6 +196,7 @@ struct mrcprecog_session_t {
 	apr_pool_t         *pool;               /* memory pool */
 	speech_channel_t   *schannel;           /* recognition channel */
 	ast_format_compat  *readformat;         /* old read format, to be restored */
+	ast_format_compat  *rawreadformat;      /* old raw read format, to be restored (>= Asterisk 13) */
 	apr_array_header_t *prompts;            /* list of prompts */
 	int                 cur_prompt;         /* current prompt index */
 	int                 it_policy;          /* input timers policy (mrcprecog_it_policies) */
@@ -276,6 +277,13 @@ static apt_bool_t speech_on_channel_add(mrcp_application_t *application, mrcp_se
 		else
 			codec_name = "unknown";
 
+		if (!schannel->session_id) {
+			const apt_str_t *session_id = mrcp_application_session_id_get(session);
+			if (session_id && session_id->buf) {
+				schannel->session_id = apr_pstrdup(schannel->pool, session_id->buf);
+			}
+		}
+		
 		ast_log(LOG_NOTICE, "(%s) Channel ready codec=%s, sample rate=%d\n",
 			schannel->name,
 			codec_name,
@@ -729,9 +737,11 @@ static apt_bool_t recog_on_message_receive(mrcp_application_t *application, mrcp
 			} else if (message->start_line.request_state == MRCP_REQUEST_STATE_COMPLETE) {
 				/* RECOGNIZE failed to start. */
 				if (recog_hdr->completion_cause == RECOGNIZER_COMPLETION_CAUSE_UNKNOWN)
-					ast_log(LOG_DEBUG, "(%s) RECOGNIZE failed: status = %d\n", schannel->name,	 message->start_line.status_code);
-				else
+					ast_log(LOG_DEBUG, "(%s) RECOGNIZE failed: status = %d\n", schannel->name, message->start_line.status_code);
+				else {
 					ast_log(LOG_DEBUG, "(%s) RECOGNIZE failed: status = %d, completion-cause = %03d\n", schannel->name, message->start_line.status_code, recog_hdr->completion_cause);
+					recog_channel_set_results(schannel, recog_hdr->completion_cause, NULL, NULL);
+				}
 				speech_channel_set_state(schannel, SPEECH_CHANNEL_ERROR);
 			} else if (message->start_line.request_state == MRCP_REQUEST_STATE_PENDING)
 				/* RECOGNIZE is queued. */
@@ -768,7 +778,12 @@ static apt_bool_t recog_on_message_receive(mrcp_application_t *application, mrcp
 					ast_log(LOG_DEBUG, "(%s) Grammar loaded\n", schannel->name);
 					speech_channel_set_state(schannel, SPEECH_CHANNEL_READY);
 				} else {
-					ast_log(LOG_DEBUG, "(%s) Grammar failed to load, status code = %d\n", schannel->name, message->start_line.status_code);
+					if (recog_hdr->completion_cause == RECOGNIZER_COMPLETION_CAUSE_UNKNOWN)
+						ast_log(LOG_DEBUG, "(%s) Grammar failed to load, status code = %d\n", schannel->name, message->start_line.status_code);
+					else {
+						ast_log(LOG_DEBUG, "(%s) Grammar failed to load, status code = %d, completion-cause = %03d\n", schannel->name, message->start_line.status_code, recog_hdr->completion_cause);
+						recog_channel_set_results(schannel, recog_hdr->completion_cause, NULL, NULL);
+					}
 					speech_channel_set_state(schannel, SPEECH_CHANNEL_ERROR);
 				}
 			}
@@ -1014,11 +1029,12 @@ static int mrcprecog_exit(struct ast_channel *chan, mrcprecog_session_t *mrcprec
 	if (mrcprecog_session) {
 		if (mrcprecog_session->readformat)
 			ast_channel_set_readformat(chan, mrcprecog_session->readformat);
+		if (mrcprecog_session->rawreadformat)
+			ast_channel_set_rawreadformat(chan, mrcprecog_session->rawreadformat);
 
 		if (mrcprecog_session->schannel) {
-			const char *session_id = speech_channel_get_id(mrcprecog_session->schannel);
-			if(session_id)
-				pbx_builtin_setvar_helper(chan, "RECOG_SID", session_id);
+			if (mrcprecog_session->schannel->session_id)
+				pbx_builtin_setvar_helper(chan, "RECOG_SID", mrcprecog_session->schannel->session_id);
 			speech_channel_destroy(mrcprecog_session->schannel);
 		}
 
@@ -1036,7 +1052,6 @@ static int mrcprecog_exit(struct ast_channel *chan, mrcprecog_session_t *mrcprec
 /* The entry point of the application. */
 static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 {
-	int samplerate = 8000;
 	int dtmf_enable;
 	struct ast_frame *f = NULL;
 	ast_mrcp_profile_t *profile = NULL;
@@ -1077,6 +1092,7 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 
 	mrcprecog_session.schannel = NULL;
 	mrcprecog_session.readformat = NULL;
+	mrcprecog_session.rawreadformat = NULL;
 	mrcprecog_session.prompts = apr_array_make(mrcprecog_session.pool, 1, sizeof(char*));
 	mrcprecog_session.cur_prompt = 0;
 	mrcprecog_session.it_policy = IT_POLICY_AUTO;
@@ -1131,7 +1147,6 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 									SPEECH_CHANNEL_RECOGNIZER,
 									mrcprecog,
 									nreadformat,
-									samplerate,
 									NULL,
 									chan);
 	if (!mrcprecog_session.schannel) {
@@ -1158,8 +1173,11 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 	}
 
 	ast_format_compat *oreadformat = ast_channel_get_readformat(chan, mrcprecog_session.pool);
+	ast_format_compat *orawreadformat = ast_channel_get_rawreadformat(chan, mrcprecog_session.pool);
 	ast_channel_set_readformat(chan, nreadformat);
+	ast_channel_set_rawreadformat(chan, nreadformat);
 	mrcprecog_session.readformat = oreadformat;
+	mrcprecog_session.rawreadformat = orawreadformat;
 
 	const char *grammar_delimiters = ",";
 	/* Get grammar delimiters. */
@@ -1313,8 +1331,10 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 		}
 	}
 
+#if !AST_VERSION_AT_LEAST(11,0,0)
 	off_t read_filestep = 0;
 	off_t read_filelength;
+#endif
 	int waitres;
 	int recog_processing;
 	/* Continue with recognition. */
@@ -1336,6 +1356,12 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 
 		if (prompt_processing) {
 			if (filestream) {
+#if AST_VERSION_AT_LEAST(11,0,0)
+				if (ast_channel_streamid(chan) == -1 && ast_channel_timingfunc(chan) == NULL) {
+					ast_stopstream(chan);
+					filestream = NULL;
+				}
+#else
 				read_filelength = ast_tellstream(filestream);
 				if(!read_filestep)
 					read_filestep = read_filelength;
@@ -1344,6 +1370,7 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 					filestream = NULL;
 					read_filestep = 0;
 				}
+#endif
 			}
 
 			if (!filestream) {
@@ -1383,7 +1410,7 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 			break;
 		}
 
-		if (f->frametype == AST_FRAME_VOICE) {
+		if (f->frametype == AST_FRAME_VOICE && f->datalen) {
 			apr_size_t len = f->datalen;
 			if (speech_channel_write(mrcprecog_session.schannel, ast_frame_get_data(f), &len) != 0) {
 				ast_frfree(f);
@@ -1488,6 +1515,8 @@ int load_mrcprecog_app()
 	mrcprecog->dispatcher.on_channel_add = speech_on_channel_add;
 	mrcprecog->dispatcher.on_channel_remove = NULL;
 	mrcprecog->dispatcher.on_message_receive = recog_on_message_receive;
+	mrcprecog->dispatcher.on_terminate_event = NULL;
+	mrcprecog->dispatcher.on_resource_discover = NULL;
 	mrcprecog->audio_stream_vtable.destroy = NULL;
 	mrcprecog->audio_stream_vtable.open_rx = recog_stream_open;
 	mrcprecog->audio_stream_vtable.close_rx = NULL;
