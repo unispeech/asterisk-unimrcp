@@ -78,7 +78,7 @@
 					<option name="f"> <para>Filename on disk to store audio to (audio not stored if not specified or empty).</para> </option>
 					<option name="l"> <para>Language to use (e.g. "en-GB", "en-US", "en-AU", etc.).</para> </option>
 					<option name="ll"> <para>Load lexicon (true/false).</para> </option>
-					<option name="pv"> <para>Prosody volume (silent/x-soft/soft/medium/load/x-loud/default).</para> </option>
+					<option name="pv"> <para>Prosody volume (silent/x-soft/soft/medium/loud/x-loud/default).</para> </option>
 					<option name="pr"> <para>Prosody rate (x-slow/slow/medium/fast/x-fast/default).</para> </option>
 					<option name="v"> <para>Voice name to use (e.g. "Daniel", "Karin", etc.).</para> </option>
 					<option name="g"> <para>Voice gender to use (e.g. "male", "female").</para> </option>
