@@ -1446,6 +1446,13 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 		ast_frfree(f);
 	}
 
+	if (prompt_processing) {
+		ast_log(LOG_DEBUG, "(%s) Stop prompt\n", name);
+		ast_stopstream(chan);
+		filestream = NULL;
+		prompt_processing = 0;
+	}
+
 	const char *completion_cause = NULL;
 	const char *result = NULL;
 	const char *waveform_uri = NULL;

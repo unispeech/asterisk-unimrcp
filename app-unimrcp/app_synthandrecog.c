@@ -1746,6 +1746,18 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 		ast_frfree(f);
 	}
 
+	if (prompt_processing) {
+		ast_log(LOG_DEBUG, "(%s) Stop prompt\n", recog_name);
+		if (prompt_item->is_audio_file) {
+			ast_stopstream(chan);
+			sar_session.filestream = NULL;
+		}
+		else {
+			/* do nothing, synth channel will be destroyed anyway */
+		}
+		prompt_processing = 0;
+	}
+
 	const char *completion_cause = NULL;
 	const char *result = NULL;
 	const char *waveform_uri = NULL;
