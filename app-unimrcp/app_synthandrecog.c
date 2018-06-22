@@ -1494,6 +1494,12 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 		/* Load grammar. */
 		if (recog_channel_load_grammar(sar_session.recog_channel, grammar_name, grammar_type, grammar_content) != 0) {
 			ast_log(LOG_ERROR, "(%s) Unable to load grammar\n", recog_name);
+
+			const char *completion_cause = NULL;
+			recog_channel_get_results(sar_session.recog_channel, 0, &completion_cause, NULL, NULL);
+			if (completion_cause)
+				pbx_builtin_setvar_helper(chan, "RECOG_COMPLETION_CAUSE", completion_cause);
+			
 			return synthandrecog_exit(chan, &sar_session, SPEECH_CHANNEL_STATUS_ERROR);
 		}
 
@@ -1618,6 +1624,12 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 	/* Start recognition. */
 	if (recog_channel_start(sar_session.recog_channel, recog_name, start_input_timers, sar_options.recog_hfs) != 0) {
 		ast_log(LOG_ERROR, "(%s) Unable to start recognition\n", recog_name);
+
+		const char *completion_cause = NULL;
+		recog_channel_get_results(sar_session.recog_channel, 0, &completion_cause, NULL, NULL);
+		if (completion_cause)
+			pbx_builtin_setvar_helper(chan, "RECOG_COMPLETION_CAUSE", completion_cause);
+		
 		return synthandrecog_exit(chan, &sar_session, SPEECH_CHANNEL_STATUS_ERROR);
 	}
 

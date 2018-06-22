@@ -1208,6 +1208,12 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 		/* Load grammar. */
 		if (recog_channel_load_grammar(mrcprecog_session.schannel, grammar_name, grammar_type, grammar_content) != 0) {
 			ast_log(LOG_ERROR, "(%s) Unable to load grammar\n", name);
+
+			const char *completion_cause = NULL;
+			recog_channel_get_results(mrcprecog_session.schannel, 0, &completion_cause, NULL, NULL);
+			if (completion_cause)
+				pbx_builtin_setvar_helper(chan, "RECOG_COMPLETION_CAUSE", completion_cause);
+			
 			return mrcprecog_exit(chan, &mrcprecog_session, SPEECH_CHANNEL_STATUS_ERROR);
 		}
 
@@ -1320,6 +1326,12 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 	/* Start recognition. */
 	if (recog_channel_start(mrcprecog_session.schannel, name, start_input_timers, mrcprecog_options.recog_hfs) != 0) {
 		ast_log(LOG_ERROR, "(%s) Unable to start recognition\n", name);
+
+		const char *completion_cause = NULL;
+		recog_channel_get_results(mrcprecog_session.schannel, 0, &completion_cause, NULL, NULL);
+		if (completion_cause)
+			pbx_builtin_setvar_helper(chan, "RECOG_COMPLETION_CAUSE", completion_cause);
+
 		return mrcprecog_exit(chan, &mrcprecog_session, SPEECH_CHANNEL_STATUS_ERROR);
 	}
 
