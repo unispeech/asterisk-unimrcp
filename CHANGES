@@ -1,11 +1,47 @@
+Changes for Asterisk UniMRCP Modules 1.5.1
+
+1. Generic Speech Recognition API (res_speech_unimrcp.so)
+
+    * N/A.
+
+2. Dialplan Applications (app_unimrcp.so)
+
+  2.1. MRCPSynth()
+
+    * N/A.
+
+  2.2. MRCPRecog()
+
+    * When recognition fails, set RECOG_COMPLETION_CAUSE variable, if available. Issue #19.
+    * Skip voice frames with zero length fed by Asterisk under certain circumstances.
+    * When recognition completes, make sure to stop the ongoing prompt, if any. This problem was encountered when
+      START-OF-INPUT and RECOGNITION-COMPLETE events were received almost instantaneously.
+
+  2.3. SynthAndRecog()
+
+    * When recognition fails, set RECOG_COMPLETION_CAUSE variable, if available. Issue #19.
+    * Skip voice frames with zero length fed by Asterisk under certain circumstances.
+    * Allow different profiles be specified for synthesis and recognition. Merged a pull request submitted by Mihail. Thanks.
+    * When recognition completes, make sure to stop the ongoing prompt, if any. This problem was encountered when
+      START-OF-INPUT and RECOGNITION-COMPLETE events were received almost instantaneously.
+
+  2.4. Framework
+
+    * N/A.
+
+3. Miscellaneous
+
+    * Added support for Asterisk 15.
+
+
 Changes for Asterisk UniMRCP Modules 1.5.0
 
 1. Generic Speech Recognition API (res_speech_unimrcp.so)
 
     * Allow built-in and HTTP grammars be specified with SpeechActivateGrammar().
-    * Fixed a crash in processing of on_terminate_event() occured when the MRCP server unexpectedly disconnects
+    * Fixed a crash in processing of on_terminate_event() occurred when the MRCP server unexpectedly disconnects
       while recognition is in progress. Issue #13.
-    * Fixed a compilation warning by taking out an used variable.
+    * Fixed a compilation warning by taking out an unused variable.
 
 2. Dialplan Applications (app_unimrcp.so)
 
@@ -36,8 +72,8 @@ Changes for Asterisk UniMRCP Modules 1.5.0
 
   2.4. Framework
 
-    * Fixed the application options bitmaks. Issue #7. Thanks Borja.
-    * Replaced hard-coded SPEECH_CHANNEL_TIMEOUT by a new configuration paramater speech-channel-timeout, which can be set from mrcp.conf.
+    * Fixed the application options bitmasks. Issue #7. Thanks Borja.
+    * Replaced hard-coded SPEECH_CHANNEL_TIMEOUT by a new configuration parameter speech-channel-timeout, which can be set from mrcp.conf.
       Merged pull request #9. Thanks Userator.
     * Added support for 16 kHz sampling rate.
     * Use UniMRCP var directory instead of data for SPEECH_CHANNEL_DUMP_DIR.
@@ -47,7 +83,7 @@ Changes for Asterisk UniMRCP Modules 1.5.0
 3. Miscellaneous
 
     * Enhanced the version detection routine in asterisk.m4 by stripping off additional trailing characters, if present.
-    * Addded a test for Asterisk include directory in asterisk.m4 by returning an error, if not found.
+    * Added a test for Asterisk include directory in asterisk.m4 by returning an error, if not found.
     * Added a new configure option --with-asterisk-doc, which allows to explicitly specify the location of Asterisk XML documentation
       directory. If not set, the directory is implicitly determined as before.
     * Added support for Asterisk 14. Fixed issue #15.
