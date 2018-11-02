@@ -775,10 +775,10 @@ static struct ast_speech_result* uni_recog_speech_result_build(uni_speech_t *uni
 
 			speech_result = ast_calloc(sizeof(struct ast_speech_result), 1);
 			if(text)
-				speech_result->text = strdup(text);
+				speech_result->text = ast_strdup(text);
 			speech_result->score = confidence * 100;
 			if(grammar)
-				speech_result->grammar = strdup(grammar);
+				speech_result->grammar = ast_strdup(grammar);
 			speech_result->nbest_num = interpretation_count;
 			if(!first_speech_result)
 				first_speech_result = speech_result;
