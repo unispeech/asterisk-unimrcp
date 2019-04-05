@@ -8,7 +8,7 @@ mod_LTLIBRARIES        = app_unimrcp.la
 app_unimrcp_la_SOURCES = audio_queue.c \
                          speech_channel.c \
                          ast_unimrcp_framework.c \
-                         recog_datastore.c \
+                         app_datastore.c \
                          app_mrcpsynth.c \
                          app_mrcprecog.c \
                          app_synthandrecog.c \
@@ -19,7 +19,7 @@ app_unimrcp_la_LIBADD  = $(UNIMRCP_LIBS)
 XMLDOC_FILES           = app_mrcpsynth.c \
                          app_mrcprecog.c \
                          app_synthandrecog.c \
-                         recog_datastore.c
+                         app_datastore.c
 
 all-local: .xmldocs/app_unimrcp-en_US.xml
 

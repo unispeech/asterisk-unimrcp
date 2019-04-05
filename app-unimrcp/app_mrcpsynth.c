@@ -51,16 +51,12 @@
 
 #include "asterisk/channel.h"
 #include "asterisk/pbx.h"
-#include "asterisk/module.h"
 #include "asterisk/lock.h"
 #include "asterisk/file.h"
 #include "asterisk/app.h"
 
 /* UniMRCP includes. */
-#include "ast_unimrcp_framework.h"
-
-#include "audio_queue.h"
-#include "speech_channel.h"
+#include "app_datastore.h"
 
 /*** DOCUMENTATION
 	<application name="MRCPSynth" language="en_US">
@@ -84,6 +80,10 @@
 					<option name="g"> <para>Voice gender to use (e.g. "male", "female").</para> </option>
 					<option name="vv"> <para>Voice variant.</para> </option>
 					<option name="a"> <para>Voice age.</para> </option>
+					<option name="plt"> <para>Persistent lifetime (0: no [MRCP session is created and destroyed dynamically],
+						1: yes [MRCP session is created on demand, reused and destroyed on hang-up].</para>
+					</option>
+					<option name="dse"> <para>Datastore entry.</para></option>
 				</optionlist>
 			</parameter>
 		</syntax>
@@ -110,19 +110,23 @@ static ast_mrcp_application_t *mrcpsynth = NULL;
 
 /* The enumeration of application options (excluding the MRCP params). */
 enum mrcpsynth_option_flags {
-	MRCPSYNTH_PROFILE        = (1 << 0),
-	MRCPSYNTH_INTERRUPT      = (1 << 1),
-	MRCPSYNTH_FILENAME       = (1 << 2)
+	MRCPSYNTH_PROFILE             = (1 << 0),
+	MRCPSYNTH_INTERRUPT           = (1 << 1),
+	MRCPSYNTH_FILENAME            = (1 << 2),
+	MRCPSYNTH_PERSISTENT_LIFETIME = (1 << 3),
+	MRCPSYNTH_DATASTORE_ENTRY     = (1 << 4)
 };
 
 /* The enumeration of option arguments. */
 enum mrcpsynth_option_args {
-	OPT_ARG_PROFILE    = 0,
-	OPT_ARG_INTERRUPT  = 1,
-	OPT_ARG_FILENAME   = 2,
+	OPT_ARG_PROFILE             = 0,
+	OPT_ARG_INTERRUPT           = 1,
+	OPT_ARG_FILENAME            = 2,
+	OPT_ARG_PERSISTENT_LIFETIME = 3,
+	OPT_ARG_DATASTORE_ENTRY     = 4,
 
 	/* This MUST be the last value in this enum! */
-	OPT_ARG_ARRAY_SIZE = 3
+	OPT_ARG_ARRAY_SIZE = 5
 };
 
 /* The structure which holds the application options (including the MRCP params). */
@@ -134,16 +138,6 @@ struct mrcpsynth_options_t {
 };
 
 typedef struct mrcpsynth_options_t mrcpsynth_options_t;
-
-/* The application session. */
-struct mrcpsynth_session_t {
-	apr_pool_t         *pool;
-	speech_channel_t   *schannel;
-	ast_format_compat  *writeformat;
-	ast_format_compat  *rawwriteformat;
-};
-
-typedef struct mrcpsynth_session_t mrcpsynth_session_t;
 
 /* --- MRCP SPEECH CHANNEL INTERFACE TO UNIMRCP --- */
 
@@ -419,8 +413,13 @@ static int mrcpsynth_option_apply(mrcpsynth_options_t *options, const char *key,
 		apr_hash_set(options->synth_hfs, "Voice-Gender", APR_HASH_KEY_STRING, value);
 	} else if (strcasecmp(key, "a") == 0) {
 		apr_hash_set(options->synth_hfs, "Voice-Age", APR_HASH_KEY_STRING, value);
-	}
-	else {
+	} else if (strcasecmp(key, "plt") == 0) {
+		options->flags |= MRCPSYNTH_PERSISTENT_LIFETIME;
+		options->params[OPT_ARG_PERSISTENT_LIFETIME] = value;
+	} else if (strcasecmp(key, "dse") == 0) {
+		options->flags |= MRCPSYNTH_DATASTORE_ENTRY;
+		options->params[OPT_ARG_DATASTORE_ENTRY] = value;
+	} else {
 		ast_log(LOG_WARNING, "Unknown option: %s\n", key);
 	}
 	return 0;
@@ -450,26 +449,26 @@ static int mrcpsynth_options_parse(char *str, mrcpsynth_options_t *options, apr_
 }
 
 /* Exit the application. */
-static int mrcpsynth_exit(struct ast_channel *chan, mrcpsynth_session_t *mrcpsynth_session, speech_channel_status_t status)
+static int mrcpsynth_exit(struct ast_channel *chan, app_session_t *app_session, speech_channel_status_t status)
 {
-	if (mrcpsynth_session) {
-		if (mrcpsynth_session->writeformat)
-			ast_channel_set_writeformat(chan, mrcpsynth_session->writeformat);
-		if (mrcpsynth_session->rawwriteformat)
-			ast_channel_set_rawwriteformat(chan, mrcpsynth_session->rawwriteformat);
+	if (app_session) {
+		if (app_session->writeformat)
+			ast_channel_set_writeformat(chan, app_session->writeformat);
+		if (app_session->rawwriteformat)
+			ast_channel_set_rawwriteformat(chan, app_session->rawwriteformat);
 
-		if (mrcpsynth_session->schannel)
-			speech_channel_destroy(mrcpsynth_session->schannel);
-
-		if (mrcpsynth_session->pool)
-			apr_pool_destroy(mrcpsynth_session->pool);
+		if (app_session->synth_channel) {
+			if (app_session->lifetime == APP_SESSION_LIFETIME_DYNAMIC) {
+				speech_channel_destroy(app_session->synth_channel);
+				app_session->synth_channel = NULL;
+			}
+		}
 	}
 
 	const char *status_str = speech_channel_status_to_string(status);
 	pbx_builtin_setvar_helper(chan, "SYNTHSTATUS", status_str);
 	ast_log(LOG_NOTICE, "%s() exiting status: %s on %s\n", app_synth, status_str, ast_channel_name(chan));
-
-	return status != SPEECH_CHANNEL_STATUS_ERROR ? 0 : -1;
+	return 0;
 }
 
 /* The entry point of the application. */
@@ -483,7 +482,6 @@ static int app_synth_exec(struct ast_channel *chan, ast_app_data data)
 	char *parse;
 	int i;
 	mrcpsynth_options_t mrcpsynth_options;
-	mrcpsynth_session_t mrcpsynth_session;
 
 	AST_DECLARE_APP_ARGS(args,
 		AST_APP_ARG(prompt);
@@ -507,14 +505,11 @@ static int app_synth_exec(struct ast_channel *chan, ast_app_data data)
 	args.prompt = normalize_input_string(args.prompt);
 	ast_log(LOG_NOTICE, "%s() prompt: %s\n", app_synth, args.prompt);
 
-	if ((mrcpsynth_session.pool = apt_pool_create()) == NULL) {
-		ast_log(LOG_ERROR, "Unable to create memory pool for speech channel\n");
+	app_datastore_t* datastore = app_datastore_get(chan);
+	if (!datastore) {
+		ast_log(LOG_ERROR, "Unable to retrieve data from app datastore on %s\n", ast_channel_name(chan));
 		return mrcpsynth_exit(chan, NULL, SPEECH_CHANNEL_STATUS_ERROR);
 	}
-
-	mrcpsynth_session.schannel = NULL;
-	mrcpsynth_session.writeformat = NULL;
-	mrcpsynth_session.rawwriteformat = NULL;
 
 	mrcpsynth_options.synth_hfs = NULL;
 	mrcpsynth_options.flags = 0;
@@ -524,8 +519,8 @@ static int app_synth_exec(struct ast_channel *chan, ast_app_data data)
 	if (!ast_strlen_zero(args.options)) {
 		args.options = normalize_input_string(args.options);
 		ast_log(LOG_NOTICE, "%s() options: %s\n", app_synth, args.options);
-		char *options_buf = apr_pstrdup(mrcpsynth_session.pool, args.options);
-		mrcpsynth_options_parse(options_buf, &mrcpsynth_options, mrcpsynth_session.pool);
+		char *options_buf = apr_pstrdup(datastore->pool, args.options);
+		mrcpsynth_options_parse(options_buf, &mrcpsynth_options, datastore->pool);
 	}
 
 	int dtmf_enable = 0;
@@ -543,65 +538,108 @@ static int app_synth_exec(struct ast_channel *chan, ast_app_data data)
 	/* Answer if it's not already going. */
 	if (ast_channel_state(chan) != AST_STATE_UP)
 		ast_answer(chan);
+
+	/* Ensure no streams are currently playing. */
 	ast_stopstream(chan);
 
-	const char *filename = NULL;
-	if ((mrcpsynth_options.flags & MRCPSYNTH_FILENAME) == MRCPSYNTH_FILENAME) {
-		filename = mrcpsynth_options.params[OPT_ARG_FILENAME];
-	}
+	/* Set default lifetime to dynamic. */
+	int lifetime = APP_SESSION_LIFETIME_DYNAMIC;
 
-	ast_format_compat *nwriteformat = ast_channel_get_speechwriteformat(chan, mrcpsynth_session.pool);
-
-	name = apr_psprintf(mrcpsynth_session.pool, "TTS-%lu", (unsigned long int)speech_channel_number);
-
-	mrcpsynth_session.schannel = speech_channel_create(
-									mrcpsynth_session.pool,
-									name,
-									SPEECH_CHANNEL_SYNTHESIZER,
-									mrcpsynth,
-									nwriteformat,
-									filename,
-									chan);
-	if (!mrcpsynth_session.schannel) {
-		return mrcpsynth_exit(chan, &mrcpsynth_session, SPEECH_CHANNEL_STATUS_ERROR);
-	}
-
-	const char *profile_name = NULL;
-	if ((mrcpsynth_options.flags & MRCPSYNTH_PROFILE) == MRCPSYNTH_PROFILE) {
-		if (!ast_strlen_zero(mrcpsynth_options.params[OPT_ARG_PROFILE])) {
-			profile_name = mrcpsynth_options.params[OPT_ARG_PROFILE];
+	/* Get datastore entry. */
+	const char *entry = DEFAULT_DATASTORE_ENTRY;
+	if ((mrcpsynth_options.flags & MRCPSYNTH_DATASTORE_ENTRY) == MRCPSYNTH_DATASTORE_ENTRY) {
+		if (!ast_strlen_zero(mrcpsynth_options.params[OPT_ARG_DATASTORE_ENTRY])) {
+			entry = mrcpsynth_options.params[OPT_ARG_DATASTORE_ENTRY];
+			lifetime = APP_SESSION_LIFETIME_PERSISTENT;
 		}
 	}
 
-	profile = get_synth_profile(profile_name);
-	if (!profile) {
-		ast_log(LOG_ERROR, "(%s) Can't find profile, %s\n", name, profile_name);
-		return mrcpsynth_exit(chan, &mrcpsynth_session, SPEECH_CHANNEL_STATUS_ERROR);
+	/* Check session lifetime. */
+	if ((mrcpsynth_options.flags & MRCPSYNTH_PERSISTENT_LIFETIME) == MRCPSYNTH_PERSISTENT_LIFETIME) {
+		if (!ast_strlen_zero(mrcpsynth_options.params[OPT_ARG_PERSISTENT_LIFETIME])) {
+			lifetime = (atoi(mrcpsynth_options.params[OPT_ARG_PERSISTENT_LIFETIME]) == 0) ? 
+				APP_SESSION_LIFETIME_DYNAMIC : APP_SESSION_LIFETIME_PERSISTENT;
+		}
 	}
-
-	if (speech_channel_open(mrcpsynth_session.schannel, profile) != 0) {
-		return mrcpsynth_exit(chan, &mrcpsynth_session, SPEECH_CHANNEL_STATUS_ERROR);
+	
+	/* Get application datastore. */
+	app_session_t *app_session = app_datastore_session_add(datastore, entry);
+	if (!app_session) {
+		return mrcpsynth_exit(chan, NULL, SPEECH_CHANNEL_STATUS_ERROR);
 	}
+	app_session->lifetime = lifetime;
 
-	ast_format_compat *owriteformat = ast_channel_get_writeformat(chan, mrcpsynth_session.pool);
-	ast_format_compat *orawwriteformat = ast_channel_get_rawwriteformat(chan, mrcpsynth_session.pool);
-	ast_channel_set_writeformat(chan, nwriteformat);
-	ast_channel_set_rawwriteformat(chan, nwriteformat);
-	mrcpsynth_session.writeformat = owriteformat;
-	mrcpsynth_session.rawwriteformat = orawwriteformat;
+	if(!app_session->synth_channel) {
+		const char *filename = NULL;
+		if ((mrcpsynth_options.flags & MRCPSYNTH_FILENAME) == MRCPSYNTH_FILENAME) {
+			filename = mrcpsynth_options.params[OPT_ARG_FILENAME];
+		}
+
+		/* Get new write format. */
+		app_session->nwriteformat = ast_channel_get_speechwriteformat(chan, app_session->pool);
+
+		name = apr_psprintf(app_session->pool, "TTS-%lu", (unsigned long int)speech_channel_number);
+
+		/* Create speech channel for synthesis. */
+		app_session->synth_channel = speech_channel_create(
+										app_session->pool,
+										name,
+										SPEECH_CHANNEL_SYNTHESIZER,
+										mrcpsynth,
+										app_session->nwriteformat,
+										filename,
+										chan);
+		if (!app_session->synth_channel) {
+			return mrcpsynth_exit(chan, app_session, SPEECH_CHANNEL_STATUS_ERROR);
+		}
+
+		const char *profile_name = NULL;
+		if ((mrcpsynth_options.flags & MRCPSYNTH_PROFILE) == MRCPSYNTH_PROFILE) {
+			if (!ast_strlen_zero(mrcpsynth_options.params[OPT_ARG_PROFILE])) {
+				profile_name = mrcpsynth_options.params[OPT_ARG_PROFILE];
+			}
+		}
+
+		/* Get synthesis profile. */
+		ast_mrcp_profile_t *profile = get_synth_profile(profile_name);
+		if (!profile) {
+			ast_log(LOG_ERROR, "(%s) Can't find profile, %s\n", name, profile_name);
+			return mrcpsynth_exit(chan, app_session, SPEECH_CHANNEL_STATUS_ERROR);
+		}
+
+		/* Open synthesis channel. */
+		if (speech_channel_open(app_session->synth_channel, profile) != 0) {
+			return mrcpsynth_exit(chan, app_session, SPEECH_CHANNEL_STATUS_ERROR);
+		}
+	}
+	else {
+		name = app_session->synth_channel->name;
+	}
+	
+	/* Get old write format. */
+	ast_format_compat *owriteformat = ast_channel_get_writeformat(chan, app_session->pool);
+	ast_format_compat *orawwriteformat = ast_channel_get_rawwriteformat(chan, app_session->pool);
+
+	/* Set write format. */
+	ast_channel_set_writeformat(chan, app_session->nwriteformat);
+	ast_channel_set_rawwriteformat(chan, app_session->nwriteformat);
+
+	/* Store old write format. */
+	app_session->writeformat = owriteformat;
+	app_session->rawwriteformat = orawwriteformat;
 
 	const char *content = NULL;
 	const char *content_type = NULL;
-	if (determine_synth_content_type(mrcpsynth_session.schannel, args.prompt, &content, &content_type) != 0) {
+	if (determine_synth_content_type(app_session->synth_channel, args.prompt, &content, &content_type) != 0) {
 		ast_log(LOG_WARNING, "(%s) Unable to determine synthesis content type\n", name);
-		return mrcpsynth_exit(chan, &mrcpsynth_session, SPEECH_CHANNEL_STATUS_ERROR);
+		return mrcpsynth_exit(chan, app_session, SPEECH_CHANNEL_STATUS_ERROR);
 	}
 
 	ast_log(LOG_NOTICE, "(%s) Synthesizing, enable DTMFs: %d\n", name, dtmf_enable);
 
-	if (synth_channel_speak(mrcpsynth_session.schannel, content, content_type, mrcpsynth_options.synth_hfs) != 0) {
+	if (synth_channel_speak(app_session->synth_channel, content, content_type, mrcpsynth_options.synth_hfs) != 0) {
 		ast_log(LOG_WARNING, "(%s) Unable to start synthesis\n", name);
-		return mrcpsynth_exit(chan, &mrcpsynth_session, SPEECH_CHANNEL_STATUS_ERROR);
+		return mrcpsynth_exit(chan, app_session, SPEECH_CHANNEL_STATUS_ERROR);
 	}
 
 	int ms;
@@ -611,13 +649,13 @@ static int app_synth_exec(struct ast_channel *chan, ast_app_data data)
 		ms = ast_waitfor(chan, 100);
 		if (ms < 0) {
 			ast_log(LOG_DEBUG, "(%s) Hangup detected\n", name);
-			return mrcpsynth_exit(chan, &mrcpsynth_session, SPEECH_CHANNEL_STATUS_INTERRUPTED);
+			return mrcpsynth_exit(chan, app_session, SPEECH_CHANNEL_STATUS_INTERRUPTED);
 		}
 
 		f = ast_read(chan);
 		if (!f) {
 			ast_log(LOG_DEBUG, "(%s) Null frame == hangup() detected\n", name);
-			return mrcpsynth_exit(chan, &mrcpsynth_session, SPEECH_CHANNEL_STATUS_INTERRUPTED);
+			return mrcpsynth_exit(chan, app_session, SPEECH_CHANNEL_STATUS_INTERRUPTED);
 		}
 
 		running = 1;
@@ -629,23 +667,23 @@ static int app_synth_exec(struct ast_channel *chan, ast_app_data data)
 				status = SPEECH_CHANNEL_STATUS_INTERRUPTED;
 				running = 0;
 
-				ast_log(LOG_DEBUG, "(%s) Sending BARGE-IN-OCCURRED\n", mrcpsynth_session.schannel->name);
-				if (speech_channel_bargeinoccurred(mrcpsynth_session.schannel) != 0) {
-					ast_log(LOG_ERROR, "(%s) Failed to send BARGE-IN-OCCURRED\n", mrcpsynth_session.schannel->name);
+				ast_log(LOG_DEBUG, "(%s) Sending BARGE-IN-OCCURRED\n", app_session->synth_channel->name);
+				if (speech_channel_bargeinoccurred(app_session->synth_channel) != 0) {
+					ast_log(LOG_ERROR, "(%s) Failed to send BARGE-IN-OCCURRED\n", app_session->synth_channel->name);
 				}
 			}
 		}
 
 		ast_frfree(f);
 
-		if (mrcpsynth_session.schannel->state != SPEECH_CHANNEL_PROCESSING) {
+		if (app_session->synth_channel->state != SPEECH_CHANNEL_PROCESSING) {
 			/* end of prompt */
 			running = 0;
 		}
 	}
 	while (running);
 
-	return mrcpsynth_exit(chan, &mrcpsynth_session, status);
+	return mrcpsynth_exit(chan, app_session, status);
 }
 
 int load_mrcpsynth_app()

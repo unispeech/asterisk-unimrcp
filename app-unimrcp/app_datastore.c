@@ -16,9 +16,9 @@
  */
 
 #include <stdlib.h>
-#include "recog_datastore.h"
+#include <apr_hash.h>
+#include "app_datastore.h"
 #include "asterisk/pbx.h"
-#include "apt_nlsml_doc.h"
 #include "apt_pool.h"
 
 /*** DOCUMENTATION
@@ -103,126 +103,184 @@
 		</see-also>
 	</function>
  ***/
-
-/* The structure which holds recognition result */
-struct recog_data_t {
-	apr_pool_t     *pool;   /* memory pool */
-	nlsml_result_t *result; /* parsed NLSMl result */
-	const char     *name;   /* associated channel name */
-};
-
-typedef struct recog_data_t recog_data_t;
-
-/* Helper function used by datastores to destroy the recognition data structure upon hangup */
-static void recog_data_destroy(void *data)
+ 
+/* Helper function to destroy application session */
+static void app_session_destroy(app_session_t *app_session)
 {
-	recog_data_t *recog_data = (recog_data_t*) data;
+	if(app_session) {
+		if (app_session->synth_channel) {
+			speech_channel_destroy(app_session->synth_channel);
+		}
 
-	if (!recog_data || !recog_data->pool) {
+		if (app_session->recog_channel) {
+			speech_channel_destroy(app_session->recog_channel);
+		}
+	}
+}
+
+/* Helper function used by datastores to destroy the application data structure upon hangup */
+static void app_datastore_destroy(void *data)
+{
+	app_datastore_t *app_data = (app_datastore_t*) data;
+	if (!app_data || !app_data->pool) {
 		return;
 	}
 
-	ast_log(LOG_DEBUG, "Destroy recog datastore on %s\n", recog_data->name);
-	apr_pool_destroy(recog_data->pool);
-	return;
+	void *val;
+	apr_hash_index_t *it = apr_hash_first(app_data->pool, app_data->session_table);
+	for(; it; it = apr_hash_next(it)) {
+		apr_hash_this(it, NULL, NULL, &val);
+		app_session_destroy(val);
+	}
+
+	ast_log(LOG_DEBUG, "Destroy app datastore on %s\n", app_data->name);
+	apr_pool_destroy(app_data->pool);
 }
 
 /* Static structure for datastore information */
-static const struct ast_datastore_info recog_datastore = {
-	.type = "mrcprecog",
-	.destroy = recog_data_destroy
+static const struct ast_datastore_info app_unimrcp_datastore = {
+	.type = "app_unimrcp",
+	.destroy = app_datastore_destroy
 };
 
-/* Set result into recog datastore */
-int recog_datastore_result_set(struct ast_channel *chan, const char *result)
+app_datastore_t* app_datastore_get(struct ast_channel *chan)
 {
-	recog_data_t *recog_data = NULL;
+	app_datastore_t *app_datastore = NULL;
 	struct ast_datastore *datastore;
 	
-	datastore = ast_channel_datastore_find(chan, &recog_datastore, NULL);
+	datastore = ast_channel_datastore_find(chan, &app_unimrcp_datastore, NULL);
 	if (datastore) {
-		recog_data = datastore->data;
+		app_datastore = datastore->data;
 	}
 	else {
 		apr_pool_t *pool;
-		ast_log(LOG_DEBUG, "Create recog datastore on %s\n", ast_channel_name(chan));
-		datastore = ast_datastore_alloc(&recog_datastore, NULL);
+		ast_log(LOG_DEBUG, "Create app datastore on %s\n", ast_channel_name(chan));
+		datastore = ast_datastore_alloc(&app_unimrcp_datastore, NULL);
 		if (!datastore) {
-			ast_log(LOG_ERROR, "Unable to create recog datastore on %s\n", ast_channel_name(chan));
-			return -1;
+			ast_log(LOG_ERROR, "Unable to create app datastore on %s\n", ast_channel_name(chan));
+			return NULL;
 		}
 
 		if ((pool = apt_pool_create()) == NULL) {
 			ast_datastore_free(datastore);
-			ast_log(LOG_ERROR, "Unable to create memory pool for recog datastore on %s\n", ast_channel_name(chan));
-			return -1;
+			ast_log(LOG_ERROR, "Unable to create memory pool for app datastore on %s\n", ast_channel_name(chan));
+			return NULL;
 		}
 
-		recog_data = apr_palloc(pool, sizeof(recog_data_t));
-		recog_data->pool = pool;
-		recog_data->result = NULL;
-		recog_data->name = apr_pstrdup(pool, ast_channel_name(chan));
+		app_datastore = apr_palloc(pool, sizeof(app_datastore_t));
+		app_datastore->pool = pool;
+		app_datastore->chan = chan;
+		app_datastore->session_table = apr_hash_make(pool);
+		app_datastore->name = apr_pstrdup(pool, ast_channel_name(chan));
+		app_datastore->last_recog_entry = NULL;
 
-		datastore->data = recog_data;
+		datastore->data = app_datastore;
 		ast_channel_datastore_add(chan, datastore);
 	}
-
-	if (!recog_data) {
-		ast_log(LOG_ERROR, "Unable to retrieve data from recog datastore on %s\n", ast_channel_name(chan));
-		return -1;
-	}
-
-	recog_data->result = nlsml_result_parse(result, strlen(result), recog_data->pool);
-	return 0;
+	
+	return app_datastore;
 }
 
-/* Helper function used to find the recognition data structure attached to a channel */
-static recog_data_t* recog_datastore_find(struct ast_channel *chan)
+app_session_t* app_datastore_session_add(app_datastore_t* app_datastore, const char *entry)
 {
-	recog_data_t *recog_data = NULL;
-	struct ast_datastore *datastore;
+	app_session_t *session;
+	if (!app_datastore || !entry)
+		return NULL;
+	
+	session = apr_hash_get(app_datastore->session_table, entry, APR_HASH_KEY_STRING);
+	if (session) {
+		ast_log(LOG_DEBUG, "Ref entry %s from datastore on %s\n", entry, ast_channel_name(app_datastore->chan));
+	}
+	else {
+		session = apr_palloc(app_datastore->pool, sizeof(app_session_t));
 
-	datastore = ast_channel_datastore_find(chan, &recog_datastore, NULL);
-	if (datastore) {
-		recog_data = datastore->data;
+		session->pool = app_datastore->pool;
+		session->schannel_number = get_next_speech_channel_number();
+		session->lifetime = APP_SESSION_LIFETIME_DYNAMIC;
+		session->recog_channel = NULL;
+		session->synth_channel = NULL;
+		session->readformat = NULL;
+		session->rawreadformat = NULL;
+		session->writeformat = NULL; 
+		session->rawwriteformat = NULL;
+		session->nreadformat = NULL;
+		session->nwriteformat = NULL;
+		session->nlsml_result = NULL;
+		ast_log(LOG_DEBUG, "Add entry %s to datastore on %s\n", entry, ast_channel_name(app_datastore->chan));
+		apr_hash_set(app_datastore->session_table, entry, APR_HASH_KEY_STRING, session);
 	}
 
-	return recog_data;
+	session->prompts = NULL;
+	session->cur_prompt = 0;
+	session->filestream = NULL;
+	session->max_filelength = 0;
+	session->it_policy = 0;
+	return session;
+}
+
+/* Helper function used to find the application data structure attached to a channel */
+static app_session_t* app_datastore_session_find(struct ast_channel *chan)
+{
+	app_datastore_t *app_datastore = NULL;
+	struct ast_datastore *datastore;
+	
+	datastore = ast_channel_datastore_find(chan, &app_unimrcp_datastore, NULL);
+	if (datastore) {
+		app_datastore = datastore->data;
+	}
+	
+	if (!app_datastore) {
+		ast_log(LOG_ERROR, "Unable to find app datastore on %s\n", ast_channel_name(chan));
+		return NULL;
+	}
+
+	if (!app_datastore->last_recog_entry) {
+		ast_log(LOG_ERROR, "Unable to find last session in app datastore on %s\n", ast_channel_name(chan));
+		return NULL;
+	}
+
+	app_session_t *session = apr_hash_get(app_datastore->session_table, app_datastore->last_recog_entry, APR_HASH_KEY_STRING);
+	if (!session) {
+		ast_log(LOG_ERROR, "Unable to find entry %s in app datastore on %s\n", app_datastore->last_recog_entry, ast_channel_name(chan));
+		return NULL;
+	}
+	
+	return session;
 }
 
 /* Helper function used to find an interpretation by specified nbest alternative */
-static nlsml_interpretation_t* recog_interpretation_find(recog_data_t *recog_data, const char *nbest_num)
+static nlsml_interpretation_t* recog_interpretation_find(app_session_t *app_session, const char *nbest_num)
 {
 	int index = 0;
 	nlsml_interpretation_t *interpretation;
 
-	if(!recog_data || !recog_data->result)
+	if(!app_session || !app_session->nlsml_result)
 		return NULL;
 
 	if (nbest_num)
 		index = atoi(nbest_num);
 
-	interpretation = nlsml_first_interpretation_get(recog_data->result);
+	interpretation = nlsml_first_interpretation_get(app_session->nlsml_result);
 	while (interpretation) {
 		if (index == 0)
 			break;
 
 		index --;
-		interpretation = nlsml_next_interpretation_get(recog_data->result, interpretation);
+		interpretation = nlsml_next_interpretation_get(app_session->nlsml_result, interpretation);
 	}
 
 	return interpretation;
 }
 
 /* Helper function used to find an instance by specified nbest alternative and index */
-static nlsml_instance_t* recog_instance_find(recog_data_t *recog_data, const char *num)
+static nlsml_instance_t* recog_instance_find(app_session_t *app_session, const char *num)
 {
 	int interpretation_index = 0;
 	int instance_index = 0;
 	nlsml_interpretation_t *interpretation;
 	nlsml_instance_t *instance;
 
-	if (!recog_data || !recog_data->result)
+	if (!app_session || !app_session->nlsml_result)
 		return NULL;
 
 	if (num) {
@@ -236,13 +294,13 @@ static nlsml_instance_t* recog_instance_find(recog_data_t *recog_data, const cha
 		}
 	}
 
-	interpretation = nlsml_first_interpretation_get(recog_data->result);
+	interpretation = nlsml_first_interpretation_get(app_session->nlsml_result);
 	while (interpretation) {
 		if (interpretation_index == 0)
 			break;
 
 		interpretation_index --;
-		interpretation = nlsml_next_interpretation_get(recog_data->result, interpretation);
+		interpretation = nlsml_next_interpretation_get(app_session->nlsml_result, interpretation);
 	}
 
 	if(!interpretation)
@@ -263,8 +321,11 @@ static nlsml_instance_t* recog_instance_find(recog_data_t *recog_data, const cha
 /* RECOG_CONFIDENCE() Dialplan Function */
 static int recog_confidence(struct ast_channel *chan, const char *cmd, char *data, char *buf, size_t len)
 {
-	recog_data_t *recog_data = recog_datastore_find(chan);
-	nlsml_interpretation_t *interpretation = recog_interpretation_find(recog_data, data);
+	app_session_t *app_session = app_datastore_session_find(chan);
+	if(!app_session)
+		return -1;
+	
+	nlsml_interpretation_t *interpretation = recog_interpretation_find(app_session, data);
 	char tmp[128];
 
 	if (!interpretation)
@@ -284,8 +345,11 @@ static struct ast_custom_function recog_confidence_function = {
 /* RECOG_GRAMMAR() Dialplan Function */
 static int recog_grammar(struct ast_channel *chan, const char *cmd, char *data, char *buf, size_t len)
 {
-	recog_data_t *recog_data = recog_datastore_find(chan);
-	nlsml_interpretation_t *interpretation = recog_interpretation_find(recog_data, data);
+	app_session_t *app_session = app_datastore_session_find(chan);
+	if(!app_session)
+		return -1;
+
+	nlsml_interpretation_t *interpretation = recog_interpretation_find(app_session, data);
 	const char *grammar;
 
 	if (!interpretation)
@@ -308,8 +372,11 @@ static struct ast_custom_function recog_grammar_function = {
 /* RECOG_INPUT() Dialplan Function */
 static int recog_input(struct ast_channel *chan, const char *cmd, char *data, char *buf, size_t len)
 {
-	recog_data_t *recog_data = recog_datastore_find(chan);
-	nlsml_interpretation_t *interpretation = recog_interpretation_find(recog_data, data);
+	app_session_t *app_session = app_datastore_session_find(chan);
+	if(!app_session)
+		return -1;
+
+	nlsml_interpretation_t *interpretation = recog_interpretation_find(app_session, data);
 	nlsml_input_t *input;
 	const char *text;
 
@@ -320,7 +387,7 @@ static int recog_input(struct ast_channel *chan, const char *cmd, char *data, ch
 	if(!input)
 		return -1;
 
-	text = nlsml_input_content_generate(input, recog_data->pool);
+	text = nlsml_input_content_generate(input, app_session->pool);
 	if(!text)
 		return -1;
 
@@ -337,14 +404,17 @@ static struct ast_custom_function recog_input_function = {
 /* RECOG_INSTANCE() Dialplan Function */
 static int recog_instance(struct ast_channel *chan, const char *cmd, char *data, char *buf, size_t len)
 {
-	recog_data_t *recog_data = recog_datastore_find(chan);
-	nlsml_instance_t *instance = recog_instance_find(recog_data, data);
+	app_session_t *app_session = app_datastore_session_find(chan);
+	if(!app_session)
+		return -1;
+
+	nlsml_instance_t *instance = recog_instance_find(app_session, data);
 	const char *text;
 
 	if (!instance)
 		return -1;
 
-	text = nlsml_instance_content_generate(instance, recog_data->pool);
+	text = nlsml_instance_content_generate(instance, app_session->pool);
 	if(!text)
 		return -1;
 
@@ -359,7 +429,7 @@ static struct ast_custom_function recog_instance_function = {
 };
 
 /* Register custom dialplan functions */
-int recog_datastore_functions_register(struct ast_module *mod)
+int app_datastore_functions_register(struct ast_module *mod)
 {
 	int res = 0;
 
@@ -372,7 +442,7 @@ int recog_datastore_functions_register(struct ast_module *mod)
 }
 
 /* Unregister custom dialplan functions */
-int recog_datastore_functions_unregister(struct ast_module *mod)
+int app_datastore_functions_unregister(struct ast_module *mod)
 {
 	int res = 0;
 

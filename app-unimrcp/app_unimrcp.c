@@ -75,7 +75,7 @@ ASTERISK_REGISTER_FILE()
 
 /* UniMRCP includes. */
 #include "ast_unimrcp_framework.h"
-#include "recog_datastore.h"
+#include "app_datastore.h"
 
 /* The configuration file to read. */
 #define MRCP_CONFIG "mrcp.conf"
@@ -229,7 +229,7 @@ AST_COMPAT_STATIC int load_module(void)
 	}
 
 	/* Register the custom functions. */
-	res |= recog_datastore_functions_register(ast_module_info->self);
+	res |= app_datastore_functions_register(ast_module_info->self);
 
 	return res;
 }
@@ -252,7 +252,7 @@ AST_COMPAT_STATIC int unload_module(void)
 	}
 
 	/* Unregister the custom functions. */
-	res |= recog_datastore_functions_unregister();
+	res |= app_datastore_functions_unregister();
 
 	/* Unload the applications. */
 	unload_mrcpsynth_app();

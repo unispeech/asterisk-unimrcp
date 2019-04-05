@@ -51,16 +51,12 @@
 
 #include "asterisk/channel.h"
 #include "asterisk/pbx.h"
-#include "asterisk/module.h"
 #include "asterisk/lock.h"
 #include "asterisk/file.h"
 #include "asterisk/app.h"
 
 /* UniMRCP includes. */
-#include "ast_unimrcp_framework.h"
-#include "recog_datastore.h"
-#include "audio_queue.h"
-#include "speech_channel.h"
+#include "app_datastore.h"
 
 /*** DOCUMENTATION
 	<application name="MRCPRecog" language="en_US">
@@ -113,6 +109,10 @@
 					<option name="sit"> <para>Start input timers value (0: no, 1: yes [start with RECOGNIZE], 
 						2: auto [start when prompt is finished]).</para>
 					</option>
+					<option name="plt"> <para>Persistent lifetime (0: no [MRCP session is created and destroyed dynamically],
+						1: yes [MRCP session is created on demand, reused and destroyed on hang-up].</para>
+					</option>
+					<option name="dse"> <para>Datastore entry.</para></option>
 				</optionlist>
 			</parameter>
 		</syntax>
@@ -155,7 +155,9 @@ enum mrcprecog_option_flags {
 	MRCPRECOG_EXIT_ON_PLAYERROR   = (1 << 5),
 	MRCPRECOG_URI_ENCODED_RESULTS = (1 << 6),
 	MRCPRECOG_OUTPUT_DELIMITERS   = (1 << 7),
-	MRCPRECOG_INPUT_TIMERS        = (1 << 8)
+	MRCPRECOG_INPUT_TIMERS        = (1 << 8),
+	MRCPRECOG_PERSISTENT_LIFETIME = (1 << 9),
+	MRCPRECOG_DATASTORE_ENTRY     = (1 << 10)
 };
 
 /* The enumeration of option arguments. */
@@ -169,9 +171,11 @@ enum mrcprecog_option_args {
 	OPT_ARG_URI_ENCODED_RESULTS  = 6,
 	OPT_ARG_OUTPUT_DELIMITERS    = 7,
 	OPT_ARG_INPUT_TIMERS         = 8,
+	OPT_ARG_PERSISTENT_LIFETIME  = 9,
+	OPT_ARG_DATASTORE_ENTRY      = 10,
 
 	/* This MUST be the last value in this enum! */
-	OPT_ARG_ARRAY_SIZE           = 9
+	OPT_ARG_ARRAY_SIZE           = 11
 };
 
 /* The enumeration of plocies for the use of input timers. */
@@ -190,19 +194,6 @@ struct mrcprecog_options_t {
 };
 
 typedef struct mrcprecog_options_t mrcprecog_options_t;
-
-/* The application session. */
-struct mrcprecog_session_t {
-	apr_pool_t         *pool;               /* memory pool */
-	speech_channel_t   *schannel;           /* recognition channel */
-	ast_format_compat  *readformat;         /* old read format, to be restored */
-	ast_format_compat  *rawreadformat;      /* old raw read format, to be restored (>= Asterisk 13) */
-	apr_array_header_t *prompts;            /* list of prompts */
-	int                 cur_prompt;         /* current prompt index */
-	int                 it_policy;          /* input timers policy (mrcprecog_it_policies) */
-};
-
-typedef struct mrcprecog_session_t mrcprecog_session_t;
 
 /* --- MRCP SPEECH CHANNEL INTERFACE TO UNIMRCP --- */
 
@@ -409,7 +400,7 @@ static int recog_channel_set_results(speech_channel_t *schannel, int completion_
 }
 
 /* Get the recognition results. */
-static int recog_channel_get_results(speech_channel_t *schannel, int uri_encoded, const char **completion_cause, const char **result, const char **waveform_uri)
+static int recog_channel_get_results(speech_channel_t *schannel, const char **completion_cause, const char **result, const char **waveform_uri)
 {
 	if (!schannel) {
 		ast_log(LOG_ERROR, "get_results: unknown channel error!\n");
@@ -440,18 +431,8 @@ static int recog_channel_get_results(speech_channel_t *schannel, int uri_encoded
 		r->completion_cause = 0;
 	}
 
-	if (result && r->result && (strlen(r->result) > 0)) {
-		/* Store the results for further reference from the dialplan. */
-		recog_datastore_result_set(schannel->chan, r->result);
-
-		if (uri_encoded == 0) {
-			*result = apr_pstrdup(schannel->pool, r->result);
-		}
-		else {
-			apr_size_t len = strlen(r->result) * 2;
-			char *res = apr_palloc(schannel->pool, len);
-			*result = ast_uri_encode_http(r->result, res, len);
-		}
+	if (result && r->result && strlen(r->result) > 0) {
+		*result = apr_pstrdup(schannel->pool, r->result);
 		ast_log(LOG_NOTICE, "(%s) Result:\n\n%s\n", schannel->name, *result);
 		r->result = NULL;
 	}
@@ -940,8 +921,13 @@ static int mrcprecog_option_apply(mrcprecog_options_t *options, const char *key,
 	} else if (strcasecmp(key, "sit") == 0) {
 		options->flags |= MRCPRECOG_INPUT_TIMERS;
 		options->params[OPT_ARG_INPUT_TIMERS] = value;
-	}
-	else {
+	} else if (strcasecmp(key, "plt") == 0) {
+		options->flags |= MRCPRECOG_PERSISTENT_LIFETIME;
+		options->params[OPT_ARG_PERSISTENT_LIFETIME] = value;
+	} else if (strcasecmp(key, "dse") == 0) {
+		options->flags |= MRCPRECOG_DATASTORE_ENTRY;
+		options->params[OPT_ARG_DATASTORE_ENTRY] = value;
+	} else {
 		ast_log(LOG_WARNING, "Unknown option: %s\n", key);
 	}
 	return 0;
@@ -991,62 +977,62 @@ static int mrcprecog_options_parse(char *str, mrcprecog_options_t *options, apr_
 }
 
 /* Return the number of prompts which still need to be played. */
-static APR_INLINE int mrcprecog_prompts_available(mrcprecog_session_t *mrcprecog_session)
+static APR_INLINE int mrcprecog_prompts_available(app_session_t *app_session)
 {
-	if(mrcprecog_session->cur_prompt >= mrcprecog_session->prompts->nelts)
+	if(app_session->cur_prompt >= app_session->prompts->nelts)
 		return 0;
-	return mrcprecog_session->prompts->nelts - mrcprecog_session->cur_prompt;
+	return app_session->prompts->nelts - app_session->cur_prompt;
 }
 
 /* Advance the current prompt index and return the number of prompts remaining. */
-static APR_INLINE int mrcprecog_prompts_advance(mrcprecog_session_t *mrcprecog_session)
+static APR_INLINE int mrcprecog_prompts_advance(app_session_t *app_session)
 {
-	if (mrcprecog_session->cur_prompt >= mrcprecog_session->prompts->nelts)
+	if (app_session->cur_prompt >= app_session->prompts->nelts)
 		return -1;
-	mrcprecog_session->cur_prompt++;
-	return mrcprecog_session->prompts->nelts - mrcprecog_session->cur_prompt;
+	app_session->cur_prompt++;
+	return app_session->prompts->nelts - app_session->cur_prompt;
 }
 
 /* Start playing the current prompt. */
-static struct ast_filestream* mrcprecog_prompt_play(mrcprecog_session_t *mrcprecog_session, mrcprecog_options_t *mrcprecog_options, off_t *max_filelength)
+static struct ast_filestream* mrcprecog_prompt_play(app_session_t *app_session, mrcprecog_options_t *mrcprecog_options, off_t *max_filelength)
 {
-	if (mrcprecog_session->cur_prompt >= mrcprecog_session->prompts->nelts) {
-		ast_log(LOG_ERROR, "(%s) Out of bounds prompt index\n", mrcprecog_session->schannel->name);
+	if (app_session->cur_prompt >= app_session->prompts->nelts) {
+		ast_log(LOG_ERROR, "(%s) Out of bounds prompt index\n", app_session->recog_channel->name);
 		return NULL;
 	}
 
-	char *filename = APR_ARRAY_IDX(mrcprecog_session->prompts, mrcprecog_session->cur_prompt, char*);
+	char *filename = APR_ARRAY_IDX(app_session->prompts, app_session->cur_prompt, char*);
 	if (!filename) {
-		ast_log(LOG_ERROR, "(%s) Invalid file name\n", mrcprecog_session->schannel->name);
+		ast_log(LOG_ERROR, "(%s) Invalid file name\n", app_session->recog_channel->name);
 		return NULL;
 	}
-	return astchan_stream_file(mrcprecog_session->schannel->chan, filename, max_filelength);
+	return astchan_stream_file(app_session->recog_channel->chan, filename, max_filelength);
 }
 
 /* Exit the application. */
-static int mrcprecog_exit(struct ast_channel *chan, mrcprecog_session_t *mrcprecog_session, speech_channel_status_t status)
+static int mrcprecog_exit(struct ast_channel *chan, app_session_t *app_session, speech_channel_status_t status)
 {
-	if (mrcprecog_session) {
-		if (mrcprecog_session->readformat)
-			ast_channel_set_readformat(chan, mrcprecog_session->readformat);
-		if (mrcprecog_session->rawreadformat)
-			ast_channel_set_rawreadformat(chan, mrcprecog_session->rawreadformat);
+	if (app_session) {
+		if (app_session->readformat)
+			ast_channel_set_readformat(chan, app_session->readformat);
+		if (app_session->rawreadformat)
+			ast_channel_set_rawreadformat(chan, app_session->rawreadformat);
 
-		if (mrcprecog_session->schannel) {
-			if (mrcprecog_session->schannel->session_id)
-				pbx_builtin_setvar_helper(chan, "RECOG_SID", mrcprecog_session->schannel->session_id);
-			speech_channel_destroy(mrcprecog_session->schannel);
+		if (app_session->recog_channel) {
+			if (app_session->recog_channel->session_id)
+				pbx_builtin_setvar_helper(chan, "RECOG_SID", app_session->recog_channel->session_id);
+
+			if (app_session->lifetime == APP_SESSION_LIFETIME_DYNAMIC) {
+				speech_channel_destroy(app_session->recog_channel);
+				app_session->recog_channel = NULL;
+			}
 		}
-
-		if (mrcprecog_session->pool)
-			apr_pool_destroy(mrcprecog_session->pool);
 	}
 
 	const char *status_str = speech_channel_status_to_string(status);
 	pbx_builtin_setvar_helper(chan, "RECOGSTATUS", status_str);
 	ast_log(LOG_NOTICE, "%s() exiting status: %s on %s\n", app_recog, status_str, ast_channel_name(chan));
-
-	return status != SPEECH_CHANNEL_STATUS_ERROR ? 0 : -1;
+	return 0;
 }
 
 /* The entry point of the application. */
@@ -1054,14 +1040,12 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 {
 	int dtmf_enable;
 	struct ast_frame *f = NULL;
-	ast_mrcp_profile_t *profile = NULL;
 	apr_uint32_t speech_channel_number = get_next_speech_channel_number();
 	const char *name;
 	speech_channel_status_t status = SPEECH_CHANNEL_STATUS_OK;
 	char *parse;
 	int i;
 	mrcprecog_options_t mrcprecog_options;
-	mrcprecog_session_t mrcprecog_session;
 
 	AST_DECLARE_APP_ARGS(args,
 		AST_APP_ARG(grammar);
@@ -1085,17 +1069,11 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 	args.grammar = normalize_input_string(args.grammar);
 	ast_log(LOG_NOTICE, "%s() grammar: %s\n", app_recog, args.grammar);
 
-	if ((mrcprecog_session.pool = apt_pool_create()) == NULL) {
-		ast_log(LOG_ERROR, "Unable to create memory pool for speech channel\n");
+	app_datastore_t* datastore = app_datastore_get(chan);
+	if (!datastore) {
+		ast_log(LOG_ERROR, "Unable to retrieve data from app datastore on %s\n", ast_channel_name(chan));
 		return mrcprecog_exit(chan, NULL, SPEECH_CHANNEL_STATUS_ERROR);
 	}
-
-	mrcprecog_session.schannel = NULL;
-	mrcprecog_session.readformat = NULL;
-	mrcprecog_session.rawreadformat = NULL;
-	mrcprecog_session.prompts = apr_array_make(mrcprecog_session.pool, 1, sizeof(char*));
-	mrcprecog_session.cur_prompt = 0;
-	mrcprecog_session.it_policy = IT_POLICY_AUTO;
 
 	mrcprecog_options.recog_hfs = NULL;
 	mrcprecog_options.flags = 0;
@@ -1105,10 +1083,106 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 	if (!ast_strlen_zero(args.options)) {
 		args.options = normalize_input_string(args.options);
 		ast_log(LOG_NOTICE, "%s() options: %s\n", app_recog, args.options);
-		char *options_buf = apr_pstrdup(mrcprecog_session.pool, args.options);
-		mrcprecog_options_parse(options_buf, &mrcprecog_options, mrcprecog_session.pool);
+		char *options_buf = apr_pstrdup(datastore->pool, args.options);
+		mrcprecog_options_parse(options_buf, &mrcprecog_options, datastore->pool);
 	}
 
+	/* Answer if it's not already going. */
+	if (ast_channel_state(chan) != AST_STATE_UP)
+		ast_answer(chan);
+
+	/* Ensure no streams are currently playing. */
+	ast_stopstream(chan);
+
+	/* Set default lifetime to dynamic. */
+	int lifetime = APP_SESSION_LIFETIME_DYNAMIC;
+
+	/* Get datastore entry. */
+	const char *entry = DEFAULT_DATASTORE_ENTRY;
+	if ((mrcprecog_options.flags & MRCPRECOG_DATASTORE_ENTRY) == MRCPRECOG_DATASTORE_ENTRY) {
+		if (!ast_strlen_zero(mrcprecog_options.params[OPT_ARG_DATASTORE_ENTRY])) {
+			entry = mrcprecog_options.params[OPT_ARG_DATASTORE_ENTRY];
+			lifetime = APP_SESSION_LIFETIME_PERSISTENT;
+		}
+	}
+
+	/* Check session lifetime. */
+	if ((mrcprecog_options.flags & MRCPRECOG_PERSISTENT_LIFETIME) == MRCPRECOG_PERSISTENT_LIFETIME) {
+		if (!ast_strlen_zero(mrcprecog_options.params[OPT_ARG_PERSISTENT_LIFETIME])) {
+			lifetime = (atoi(mrcprecog_options.params[OPT_ARG_PERSISTENT_LIFETIME]) == 0) ? 
+				APP_SESSION_LIFETIME_DYNAMIC : APP_SESSION_LIFETIME_PERSISTENT;
+		}
+	}
+	
+	/* Get application datastore. */
+	app_session_t *app_session = app_datastore_session_add(datastore, entry);
+	if (!app_session) {
+		return mrcprecog_exit(chan, NULL, SPEECH_CHANNEL_STATUS_ERROR);
+	}
+
+	datastore->last_recog_entry = entry;
+	app_session->nlsml_result = NULL;
+
+	app_session->prompts = apr_array_make(app_session->pool, 1, sizeof(char*));
+	app_session->cur_prompt = 0;
+	app_session->it_policy = IT_POLICY_AUTO;
+	app_session->lifetime = lifetime;
+
+	if(!app_session->recog_channel) {
+		/* Get new read format. */
+		app_session->nreadformat = ast_channel_get_speechreadformat(chan, app_session->pool);
+
+		name = apr_psprintf(app_session->pool, "ASR-%lu", (unsigned long int)speech_channel_number);
+
+		/* Create speech channel for recognition. */
+		app_session->recog_channel = speech_channel_create(
+										app_session->pool,
+										name,
+										SPEECH_CHANNEL_RECOGNIZER,
+										mrcprecog,
+										app_session->nreadformat,
+										NULL,
+										chan);
+		if (!app_session->recog_channel) {
+			return mrcprecog_exit(chan, app_session, SPEECH_CHANNEL_STATUS_ERROR);
+		}
+
+		const char *profile_name = NULL;
+		if ((mrcprecog_options.flags & MRCPRECOG_PROFILE) == MRCPRECOG_PROFILE) {
+			if (!ast_strlen_zero(mrcprecog_options.params[OPT_ARG_PROFILE])) {
+				profile_name = mrcprecog_options.params[OPT_ARG_PROFILE];
+			}
+		}
+
+		/* Get recognition profile. */
+		ast_mrcp_profile_t *profile = get_recog_profile(profile_name);
+		if (!profile) {
+			ast_log(LOG_ERROR, "(%s) Can't find profile, %s\n", name, profile_name);
+			return mrcprecog_exit(chan, app_session, SPEECH_CHANNEL_STATUS_ERROR);
+		}
+
+		/* Open recognition channel. */
+		if (speech_channel_open(app_session->recog_channel, profile) != 0) {
+			return mrcprecog_exit(chan, app_session, SPEECH_CHANNEL_STATUS_ERROR);
+		}
+	}
+	else {
+		name = app_session->recog_channel->name;
+	}
+
+	/* Get old read format. */
+	ast_format_compat *oreadformat = ast_channel_get_readformat(chan, app_session->pool);
+	ast_format_compat *orawreadformat = ast_channel_get_rawreadformat(chan, app_session->pool);
+
+	/* Set read format. */
+	ast_channel_set_readformat(chan, app_session->nreadformat);
+	ast_channel_set_rawreadformat(chan, app_session->nreadformat);
+
+	/* Store old read format. */
+	app_session->readformat = oreadformat;
+	app_session->rawreadformat = orawreadformat;
+
+	/* Check if barge-in is allowed. */
 	int bargein = 1;
 	if ((mrcprecog_options.flags & MRCPRECOG_BARGEIN) == MRCPRECOG_BARGEIN) {
 		if (!ast_strlen_zero(mrcprecog_options.params[OPT_ARG_BARGEIN])) {
@@ -1129,56 +1203,6 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 		}
 	}
 
-	/* Answer if it's not already going. */
-	if (ast_channel_state(chan) != AST_STATE_UP)
-		ast_answer(chan);
-
-	/* Ensure no streams are currently playing. */
-	ast_stopstream(chan);
-
-	ast_format_compat *nreadformat = ast_channel_get_speechreadformat(chan, mrcprecog_session.pool);
-
-	name = apr_psprintf(mrcprecog_session.pool, "ASR-%lu", (unsigned long int)speech_channel_number);
-
-	/* Create speech channel for recognition. */
-	mrcprecog_session.schannel = speech_channel_create(
-									mrcprecog_session.pool,
-									name,
-									SPEECH_CHANNEL_RECOGNIZER,
-									mrcprecog,
-									nreadformat,
-									NULL,
-									chan);
-	if (!mrcprecog_session.schannel) {
-		return mrcprecog_exit(chan, &mrcprecog_session, SPEECH_CHANNEL_STATUS_ERROR);
-	}
-
-	const char *profile_name = NULL;
-	if ((mrcprecog_options.flags & MRCPRECOG_PROFILE) == MRCPRECOG_PROFILE) {
-		if (!ast_strlen_zero(mrcprecog_options.params[OPT_ARG_PROFILE])) {
-			profile_name = mrcprecog_options.params[OPT_ARG_PROFILE];
-		}
-	}
-
-	/* Get recognition profile. */
-	profile = get_recog_profile(profile_name);
-	if (!profile) {
-		ast_log(LOG_ERROR, "(%s) Can't find profile, %s\n", name, profile_name);
-		return mrcprecog_exit(chan, &mrcprecog_session, SPEECH_CHANNEL_STATUS_ERROR);
-	}
-
-	/* Open recognition channel. */
-	if (speech_channel_open(mrcprecog_session.schannel, profile) != 0) {
-		return mrcprecog_exit(chan, &mrcprecog_session, SPEECH_CHANNEL_STATUS_ERROR);
-	}
-
-	ast_format_compat *oreadformat = ast_channel_get_readformat(chan, mrcprecog_session.pool);
-	ast_format_compat *orawreadformat = ast_channel_get_rawreadformat(chan, mrcprecog_session.pool);
-	ast_channel_set_readformat(chan, nreadformat);
-	ast_channel_set_rawreadformat(chan, nreadformat);
-	mrcprecog_session.readformat = oreadformat;
-	mrcprecog_session.rawreadformat = orawreadformat;
-
 	const char *grammar_delimiters = ",";
 	/* Get grammar delimiters. */
 	if ((mrcprecog_options.flags & MRCPRECOG_GRAMMAR_DELIMITERS) == MRCPRECOG_GRAMMAR_DELIMITERS) {
@@ -1188,7 +1212,7 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 		}
 	}
 	/* Parse the grammar argument into a sequence of grammars. */
-	char *grammar_arg = apr_pstrdup(mrcprecog_session.pool, args.grammar);
+	char *grammar_arg = apr_pstrdup(app_session->pool, args.grammar);
 	char *last;
 	char *grammar_str;
 	char grammar_name[32];
@@ -1198,23 +1222,23 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 		const char *grammar_content = NULL;
 		grammar_type_t grammar_type = GRAMMAR_TYPE_UNKNOWN;
 		ast_log(LOG_DEBUG, "(%s) Determine grammar type: %s\n", name, grammar_str);
-		if (determine_grammar_type(mrcprecog_session.schannel, grammar_str, &grammar_content, &grammar_type) != 0) {
+		if (determine_grammar_type(app_session->recog_channel, grammar_str, &grammar_content, &grammar_type) != 0) {
 			ast_log(LOG_WARNING, "(%s) Unable to determine grammar type: %s\n", name, grammar_str);
-			return mrcprecog_exit(chan, &mrcprecog_session, SPEECH_CHANNEL_STATUS_ERROR);
+			return mrcprecog_exit(chan, app_session, SPEECH_CHANNEL_STATUS_ERROR);
 		}
 
 		apr_snprintf(grammar_name, sizeof(grammar_name) - 1, "grammar-%d", grammar_id++);
 		grammar_name[sizeof(grammar_name) - 1] = '\0';
 		/* Load grammar. */
-		if (recog_channel_load_grammar(mrcprecog_session.schannel, grammar_name, grammar_type, grammar_content) != 0) {
+		if (recog_channel_load_grammar(app_session->recog_channel, grammar_name, grammar_type, grammar_content) != 0) {
 			ast_log(LOG_ERROR, "(%s) Unable to load grammar\n", name);
 
 			const char *completion_cause = NULL;
-			recog_channel_get_results(mrcprecog_session.schannel, 0, &completion_cause, NULL, NULL);
+			recog_channel_get_results(app_session->recog_channel, &completion_cause, NULL, NULL);
 			if (completion_cause)
 				pbx_builtin_setvar_helper(chan, "RECOG_COMPLETION_CAUSE", completion_cause);
 			
-			return mrcprecog_exit(chan, &mrcprecog_session, SPEECH_CHANNEL_STATUS_ERROR);
+			return mrcprecog_exit(chan, app_session, SPEECH_CHANNEL_STATUS_ERROR);
 		}
 
 		grammar_str = apr_strtok(NULL, grammar_delimiters, &last);
@@ -1239,12 +1263,12 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 
 		/* Parse the file names into a list of files. */
 		char *last;
-		char *filenames_arg = apr_pstrdup(mrcprecog_session.pool, filenames);
+		char *filenames_arg = apr_pstrdup(app_session->pool, filenames);
 		char *filename = apr_strtok(filenames_arg, output_delimiters, &last);
 		while (filename) {
 			filename = normalize_input_string(filename);
 			ast_log(LOG_DEBUG, "(%s) Add prompt: %s\n", name, filename);
-			APR_ARRAY_PUSH(mrcprecog_session.prompts, char*) = filename;
+			APR_ARRAY_PUSH(app_session->prompts, char*) = filename;
 
 			filename = apr_strtok(NULL, output_delimiters, &last);
 		}
@@ -1259,16 +1283,16 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 		}
 	}
 
-	int prompt_processing = (mrcprecog_prompts_available(&mrcprecog_session)) ? 1 : 0;
+	int prompt_processing = (mrcprecog_prompts_available(app_session)) ? 1 : 0;
 	struct ast_filestream *filestream = NULL;
 	off_t max_filelength;
 
 	/* If bargein is not allowed, play all the prompts and wait for for them to complete. */
 	if (!bargein && prompt_processing) {
 		/* Start playing first prompt. */
-		filestream = mrcprecog_prompt_play(&mrcprecog_session, &mrcprecog_options, &max_filelength);
+		filestream = mrcprecog_prompt_play(app_session, &mrcprecog_options, &max_filelength);
 		if (!filestream && exit_on_playerror) {
-			return mrcprecog_exit(chan, &mrcprecog_session, SPEECH_CHANNEL_STATUS_ERROR);
+			return mrcprecog_exit(chan, app_session, SPEECH_CHANNEL_STATUS_ERROR);
 		}
 
 		do {
@@ -1277,22 +1301,22 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 					f = ast_read(chan);
 					if (!f) {
 						ast_log(LOG_DEBUG, "(%s) ast_waitstream failed on %s, channel read is a null frame. Hangup detected\n", name, ast_channel_name(chan));
-						return mrcprecog_exit(chan, &mrcprecog_session, SPEECH_CHANNEL_STATUS_INTERRUPTED);
+						return mrcprecog_exit(chan, app_session, SPEECH_CHANNEL_STATUS_INTERRUPTED);
 					}
 					ast_frfree(f);
 
 					ast_log(LOG_WARNING, "(%s) ast_waitstream failed on %s\n", name, ast_channel_name(chan));
-					return mrcprecog_exit(chan, &mrcprecog_session, SPEECH_CHANNEL_STATUS_ERROR);
+					return mrcprecog_exit(chan, app_session, SPEECH_CHANNEL_STATUS_ERROR);
 				}
 				filestream = NULL;
 			}
 
 			/* End of current prompt -> advance to the next one. */
-			if (mrcprecog_prompts_advance(&mrcprecog_session) > 0) {
+			if (mrcprecog_prompts_advance(app_session) > 0) {
 				/* Start playing current prompt. */
-				filestream = mrcprecog_prompt_play(&mrcprecog_session, &mrcprecog_options, &max_filelength);
+				filestream = mrcprecog_prompt_play(app_session, &mrcprecog_options, &max_filelength);
 				if (!filestream && exit_on_playerror) {
-					return mrcprecog_exit(chan, &mrcprecog_session, SPEECH_CHANNEL_STATUS_ERROR);
+					return mrcprecog_exit(chan, app_session, SPEECH_CHANNEL_STATUS_ERROR);
 				}
 			}
 			else {
@@ -1300,7 +1324,7 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 				break;
 			}
 		}
-		while (mrcprecog_prompts_available(&mrcprecog_session));
+		while (mrcprecog_prompts_available(app_session));
 
 		prompt_processing = 0;
 	}
@@ -1309,37 +1333,37 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 	if ((mrcprecog_options.flags & MRCPRECOG_INPUT_TIMERS) == MRCPRECOG_INPUT_TIMERS) {
 		if (!ast_strlen_zero(mrcprecog_options.params[OPT_ARG_INPUT_TIMERS])) {
 			switch(atoi(mrcprecog_options.params[OPT_ARG_INPUT_TIMERS])) {
-				case 0: mrcprecog_session.it_policy = IT_POLICY_OFF; break;
-				case 1: mrcprecog_session.it_policy = IT_POLICY_ON; break;
-				default: mrcprecog_session.it_policy = IT_POLICY_AUTO;
+				case 0: app_session->it_policy = IT_POLICY_OFF; break;
+				case 1: app_session->it_policy = IT_POLICY_ON; break;
+				default: app_session->it_policy = IT_POLICY_AUTO;
 			}
 		}
 	}
 
 	int start_input_timers = !prompt_processing;
-	if (mrcprecog_session.it_policy != IT_POLICY_AUTO)
-		start_input_timers = mrcprecog_session.it_policy;
-	recognizer_data_t *r = mrcprecog_session.schannel->data;
+	if (app_session->it_policy != IT_POLICY_AUTO)
+		start_input_timers = app_session->it_policy;
+	recognizer_data_t *r = app_session->recog_channel->data;
 
 	ast_log(LOG_NOTICE, "(%s) Recognizing, enable DTMFs: %d, start input timers: %d\n", name, dtmf_enable, start_input_timers);
 
 	/* Start recognition. */
-	if (recog_channel_start(mrcprecog_session.schannel, name, start_input_timers, mrcprecog_options.recog_hfs) != 0) {
+	if (recog_channel_start(app_session->recog_channel, name, start_input_timers, mrcprecog_options.recog_hfs) != 0) {
 		ast_log(LOG_ERROR, "(%s) Unable to start recognition\n", name);
 
 		const char *completion_cause = NULL;
-		recog_channel_get_results(mrcprecog_session.schannel, 0, &completion_cause, NULL, NULL);
+		recog_channel_get_results(app_session->recog_channel, &completion_cause, NULL, NULL);
 		if (completion_cause)
 			pbx_builtin_setvar_helper(chan, "RECOG_COMPLETION_CAUSE", completion_cause);
 
-		return mrcprecog_exit(chan, &mrcprecog_session, SPEECH_CHANNEL_STATUS_ERROR);
+		return mrcprecog_exit(chan, app_session, SPEECH_CHANNEL_STATUS_ERROR);
 	}
 
 	if (prompt_processing) {
 		/* Start playing first prompt. */
-		filestream = mrcprecog_prompt_play(&mrcprecog_session, &mrcprecog_options, &max_filelength);
+		filestream = mrcprecog_prompt_play(app_session, &mrcprecog_options, &max_filelength);
 		if (!filestream && exit_on_playerror) {
-			return mrcprecog_exit(chan, &mrcprecog_session, SPEECH_CHANNEL_STATUS_ERROR);
+			return mrcprecog_exit(chan, app_session, SPEECH_CHANNEL_STATUS_ERROR);
 		}
 	}
 
@@ -1353,14 +1377,14 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 	while ((waitres = ast_waitfor(chan, 100)) >= 0) {
 		recog_processing = 1;
 
-		if (mrcprecog_session.schannel && mrcprecog_session.schannel->mutex) {
-			apr_thread_mutex_lock(mrcprecog_session.schannel->mutex);
+		if (app_session->recog_channel && app_session->recog_channel->mutex) {
+			apr_thread_mutex_lock(app_session->recog_channel->mutex);
 
-			if (mrcprecog_session.schannel->state != SPEECH_CHANNEL_PROCESSING) {
+			if (app_session->recog_channel->state != SPEECH_CHANNEL_PROCESSING) {
 				recog_processing = 0;
 			}
 
-			apr_thread_mutex_unlock(mrcprecog_session.schannel->mutex);
+			apr_thread_mutex_unlock(app_session->recog_channel->mutex);
 		}
 
 		if (recog_processing == 0)
@@ -1387,18 +1411,18 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 
 			if (!filestream) {
 				/* End of current prompt -> advance to the next one. */
-				if (mrcprecog_prompts_advance(&mrcprecog_session) > 0) {
+				if (mrcprecog_prompts_advance(app_session) > 0) {
 					/* Start playing current prompt. */
-					filestream = mrcprecog_prompt_play(&mrcprecog_session, &mrcprecog_options, &max_filelength);
+					filestream = mrcprecog_prompt_play(app_session, &mrcprecog_options, &max_filelength);
 					if (!filestream && exit_on_playerror) {
-						return mrcprecog_exit(chan, &mrcprecog_session, SPEECH_CHANNEL_STATUS_ERROR);
+						return mrcprecog_exit(chan, app_session, SPEECH_CHANNEL_STATUS_ERROR);
 					}
 				}
 				else {
 					/* End of prompts -> start input timers. */
-					if (mrcprecog_session.it_policy == IT_POLICY_AUTO) {
+					if (app_session->it_policy == IT_POLICY_AUTO) {
 						ast_log(LOG_DEBUG, "(%s) Start input timers\n", name);
-						recog_channel_start_input_timers(mrcprecog_session.schannel);
+						recog_channel_start_input_timers(app_session->recog_channel);
 					}
 					prompt_processing = 0;
 				}
@@ -1424,7 +1448,7 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 
 		if (f->frametype == AST_FRAME_VOICE && f->datalen) {
 			apr_size_t len = f->datalen;
-			if (speech_channel_write(mrcprecog_session.schannel, ast_frame_get_data(f), &len) != 0) {
+			if (speech_channel_write(app_session->recog_channel, ast_frame_get_data(f), &len) != 0) {
 				ast_frfree(f);
 				break;
 			}
@@ -1435,19 +1459,19 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 			ast_log(LOG_DEBUG, "(%s) User pressed DTMF key (%d)\n", name, dtmfkey);
 			if (dtmf_enable == 2) {
 				/* Send DTMF frame to ASR engine. */
-				if (mrcprecog_session.schannel->dtmf_generator != NULL) {
+				if (app_session->recog_channel->dtmf_generator != NULL) {
 					char digits[2];
 					digits[0] = (char)dtmfkey;
 					digits[1] = '\0';
 
-					ast_log(LOG_NOTICE, "(%s) DTMF digit queued (%s)\n", mrcprecog_session.schannel->name, digits);
-					mpf_dtmf_generator_enqueue(mrcprecog_session.schannel->dtmf_generator, digits);
+					ast_log(LOG_NOTICE, "(%s) DTMF digit queued (%s)\n", app_session->recog_channel->name, digits);
+					mpf_dtmf_generator_enqueue(app_session->recog_channel->dtmf_generator, digits);
 				}
 			} else if (dtmf_enable == 1) {
 				/* Stop streaming if within i chars. */
 				if (strchr(mrcprecog_options.params[OPT_ARG_INTERRUPT], dtmfkey) || (strcmp(mrcprecog_options.params[OPT_ARG_INTERRUPT],"any"))) {
 					ast_frfree(f);
-					mrcprecog_exit(chan, &mrcprecog_session, SPEECH_CHANNEL_STATUS_OK);
+					mrcprecog_exit(chan, app_session, SPEECH_CHANNEL_STATUS_OK);
 					return dtmfkey;
 				}
 
@@ -1479,9 +1503,22 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 		}
 
 		/* Get recognition result. */
-		if (recog_channel_get_results(mrcprecog_session.schannel, uri_encoded_results, &completion_cause, &result, &waveform_uri) != 0) {
+		if (recog_channel_get_results(app_session->recog_channel, &completion_cause, &result, &waveform_uri) != 0) {
 			ast_log(LOG_WARNING, "(%s) Unable to retrieve result\n", name);
-			return mrcprecog_exit(chan, &mrcprecog_session, SPEECH_CHANNEL_STATUS_ERROR);
+			return mrcprecog_exit(chan, app_session, SPEECH_CHANNEL_STATUS_ERROR);
+		}
+	
+		if (result) {
+			/* Store the results for further reference from the dialplan. */
+			apr_size_t result_len = strlen(result);
+			app_session->nlsml_result = nlsml_result_parse(result, result_len, datastore->pool);
+
+			if (uri_encoded_results != 0) {
+				apr_size_t len = result_len * 2;
+				char *buf = apr_palloc(app_session->pool, len);
+				result = ast_uri_encode_http(result, buf, len);
+				ast_log(LOG_DEBUG, "(%s) URI encoded result:\n\n%s\n", name, *result);
+			}
 		}
 	}
 
@@ -1496,7 +1533,7 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 	if (waveform_uri)
 		pbx_builtin_setvar_helper(chan, "RECOG_WAVEFORM_URI", waveform_uri);
 
-	return mrcprecog_exit(chan, &mrcprecog_session, status);
+	return mrcprecog_exit(chan, app_session, status);
 }
 
 /* Load MRCPRecog application. */
