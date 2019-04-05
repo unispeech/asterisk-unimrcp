@@ -1517,7 +1517,6 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 				apr_size_t len = result_len * 2;
 				char *buf = apr_palloc(app_session->pool, len);
 				result = ast_uri_encode_http(result, buf, len);
-				ast_log(LOG_DEBUG, "(%s) URI encoded result:\n\n%s\n", name, *result);
 			}
 		}
 	}
