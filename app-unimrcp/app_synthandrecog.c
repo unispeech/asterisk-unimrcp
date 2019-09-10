@@ -1671,6 +1671,7 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 #if AST_VERSION_AT_LEAST(11,0,0)
 					if (ast_channel_streamid(chan) == -1 && ast_channel_timingfunc(chan) == NULL) {
 						ast_stopstream(chan);
+						end_of_prompt = 1;
 						app_session->filestream = NULL;
 					}
 #else
