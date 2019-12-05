@@ -484,7 +484,6 @@ static int mrcpsynth_exit(struct ast_channel *chan, app_session_t *app_session, 
 static int app_synth_exec(struct ast_channel *chan, ast_app_data data)
 {
 	struct ast_frame *f;
-	ast_mrcp_profile_t *profile;
 	apr_uint32_t speech_channel_number = get_next_speech_channel_number();
 	const char *name;
 	speech_channel_status_t status;
