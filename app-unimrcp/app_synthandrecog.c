@@ -1272,6 +1272,7 @@ static int synthandrecog_exit(struct ast_channel *chan, app_session_t *app_sessi
 
 		if (app_session->lifetime == APP_SESSION_LIFETIME_DYNAMIC) {
 			if (app_session->synth_channel) {
+				speech_channel_stop(app_session->synth_channel);
 				speech_channel_destroy(app_session->synth_channel);
 				app_session->synth_channel = NULL;
 			}

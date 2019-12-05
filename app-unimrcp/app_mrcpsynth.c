@@ -459,6 +459,7 @@ static int mrcpsynth_exit(struct ast_channel *chan, app_session_t *app_session, 
 
 		if (app_session->synth_channel) {
 			if (app_session->lifetime == APP_SESSION_LIFETIME_DYNAMIC) {
+				speech_channel_stop(app_session->synth_channel);
 				speech_channel_destroy(app_session->synth_channel);
 				app_session->synth_channel = NULL;
 			}
