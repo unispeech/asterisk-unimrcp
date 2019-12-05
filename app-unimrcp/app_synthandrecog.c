@@ -90,6 +90,7 @@
 						1: yes [MRCP session is created on demand, reused and destroyed on hang-up].</para>
 					</option>
 					<option name="dse"> <para>Datastore entry.</para></option>
+					<option name="sbs"> <para>Always stop barged synthesis request.</para></option>
 				</optionlist>
 			</parameter>
 		</syntax>
@@ -133,7 +134,8 @@ enum sar_option_flags {
 	SAR_OUTPUT_DELIMITERS      = (1 << 5),
 	SAR_INPUT_TIMERS           = (1 << 6),
 	SAR_PERSISTENT_LIFETIME    = (1 << 7),
-	SAR_DATASTORE_ENTRY        = (1 << 8)
+	SAR_DATASTORE_ENTRY        = (1 << 8),
+	SAR_STOP_BARGED_SYNTH      = (1 << 9)
 };
 
 /* The enumeration of option arguments. */
@@ -147,9 +149,10 @@ enum sar_option_args {
 	OPT_ARG_INPUT_TIMERS        = 6,
 	OPT_ARG_PERSISTENT_LIFETIME = 7,
 	OPT_ARG_DATASTORE_ENTRY     = 8,
+	OPT_ARG_STOP_BARGED_SYNTH   = 9,
 
 	/* This MUST be the last value in this enum! */
-	OPT_ARG_ARRAY_SIZE          = 9
+	OPT_ARG_ARRAY_SIZE          = 10
 };
 
 /* The enumeration of plocies for the use of input timers. */
@@ -1125,6 +1128,9 @@ static int synthandrecog_option_apply(sar_options_t *options, const char *key, c
 	} else if (strcasecmp(key, "dse") == 0) {
 		options->flags |= SAR_DATASTORE_ENTRY;
 		options->params[OPT_ARG_DATASTORE_ENTRY] = value;
+	} else if (strcasecmp(key, "sbs") == 0) {
+		options->flags |= SAR_STOP_BARGED_SYNTH;
+		options->params[OPT_ARG_STOP_BARGED_SYNTH] = value;
 	} else {
 		ast_log(LOG_WARNING, "Unknown option: %s\n", key);
 	}
@@ -1272,7 +1278,9 @@ static int synthandrecog_exit(struct ast_channel *chan, app_session_t *app_sessi
 
 		if (app_session->lifetime == APP_SESSION_LIFETIME_DYNAMIC) {
 			if (app_session->synth_channel) {
-				speech_channel_stop(app_session->synth_channel);
+				if (app_session->stop_barged_synth == TRUE) {
+					speech_channel_stop(app_session->synth_channel);
+				}
 				speech_channel_destroy(app_session->synth_channel);
 				app_session->synth_channel = NULL;
 			}
@@ -1464,6 +1472,14 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 	if ((sar_options.flags & SAR_BARGEIN) == SAR_BARGEIN) {
 		if (!ast_strlen_zero(sar_options.params[OPT_ARG_BARGEIN])) {
 			bargein = (atoi(sar_options.params[OPT_ARG_BARGEIN]) == 0) ? 0 : 1;
+		}
+	}
+
+	/* Check whether or not to always stop barged synthesis request. */
+	app_session->stop_barged_synth = FALSE;
+	if ((sar_options.flags & SAR_STOP_BARGED_SYNTH) == SAR_STOP_BARGED_SYNTH) {
+		if (!ast_strlen_zero(sar_options.params[OPT_ARG_STOP_BARGED_SYNTH])) {
+			app_session->stop_barged_synth = (atoi(sar_options.params[OPT_ARG_STOP_BARGED_SYNTH]) == 0) ? FALSE : TRUE;
 		}
 	}
 

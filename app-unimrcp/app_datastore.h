@@ -33,8 +33,8 @@
 
 /* The enumeration of session lifetimes. */
 enum app_session_lifetime {
-	APP_SESSION_LIFETIME_DYNAMIC,     /* session is created and destroy per each request */
-	APP_SESSION_LIFETIME_PERSISTENT   /* session is created on demand, reused and destroy with Asterisk channel */
+	APP_SESSION_LIFETIME_DYNAMIC,     /* session is created and destroyed per each request */
+	APP_SESSION_LIFETIME_PERSISTENT   /* session is created on demand, reused and destroyed with Asterisk channel */
 };
 
 /* The application session. */
@@ -56,6 +56,7 @@ struct app_session_t {
 	off_t                  max_filelength;     /* max file length used with file playing, if any */
 	int                    it_policy;          /* input timers policy (sar_it_policies) */
 	nlsml_result_t        *nlsml_result;       /* parsed NLSML result */
+	apt_bool_t             stop_barged_synth;  /* whether or not to always stop barged synthesis request */
 };
 
 typedef struct app_session_t app_session_t;

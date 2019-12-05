@@ -206,6 +206,7 @@ app_session_t* app_datastore_session_add(app_datastore_t* app_datastore, const c
 		session->nreadformat = NULL;
 		session->nwriteformat = NULL;
 		session->nlsml_result = NULL;
+		session->stop_barged_synth = FALSE;
 		ast_log(LOG_DEBUG, "Add entry %s to datastore on %s\n", entry, ast_channel_name(app_datastore->chan));
 		apr_hash_set(app_datastore->session_table, entry, APR_HASH_KEY_STRING, session);
 	}

@@ -84,6 +84,7 @@
 						1: yes [MRCP session is created on demand, reused and destroyed on hang-up].</para>
 					</option>
 					<option name="dse"> <para>Datastore entry.</para></option>
+					<option name="sbs"> <para>Always stop barged synthesis request.</para></option>
 				</optionlist>
 			</parameter>
 		</syntax>
@@ -114,7 +115,8 @@ enum mrcpsynth_option_flags {
 	MRCPSYNTH_INTERRUPT           = (1 << 1),
 	MRCPSYNTH_FILENAME            = (1 << 2),
 	MRCPSYNTH_PERSISTENT_LIFETIME = (1 << 3),
-	MRCPSYNTH_DATASTORE_ENTRY     = (1 << 4)
+	MRCPSYNTH_DATASTORE_ENTRY     = (1 << 4),
+	MRCPSYNTH_STOP_BARGED_SYNTH   = (1 << 5)
 };
 
 /* The enumeration of option arguments. */
@@ -124,9 +126,10 @@ enum mrcpsynth_option_args {
 	OPT_ARG_FILENAME            = 2,
 	OPT_ARG_PERSISTENT_LIFETIME = 3,
 	OPT_ARG_DATASTORE_ENTRY     = 4,
+	OPT_ARG_STOP_BARGED_SYNTH   = 5,
 
 	/* This MUST be the last value in this enum! */
-	OPT_ARG_ARRAY_SIZE = 5
+	OPT_ARG_ARRAY_SIZE = 6
 };
 
 /* The structure which holds the application options (including the MRCP params). */
@@ -419,6 +422,9 @@ static int mrcpsynth_option_apply(mrcpsynth_options_t *options, const char *key,
 	} else if (strcasecmp(key, "dse") == 0) {
 		options->flags |= MRCPSYNTH_DATASTORE_ENTRY;
 		options->params[OPT_ARG_DATASTORE_ENTRY] = value;
+	} else if (strcasecmp(key, "sbs") == 0) {
+		options->flags |= MRCPSYNTH_STOP_BARGED_SYNTH;
+		options->params[OPT_ARG_STOP_BARGED_SYNTH] = value;
 	} else {
 		ast_log(LOG_WARNING, "Unknown option: %s\n", key);
 	}
@@ -459,7 +465,9 @@ static int mrcpsynth_exit(struct ast_channel *chan, app_session_t *app_session, 
 
 		if (app_session->synth_channel) {
 			if (app_session->lifetime == APP_SESSION_LIFETIME_DYNAMIC) {
-				speech_channel_stop(app_session->synth_channel);
+				if (app_session->stop_barged_synth == TRUE) {
+					speech_channel_stop(app_session->synth_channel);
+				}
 				speech_channel_destroy(app_session->synth_channel);
 				app_session->synth_channel = NULL;
 			}
@@ -569,6 +577,14 @@ static int app_synth_exec(struct ast_channel *chan, ast_app_data data)
 		return mrcpsynth_exit(chan, NULL, SPEECH_CHANNEL_STATUS_ERROR);
 	}
 	app_session->lifetime = lifetime;
+
+	/* Check whether or not to always stop barged synthesis request. */
+	app_session->stop_barged_synth = FALSE;
+	if ((mrcpsynth_options.flags & MRCPSYNTH_STOP_BARGED_SYNTH) == MRCPSYNTH_STOP_BARGED_SYNTH) {
+		if (!ast_strlen_zero(mrcpsynth_options.params[OPT_ARG_STOP_BARGED_SYNTH])) {
+			app_session->stop_barged_synth = (atoi(mrcpsynth_options.params[OPT_ARG_STOP_BARGED_SYNTH]) == 0) ? FALSE : TRUE;
+		}
+	}
 
 	if(!app_session->synth_channel) {
 		const char *filename = NULL;
