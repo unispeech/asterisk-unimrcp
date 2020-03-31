@@ -41,7 +41,8 @@
 #include "uni_revision.h"
 #include "ast_unimrcp_framework.h"
 
-#define DEFAULT_UNIMRCP_MAX_CONNECTION_COUNT   120
+#define DEFAULT_UNIMRCP_MAX_CONNECTION_COUNT   100
+#define DEFAULT_UNIMRCP_MAX_SHARED_USE_COUNT   100
 #define DEFAULT_UNIMRCP_OFFER_NEW_CONNECTION   1
 #define DEFAULT_UNIMRCP_LOG_LEVEL              "DEBUG"
 
@@ -66,6 +67,7 @@ static void globals_null(void)
 	/* Set all variables to NULL so that checks work as expected. */
 	globals.pool = NULL;
 	globals.unimrcp_max_connection_count = NULL;
+	globals.unimrcp_max_shared_use_count = NULL;
 	globals.unimrcp_offer_new_connection = NULL;
 	globals.unimrcp_rx_buffer_size = NULL;
 	globals.unimrcp_tx_buffer_size = NULL;
@@ -129,6 +131,7 @@ static void globals_default(void)
 {
 	/* Initialize some of the variables with default values. */
 	globals.unimrcp_max_connection_count = NULL;
+	globals.unimrcp_max_shared_use_count = NULL;
 	globals.unimrcp_offer_new_connection = NULL;
 	globals.unimrcp_log_level = DEFAULT_UNIMRCP_LOG_LEVEL;
 	globals.speech_channel_number = 0;
@@ -420,6 +423,8 @@ static int process_mrcpv2_config(mrcp_sofia_client_config_t *config, mrcp_sig_se
 		sig_settings->user_name = apr_pstrdup(pool, val);
 	else if (strcasecmp(param, "force-destination") == 0)
 		sig_settings->force_destination = atoi(val);
+	else if(strcasecmp(param, "feature-tags") == 0)
+		sig_settings->feature_tags = apr_pstrdup(pool, val);
 	else if (strcasecmp(param, "sip-transport") == 0)
 		config->transport = apr_pstrdup(pool, val);
 	else if (strcasecmp(param, "ua-name") == 0)
@@ -632,6 +637,7 @@ mrcp_client_t *mod_unimrcp_client_create(apr_pool_t *mod_pool)
 	mrcp_resource_factory_t *resource_factory = NULL;
 	mpf_codec_manager_t *codec_manager = NULL;
 	apr_size_t max_connection_count = 0;
+	apr_size_t max_shared_use_count = 0;
 	apt_bool_t offer_new_connection = FALSE;
 	mrcp_connection_agent_t *shared_connection_agent = NULL;
 	mpf_engine_t *shared_media_engine = NULL;
@@ -687,6 +693,12 @@ mrcp_client_t *mod_unimrcp_client_create(apr_pool_t *mod_pool)
 	if (max_connection_count <= 0)
 		max_connection_count = DEFAULT_UNIMRCP_MAX_CONNECTION_COUNT;
 
+	if ((globals.unimrcp_max_shared_use_count != NULL) && (strlen(globals.unimrcp_max_shared_use_count) >= 0))
+		max_shared_use_count = atoi(globals.unimrcp_max_shared_use_count);
+
+	if (max_shared_use_count < 0)
+		max_shared_use_count = DEFAULT_UNIMRCP_MAX_SHARED_USE_COUNT;
+
 	if (globals.unimrcp_offer_new_connection != NULL) {
 		if (strcasecmp(globals.unimrcp_offer_new_connection, "true") == 0 || atoi(globals.unimrcp_offer_new_connection) == 1)
 			offer_new_connection = TRUE;
@@ -715,6 +727,9 @@ mrcp_client_t *mod_unimrcp_client_create(apr_pool_t *mod_pool)
 	 				mrcp_client_connection_timeout_set(shared_connection_agent, request_timeout);
 				}
 			}
+#if  UNI_VERSION_AT_LEAST(1,7,0)
+			mrcp_client_connection_max_shared_use_set(shared_connection_agent, max_shared_use_count);
+#endif
  		}
 
 		if (!mrcp_client_connection_agent_register(client, shared_connection_agent))
@@ -791,6 +806,10 @@ int load_mrcp_config(const char *filename, const char *who_asked)
 	if ((value = ast_variable_retrieve(cfg, "general", "max-connection-count")) != NULL) {
 		ast_log(LOG_DEBUG, "general.max-connection-count=%s\n",  value);
 		globals.unimrcp_max_connection_count = apr_pstrdup(globals.pool, value);
+	}
+	if ((value = ast_variable_retrieve(cfg, "general", "max-shared-count")) != NULL) {
+		ast_log(LOG_DEBUG, "general.max-shared-count=%s\n",  value);
+		globals.unimrcp_max_shared_use_count = apr_pstrdup(globals.pool, value);
 	}
 	if ((value = ast_variable_retrieve(cfg, "general", "offer-new-connection")) != NULL) {
 		ast_log(LOG_DEBUG, "general.offer-new-connection=%s\n",  value);

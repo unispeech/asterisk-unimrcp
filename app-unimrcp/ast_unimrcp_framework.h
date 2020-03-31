@@ -76,6 +76,8 @@ struct ast_mrcp_globals_t {
 
 	/* The max-connection-count configuration. */
 	char *unimrcp_max_connection_count;
+	/* The max-shared-use-count configuration. */
+	char *unimrcp_max_shared_use_count;
 	/* The offer-new-connection configuration. */
 	char *unimrcp_offer_new_connection;
 	/* The rx-buffer-size configuration. */
