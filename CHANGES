@@ -1,3 +1,57 @@
+Changes for Asterisk UniMRCP Modules 1.7.0
+
+1. Generic Speech Recognition API (res_speech_unimrcp.so)
+
+    * N/A.
+
+2. Dialplan Applications (app_unimrcp.so)
+
+  2.1. MRCPSynth()
+
+    * Added a new option 'plt' allowing to have persistent session lifetime, where an MRCP session is created on demand, reused and destroyed on hang-up.
+	* Added a new option 'dse' allowing to specify a particular datastore entry. A datastore entry is associated to an MRCP session.
+      There can be multiple datastore entries used in the scope of the same call. If the parameter is not set, then the default datastore entry is used.
+	* Added a new option 'sbs' indicating whether or not to always stop barged synthesis request. Thanks @sfgeorge. (Pull request #36)
+
+  2.2. MRCPRecog()
+
+    * Added a new option 'plt' allowing to have persistent session lifetime, where an MRCP session is created on demand, reused and destroyed on hang-up.
+	* Added a new option 'dse' allowing to specify a particular datastore entry. A datastore entry is associated to an MRCP session.
+      There can be multiple datastore entries used in the scope of the same call. If the parameter is not set, then the default datastore entry is used.
+
+  2.3. SynthAndRecog()
+
+    * Added a new option 'plt' allowing to have persistent session lifetime, where an MRCP session is created on demand, reused and destroyed on hang-up.
+	* Added a new option 'dse' allowing to specify a particular datastore entry. A datastore entry is associated to an MRCP session.
+      There can be multiple datastore entries used in the scope of the same call. If the parameter is not set, then the default datastore entry is used.
+    * Set end_of_prompt when audio file complete on Asterisk >= 11. Thanks @sfgeorge.
+	* Added a new log statement "File is over" for Asterisk >= 11. Thanks @sfgeorge.
+	* Added a new option 'sbs' indicating whether or not to always stop barged synthesis request. Thanks @sfgeorge. (Pull request #36)
+
+  2.4. Framework
+
+    * Load max-shared-count and feature tags from mrcp.conf.
+
+3. Miscellaneous
+
+    * Added support for Asterisk 17.
+
+
+Changes for Asterisk UniMRCP Modules 1.5.2
+
+1. Generic Speech Recognition API (res_speech_unimrcp.so)
+
+    * Use ast_strdup() instead of strdup() to address compilation error while building against Asterisk 16. Issue #27.
+
+2. Dialplan Applications (app_unimrcp.so)
+
+    * N/A.
+
+3. Miscellaneous
+
+    * Added support for Asterisk 16.
+
+
 Changes for Asterisk UniMRCP Modules 1.5.1
 
 1. Generic Speech Recognition API (res_speech_unimrcp.so)
