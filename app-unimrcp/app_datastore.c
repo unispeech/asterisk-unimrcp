@@ -92,6 +92,9 @@
 				<para>The parameter instance_number specifies the index in the list of instances for a particular interpretation.
 				This parameter defaults to 0, if not specified.</para>
 			</parameter>
+			<parameter name="path" required="false">
+				<para>The parameter path specifies a particular nested element to return, if used.</para>
+			</parameter>
 		</syntax>
 		<description>
 			<para>This function returns the interpreted instance.</para>
@@ -274,7 +277,7 @@ static nlsml_interpretation_t* recog_interpretation_find(app_session_t *app_sess
 }
 
 /* Helper function used to find an instance by specified nbest alternative and index */
-static nlsml_instance_t* recog_instance_find(app_session_t *app_session, const char *num)
+static nlsml_instance_t* recog_instance_find(app_session_t *app_session, const char *num, const char **path)
 {
 	int interpretation_index = 0;
 	int instance_index = 0;
@@ -284,12 +287,22 @@ static nlsml_instance_t* recog_instance_find(app_session_t *app_session, const c
 	if (!app_session || !app_session->nlsml_result)
 		return NULL;
 
+	if (path) {
+		*path = NULL;
+	}
+
 	if (num) {
 		char *tmp = NULL;
 		if ((tmp = strchr(num, '/'))) {
 			*tmp++ = '\0';
 			interpretation_index = atoi(num);
 			instance_index = atoi(tmp);
+			if ((tmp = strchr(tmp, '/'))) {
+				*tmp++ = '\0';
+				if (path) {
+					*path = tmp;
+				}
+			}
 		} else {
 			instance_index = atoi(num);
 		}
@@ -317,6 +330,27 @@ static nlsml_instance_t* recog_instance_find(app_session_t *app_session, const c
 	}
 
 	return instance;
+}
+
+/* Helper recursive function used to find a nested element based on specified path */
+static const apr_xml_elem* recog_instance_find_elem(const apr_xml_elem *elem, const char **path)
+{
+	char *tmp;
+	if ((tmp = strchr(*path, '/'))) {
+		*tmp++ = '\0';
+	}
+
+	const apr_xml_elem *child_elem;
+	for (child_elem = elem->first_child; child_elem; child_elem = child_elem->next) {
+		if (strcasecmp(child_elem->name, *path) == 0) {
+			if (tmp) {
+				*path = tmp;
+				return recog_instance_find_elem(child_elem, path);
+			}
+			return child_elem;
+		}
+	}
+	return NULL;
 }
 
 /* RECOG_CONFIDENCE() Dialplan Function */
@@ -409,13 +443,27 @@ static int recog_instance(struct ast_channel *chan, const char *cmd, char *data,
 	if(!app_session)
 		return -1;
 
-	nlsml_instance_t *instance = recog_instance_find(app_session, data);
-	const char *text;
-
+	const char *path = NULL;
+	nlsml_instance_t *instance = recog_instance_find(app_session, data, &path);
 	if (!instance)
 		return -1;
 
-	text = nlsml_instance_content_generate(instance, app_session->pool);
+	const char *text = NULL;
+	if (path) {
+		const apr_xml_elem *child_elem;
+		const apr_xml_elem *elem = nlsml_instance_elem_get(instance);
+		if (!elem)
+			return -1;
+			
+		child_elem = recog_instance_find_elem(elem, &path);
+		if(child_elem) {
+			apr_size_t size;
+			apr_xml_to_text(app_session->pool, child_elem, APR_XML_X2T_INNER, NULL, NULL, &text, &size);
+		}
+	}
+	else {
+		text = nlsml_instance_content_generate(instance, app_session->pool);
+	}
 	if(!text)
 		return -1;
 
