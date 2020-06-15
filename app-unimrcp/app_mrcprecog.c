@@ -892,6 +892,8 @@ static int mrcprecog_option_apply(mrcprecog_options_t *options, const char *key,
 		apr_hash_set(options->recog_hfs, "Speech-Language", APR_HASH_KEY_STRING, value);
 	} else if (strcasecmp(key, "mt") == 0) {
 		apr_hash_set(options->recog_hfs, "Media-Type", APR_HASH_KEY_STRING, value);
+	} else if (strcasecmp(key, "vsp") == 0) {
+		apr_hash_set(options->recog_hfs, "Vendor-Specific-Parameters", APR_HASH_KEY_STRING, value);
 	} else if (strcasecmp(key, "p") == 0) {
 		options->flags |= MRCPRECOG_PROFILE;
 		options->params[OPT_ARG_PROFILE] = value;
