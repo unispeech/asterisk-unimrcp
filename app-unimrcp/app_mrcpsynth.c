@@ -416,6 +416,8 @@ static int mrcpsynth_option_apply(mrcpsynth_options_t *options, const char *key,
 		apr_hash_set(options->synth_hfs, "Voice-Gender", APR_HASH_KEY_STRING, value);
 	} else if (strcasecmp(key, "a") == 0) {
 		apr_hash_set(options->synth_hfs, "Voice-Age", APR_HASH_KEY_STRING, value);
+	} else if (strcasecmp(key, "vsp") == 0) {
+		apr_hash_set(options->synth_hfs, "Vendor-Specific-Parameters", APR_HASH_KEY_STRING, value);
 	} else if (strcasecmp(key, "plt") == 0) {
 		options->flags |= MRCPSYNTH_PERSISTENT_LIFETIME;
 		options->params[OPT_ARG_PERSISTENT_LIFETIME] = value;
