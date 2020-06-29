@@ -113,6 +113,7 @@
 						1: yes [MRCP session is created on demand, reused and destroyed on hang-up].</para>
 					</option>
 					<option name="dse"> <para>Datastore entry.</para></option>
+					<option name="vsp"> <para>Vendor-specific parameters.</para></option>
 				</optionlist>
 			</parameter>
 		</syntax>

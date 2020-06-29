@@ -91,6 +91,7 @@
 					</option>
 					<option name="dse"> <para>Datastore entry.</para></option>
 					<option name="sbs"> <para>Always stop barged synthesis request.</para></option>
+					<option name="vsp"> <para>Vendor-specific parameters.</para></option>
 				</optionlist>
 			</parameter>
 		</syntax>
