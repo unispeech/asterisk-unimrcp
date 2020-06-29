@@ -1095,6 +1095,10 @@ static int synthandrecog_option_apply(sar_options_t *options, const char *key, c
 	} else if (strcasecmp(key, "vsp") == 0) {
 		apr_hash_set(options->recog_hfs, "Vendor-Specific-Parameters", APR_HASH_KEY_STRING, value);
 		apr_hash_set(options->synth_hfs, "Vendor-Specific-Parameters", APR_HASH_KEY_STRING, value);
+	} else if (strcasecmp(key, "vsprec") == 0) {
+		apr_hash_set(options->recog_hfs, "Vendor-Specific-Parameters", APR_HASH_KEY_STRING, value);
+	} else if (strcasecmp(key, "vspsyn") == 0) {
+		apr_hash_set(options->synth_hfs, "Vendor-Specific-Parameters", APR_HASH_KEY_STRING, value);
 	} else if (strcasecmp(key, "p") == 0) {
 		/* Set the same profile for synth and recog. There might be a separate 
 		configuration option for each of them in the future. */
