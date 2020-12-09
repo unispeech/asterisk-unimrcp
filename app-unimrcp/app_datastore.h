@@ -37,26 +37,33 @@ enum app_session_lifetime {
 	APP_SESSION_LIFETIME_PERSISTENT   /* session is created on demand, reused and destroyed with Asterisk channel */
 };
 
+/* The enumeration of NLSML instance formats. */
+enum nlsml_instance_format {
+	NLSML_INSTANCE_FORMAT_XML,       /* NLSML instance is represented in XML */
+	NLSML_INSTANCE_FORMAT_JSON       /* NLSML instance is represented in JSON */
+};
+
 /* The application session. */
 struct app_session_t {
-	apr_pool_t            *pool;               /* memory pool */
-	int                    lifetime;           /* session lifetime */
-	apr_uint32_t           schannel_number;    /* speech channel number */
-	speech_channel_t      *recog_channel;      /* recognition channel */
-	speech_channel_t      *synth_channel;      /* synthesis channel, if any */
-	ast_format_compat     *readformat;         /* old read format, to be restored */
-	ast_format_compat     *rawreadformat;      /* old raw read format, to be restored (>= Asterisk 13) */
-	ast_format_compat     *writeformat;        /* old write format, to be restored */
-	ast_format_compat     *rawwriteformat;     /* old raw write format, to be restored (>= Asterisk 13) */
-	ast_format_compat     *nreadformat;        /* new read format used for recognition */
-	ast_format_compat     *nwriteformat;       /* new write format used for synthesis */
-	apr_array_header_t    *prompts;            /* list of prompt items */
-	int                    cur_prompt;         /* current prompt index */
-	struct ast_filestream *filestream;         /* filestream, if any */
-	off_t                  max_filelength;     /* max file length used with file playing, if any */
-	int                    it_policy;          /* input timers policy (sar_it_policies) */
-	nlsml_result_t        *nlsml_result;       /* parsed NLSML result */
-	apt_bool_t             stop_barged_synth;  /* whether or not to always stop barged synthesis request */
+	apr_pool_t                 *pool;               /* memory pool */
+	int                         lifetime;           /* session lifetime */
+	apr_uint32_t                schannel_number;    /* speech channel number */
+	speech_channel_t           *recog_channel;      /* recognition channel */
+	speech_channel_t           *synth_channel;      /* synthesis channel, if any */
+	ast_format_compat          *readformat;         /* old read format, to be restored */
+	ast_format_compat          *rawreadformat;      /* old raw read format, to be restored (>= Asterisk 13) */
+	ast_format_compat          *writeformat;        /* old write format, to be restored */
+	ast_format_compat          *rawwriteformat;     /* old raw write format, to be restored (>= Asterisk 13) */
+	ast_format_compat          *nreadformat;        /* new read format used for recognition */
+	ast_format_compat          *nwriteformat;       /* new write format used for synthesis */
+	apr_array_header_t         *prompts;            /* list of prompt items */
+	int                         cur_prompt;         /* current prompt index */
+	struct ast_filestream      *filestream;         /* filestream, if any */
+	off_t                       max_filelength;     /* max file length used with file playing, if any */
+	int                         it_policy;          /* input timers policy (sar_it_policies) */
+	nlsml_result_t             *nlsml_result;       /* parsed NLSML result */
+	apt_bool_t                  stop_barged_synth;  /* whether or not to always stop barged synthesis request */
+	enum nlsml_instance_format  instance_format;    /* NLSML instance format */
 };
 
 typedef struct app_session_t app_session_t;

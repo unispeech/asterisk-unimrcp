@@ -382,4 +382,11 @@ static APR_INLINE char *ast_uri_encode_http(const char *string, char *outbuf, in
 #endif
 #endif
 
+/**
+ * Asterisk JSON abstraction layer is available since Asterisk 12.
+ */
+#if AST_VERSION_AT_LEAST(12,0,0)
+#define WITH_AST_JSON
+#endif
+
 #endif /* AST_COMPAT_DEFS_H */

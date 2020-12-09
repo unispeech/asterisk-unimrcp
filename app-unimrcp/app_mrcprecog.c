@@ -114,6 +114,7 @@
 					</option>
 					<option name="dse"> <para>Datastore entry.</para></option>
 					<option name="vsp"> <para>Vendor-specific parameters.</para></option>
+					<option name="nif"> <para>NLSML instance format (either "xml" or "json") used by RECOG_INSTANCE().</para></option>
 				</optionlist>
 			</parameter>
 		</syntax>
@@ -158,7 +159,8 @@ enum mrcprecog_option_flags {
 	MRCPRECOG_OUTPUT_DELIMITERS   = (1 << 7),
 	MRCPRECOG_INPUT_TIMERS        = (1 << 8),
 	MRCPRECOG_PERSISTENT_LIFETIME = (1 << 9),
-	MRCPRECOG_DATASTORE_ENTRY     = (1 << 10)
+	MRCPRECOG_DATASTORE_ENTRY     = (1 << 10),
+	MRCPRECOG_INSTANCE_FORMAT     = (1 << 11)
 };
 
 /* The enumeration of option arguments. */
@@ -174,9 +176,10 @@ enum mrcprecog_option_args {
 	OPT_ARG_INPUT_TIMERS         = 8,
 	OPT_ARG_PERSISTENT_LIFETIME  = 9,
 	OPT_ARG_DATASTORE_ENTRY      = 10,
+	OPT_ARG_INSTANCE_FORMAT      = 11,
 
 	/* This MUST be the last value in this enum! */
-	OPT_ARG_ARRAY_SIZE           = 11
+	OPT_ARG_ARRAY_SIZE           = 12
 };
 
 /* The enumeration of plocies for the use of input timers. */
@@ -930,6 +933,9 @@ static int mrcprecog_option_apply(mrcprecog_options_t *options, const char *key,
 	} else if (strcasecmp(key, "dse") == 0) {
 		options->flags |= MRCPRECOG_DATASTORE_ENTRY;
 		options->params[OPT_ARG_DATASTORE_ENTRY] = value;
+	} else if (strcasecmp(key, "nif") == 0) {
+		options->flags |= MRCPRECOG_INSTANCE_FORMAT;
+		options->params[OPT_ARG_INSTANCE_FORMAT] = value;
 	} else {
 		ast_log(LOG_WARNING, "Unknown option: %s\n", key);
 	}
@@ -1203,6 +1209,17 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 				dtmf_enable = 2;
 			else if (strcasecmp(mrcprecog_options.params[OPT_ARG_INTERRUPT], "disable") == 0)
 				dtmf_enable = 0;
+		}
+	}
+
+	/* Get NLSML instance format, if specified */
+	if ((mrcprecog_options.flags & MRCPRECOG_INSTANCE_FORMAT) == MRCPRECOG_INSTANCE_FORMAT) {
+		if (!ast_strlen_zero(mrcprecog_options.params[OPT_ARG_INSTANCE_FORMAT])) {
+			const char *format = mrcprecog_options.params[OPT_ARG_INSTANCE_FORMAT];
+			if (strcasecmp(format, "xml") == 0)
+				app_session->instance_format = NLSML_INSTANCE_FORMAT_XML;
+			else if (strcasecmp(format, "json") == 0)
+				app_session->instance_format = NLSML_INSTANCE_FORMAT_JSON;
 		}
 	}
 

@@ -20,6 +20,11 @@
 #include "app_datastore.h"
 #include "asterisk/pbx.h"
 #include "apt_pool.h"
+#ifdef WITH_AST_JSON
+#include "asterisk/json.h"
+typedef struct ast_json ast_json;
+typedef struct ast_json_error ast_json_error;
+#endif
 
 /*** DOCUMENTATION
 	<function name="RECOG_CONFIDENCE" language="en_US">
@@ -210,6 +215,7 @@ app_session_t* app_datastore_session_add(app_datastore_t* app_datastore, const c
 		session->nwriteformat = NULL;
 		session->nlsml_result = NULL;
 		session->stop_barged_synth = FALSE;
+		session->instance_format = NLSML_INSTANCE_FORMAT_XML;
 		ast_log(LOG_DEBUG, "Add entry %s to datastore on %s\n", entry, ast_channel_name(app_datastore->chan));
 		apr_hash_set(app_datastore->session_table, entry, APR_HASH_KEY_STRING, session);
 	}
@@ -332,27 +338,6 @@ static nlsml_instance_t* recog_instance_find(app_session_t *app_session, const c
 	return instance;
 }
 
-/* Helper recursive function used to find a nested element based on specified path */
-static const apr_xml_elem* recog_instance_find_elem(const apr_xml_elem *elem, const char **path)
-{
-	char *tmp;
-	if ((tmp = strchr(*path, '/'))) {
-		*tmp++ = '\0';
-	}
-
-	const apr_xml_elem *child_elem;
-	for (child_elem = elem->first_child; child_elem; child_elem = child_elem->next) {
-		if (strcasecmp(child_elem->name, *path) == 0) {
-			if (tmp) {
-				*path = tmp;
-				return recog_instance_find_elem(child_elem, path);
-			}
-			return child_elem;
-		}
-	}
-	return NULL;
-}
-
 /* RECOG_CONFIDENCE() Dialplan Function */
 static int recog_confidence(struct ast_channel *chan, const char *cmd, char *data, char *buf, size_t len)
 {
@@ -436,6 +421,143 @@ static struct ast_custom_function recog_input_function = {
 	.write = NULL,
 };
 
+/* Helper recursive function used to find a nested element based on specified path */
+static const apr_xml_elem* recog_instance_find_elem(const apr_xml_elem *elem, const char **path)
+{
+	char *tmp;
+	if ((tmp = strchr(*path, '/'))) {
+		*tmp++ = '\0';
+	}
+
+	const apr_xml_elem *child_elem;
+	for (child_elem = elem->first_child; child_elem; child_elem = child_elem->next) {
+		if (strcasecmp(child_elem->name, *path) == 0) {
+			if (tmp) {
+				*path = tmp;
+				return recog_instance_find_elem(child_elem, path);
+			}
+			return child_elem;
+		}
+	}
+	return NULL;
+}
+
+/* Helper function used to process XML data in NLSML instance */
+static int recog_instance_process_xml(app_session_t *app_session, nlsml_instance_t *instance, const char *path, const char **text)
+{
+	const apr_xml_elem *child_elem;
+	const apr_xml_elem *elem = nlsml_instance_elem_get(instance);
+	if (!elem)
+		return -1;
+		
+	child_elem = recog_instance_find_elem(elem, &path);
+	if(child_elem) {
+		apr_size_t size;
+		apr_xml_to_text(app_session->pool, child_elem, APR_XML_X2T_INNER, NULL, NULL, text, &size);
+	}
+	return 0;
+}
+
+#ifdef WITH_AST_JSON
+/* Helper recursive function used to find a nested object based on specified path */
+static ast_json* recog_instance_find_json_object(ast_json *json, const char **path)
+{
+	char *tmp;
+	if ((tmp = strchr(*path, '/'))) {
+		*tmp++ = '\0';
+	}
+	
+	ast_json *child_json = NULL;
+	if (ast_json_typeof(json) == AST_JSON_ARRAY) {
+		int index = atoi(*path);
+		child_json = ast_json_array_get(json, index);
+	}
+	else {
+		child_json = ast_json_object_get(json, *path);
+	}
+
+	if (!child_json){
+		ast_log(LOG_DEBUG, "No such JSON object %s\n", *path);
+		return NULL;
+	}
+	
+	if (tmp) {
+		*path = tmp;
+		return recog_instance_find_json_object(child_json, path);
+	}
+	
+	return child_json;
+}
+
+/* Helper function used to process JSON data in NLSML instance */
+static int recog_instance_process_json(app_session_t *app_session, nlsml_instance_t *instance, const char *path, const char **text)
+{
+	const char *json_string = nlsml_instance_content_generate(instance, app_session->pool);
+	if (!json_string) {
+		return -1;
+	}
+	
+	ast_json_error error;
+	ast_json *child_json;
+	ast_json *json = ast_json_load_string(json_string, &error);
+	if (!json) {
+		ast_log(LOG_ERROR, "Unable to load JSON: %s\n", error.text);
+		return -1;
+	}
+	
+	char* buf = NULL;
+	child_json = recog_instance_find_json_object(json, &path);
+	if (child_json) {
+		switch (ast_json_typeof(child_json))
+		{
+			case AST_JSON_TRUE:
+				buf = apr_pstrdup(app_session->pool, "true");
+				break;
+			case AST_JSON_FALSE:
+				buf = apr_pstrdup(app_session->pool, "false");
+				break;
+			case AST_JSON_INTEGER:
+				buf = apr_psprintf(app_session->pool, "%jd", ast_json_integer_get(child_json));
+				break;
+			case AST_JSON_REAL:
+				buf = apr_psprintf(app_session->pool, "%.3f", ast_json_real_get(child_json));
+				break;
+			case AST_JSON_STRING:
+			{
+				const char *str = ast_json_string_get(child_json);
+				if (str)
+					buf = apr_pstrdup(app_session->pool, str);
+				break;
+			}
+			case AST_JSON_OBJECT:
+			case AST_JSON_ARRAY:
+			{
+				char *str = ast_json_dump_string(child_json);
+				if (str) {
+					buf = apr_pstrdup(app_session->pool, str);
+					ast_json_free(str);
+				}
+				break;
+			}
+			default:
+				break;
+		}
+	}
+	
+	if (buf) {
+		*text = buf;
+	}
+	
+	return 0;
+}
+#else
+static int recog_instance_process_json(app_session_t *app_session, nlsml_instance_t *instance, const char *path, const char **text)
+{
+	ast_log(LOG_NOTICE, "JSON support is not available\n");
+	return -1;
+}
+#endif
+
 /* RECOG_INSTANCE() Dialplan Function */
 static int recog_instance(struct ast_channel *chan, const char *cmd, char *data, char *buf, size_t len)
 {
@@ -450,15 +572,11 @@ static int recog_instance(struct ast_channel *chan, const char *cmd, char *data,
 
 	const char *text = NULL;
 	if (path) {
-		const apr_xml_elem *child_elem;
-		const apr_xml_elem *elem = nlsml_instance_elem_get(instance);
-		if (!elem)
-			return -1;
-			
-		child_elem = recog_instance_find_elem(elem, &path);
-		if(child_elem) {
-			apr_size_t size;
-			apr_xml_to_text(app_session->pool, child_elem, APR_XML_X2T_INNER, NULL, NULL, &text, &size);
+		if (app_session->instance_format == NLSML_INSTANCE_FORMAT_XML) {
+			recog_instance_process_xml(app_session, instance, path, &text);
+		}
+		else if (app_session->instance_format == NLSML_INSTANCE_FORMAT_JSON) {
+			recog_instance_process_json(app_session, instance, path, &text);
 		}
 	}
 	else {
