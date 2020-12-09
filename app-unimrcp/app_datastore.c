@@ -517,7 +517,7 @@ static int recog_instance_process_json(app_session_t *app_session, nlsml_instanc
 				buf = apr_pstrdup(app_session->pool, "false");
 				break;
 			case AST_JSON_INTEGER:
-				buf = apr_psprintf(app_session->pool, "%jd", ast_json_integer_get(child_json));
+				buf = apr_psprintf(app_session->pool, "%ld", ast_json_integer_get(child_json));
 				break;
 			case AST_JSON_REAL:
 				buf = apr_psprintf(app_session->pool, "%.3f", ast_json_real_get(child_json));
