@@ -1184,6 +1184,7 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 	ast_format_compat *orawreadformat = ast_channel_get_rawreadformat(chan, app_session->pool);
 
 	/* Set read format. */
+	ast_channel_readtrans_set(chan, NULL);
 	ast_channel_set_readformat(chan, app_session->nreadformat);
 	ast_channel_set_rawreadformat(chan, app_session->nreadformat);
 

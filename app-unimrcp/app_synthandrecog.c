@@ -1468,6 +1468,7 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 	ast_format_compat *orawwriteformat = ast_channel_get_rawwriteformat(chan, app_session->pool);
 
 	/* Set read format. */
+	ast_channel_readtrans_set(chan, NULL);
 	ast_channel_set_readformat(chan, app_session->nreadformat);
 	ast_channel_set_rawreadformat(chan, app_session->nreadformat);
 	/* Store old read format. */
@@ -1475,6 +1476,7 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 	app_session->rawreadformat = orawreadformat;
 
 	/* Set write format. */
+	ast_channel_writetrans_set(chan, NULL);
 	ast_channel_set_writeformat(chan, app_session->nwriteformat);
 	ast_channel_set_rawwriteformat(chan, app_session->nwriteformat);
 	/* Store old write format. */

@@ -220,6 +220,14 @@ static APR_INLINE void ast_channel_set_rawwriteformat(struct ast_channel *chan, 
 {
 	// Do nothing, defined for >= 13 only
 }
+static APR_INLINE void ast_channel_readtrans_set(struct ast_channel *chan, struct ast_trans_pvt *value)
+{
+	// Do nothing, defined for >= 11 only
+}
+static APR_INLINE void ast_channel_writetrans_set(struct ast_channel *chan, struct ast_trans_pvt *value)
+{
+	// Do nothing, defined for >= 11 only
+}
 #endif
 
 #if AST_VERSION_AT_LEAST(11,0,0)
