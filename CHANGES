@@ -1,3 +1,42 @@
+Changes for Asterisk UniMRCP Modules 1.8.0
+
+1. Generic Speech Recognition API (res_speech_unimrcp.so)
+
+    * N/A.
+
+2. Dialplan Applications (app_unimrcp.so)
+
+  2.1. MRCPSynth()
+
+    * Added a new option 'vsp' allowing to specify Vendor-Specific-Parameters in SPEAK.
+    * Reset the write translator before setting a new write format.
+    * Fixed the write format path for codecs requiring a translation from the native format to be used on the MRCP leg.
+
+  2.2. MRCPRecog()
+
+    * Extended RECOG_INSTANCE() to optionally return individual fields from the <instance> element represented in either XML or JSON.
+    * Added a new option 'vsp' allowing to specify Vendor-Specific-Parameters in RECOGNIZE.
+    * Reset the read translator before setting a new read format.
+    * Fixed the read format path for codecs requiring a translation from the native format to be used on the MRCP leg.
+
+  2.3. SynthAndRecog()
+
+    * Extended RECOG_INSTANCE() to optionally return individual fields from the <instance> element represented in either XML or JSON.
+    * Added new options 'vsp', 'vsprec' and 'vspsyn' allowing to specify Vendor-Specific-Parameters in SPEAK and/or RECOGNIZE.
+    * Reset the read/write translators before setting new read/write formats.
+    * Fixed the read/write format paths for codecs requiring a translation from the native format to be used on the MRCP leg.
+
+  2.4. Framework
+
+    * N/A.
+
+3. Miscellaneous
+
+    * Added support for Asterisk 18.
+    * Added sample profiles ums2 and ums1 to the default configuration file mrcp.conf.
+    * Added comments to the default configuration file res-speech-unimrcp.conf.
+
+
 Changes for Asterisk UniMRCP Modules 1.7.0
 
 1. Generic Speech Recognition API (res_speech_unimrcp.so)
