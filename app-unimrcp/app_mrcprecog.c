@@ -1022,10 +1022,8 @@ static struct ast_filestream* mrcprecog_prompt_play(app_session_t *app_session, 
 static int mrcprecog_exit(struct ast_channel *chan, app_session_t *app_session, speech_channel_status_t status)
 {
 	if (app_session) {
-		if (app_session->readformat)
-			ast_channel_set_readformat(chan, app_session->readformat);
-		if (app_session->rawreadformat)
-			ast_channel_set_rawreadformat(chan, app_session->rawreadformat);
+		if (app_session->readformat && app_session->rawreadformat)
+			ast_set_read_format_path(chan, app_session->rawreadformat, app_session->readformat);
 
 		if (app_session->recog_channel) {
 			if (app_session->recog_channel->session_id)
@@ -1184,9 +1182,7 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 	ast_format_compat *orawreadformat = ast_channel_get_rawreadformat(chan, app_session->pool);
 
 	/* Set read format. */
-	ast_channel_readtrans_set(chan, NULL);
-	ast_channel_set_readformat(chan, app_session->nreadformat);
-	ast_channel_set_rawreadformat(chan, app_session->nreadformat);
+	ast_set_read_format_path(chan, orawreadformat, app_session->nreadformat);
 
 	/* Store old read format. */
 	app_session->readformat = oreadformat;

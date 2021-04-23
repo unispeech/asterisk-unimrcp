@@ -461,10 +461,8 @@ static int mrcpsynth_options_parse(char *str, mrcpsynth_options_t *options, apr_
 static int mrcpsynth_exit(struct ast_channel *chan, app_session_t *app_session, speech_channel_status_t status)
 {
 	if (app_session) {
-		if (app_session->writeformat)
-			ast_channel_set_writeformat(chan, app_session->writeformat);
-		if (app_session->rawwriteformat)
-			ast_channel_set_rawwriteformat(chan, app_session->rawwriteformat);
+		if (app_session->writeformat && app_session->rawwriteformat)
+			ast_set_write_format_path(chan, app_session->writeformat, app_session->rawwriteformat);
 
 		if (app_session->synth_channel) {
 			if (app_session->lifetime == APP_SESSION_LIFETIME_DYNAMIC) {
@@ -640,9 +638,7 @@ static int app_synth_exec(struct ast_channel *chan, ast_app_data data)
 	ast_format_compat *orawwriteformat = ast_channel_get_rawwriteformat(chan, app_session->pool);
 
 	/* Set write format. */
-	ast_channel_writetrans_set(chan, NULL);
-	ast_channel_set_writeformat(chan, app_session->nwriteformat);
-	ast_channel_set_rawwriteformat(chan, app_session->nwriteformat);
+	ast_set_write_format_path(chan, app_session->nwriteformat, orawwriteformat);
 
 	/* Store old write format. */
 	app_session->writeformat = owriteformat;

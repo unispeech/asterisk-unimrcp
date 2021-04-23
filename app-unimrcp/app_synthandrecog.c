@@ -1276,15 +1276,11 @@ static sar_prompt_item_t* synthandrecog_prompt_play(app_datastore_t* datastore, 
 static int synthandrecog_exit(struct ast_channel *chan, app_session_t *app_session, speech_channel_status_t status)
 {
 	if (app_session) {
-		if (app_session->writeformat)
-			ast_channel_set_writeformat(chan, app_session->writeformat);
-		if (app_session->rawwriteformat)
-			ast_channel_set_rawwriteformat(chan, app_session->rawwriteformat);
+		if (app_session->writeformat && app_session->rawwriteformat)
+			ast_set_write_format_path(chan, app_session->writeformat, app_session->rawwriteformat);
 
-		if (app_session->readformat)
-			ast_channel_set_readformat(chan, app_session->readformat);
-		if (app_session->rawreadformat)
-			ast_channel_set_rawreadformat(chan, app_session->rawreadformat);
+		if (app_session->readformat && app_session->rawreadformat)
+			ast_set_read_format_path(chan, app_session->rawreadformat, app_session->readformat);
 
 		if (app_session->recog_channel)
 			if (app_session->recog_channel->session_id)
@@ -1463,22 +1459,21 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 	/* Get old read format. */
 	ast_format_compat *oreadformat = ast_channel_get_readformat(chan, app_session->pool);
 	ast_format_compat *orawreadformat = ast_channel_get_rawreadformat(chan, app_session->pool);
+
 	/* Get old write format. */
 	ast_format_compat *owriteformat = ast_channel_get_writeformat(chan, app_session->pool);
 	ast_format_compat *orawwriteformat = ast_channel_get_rawwriteformat(chan, app_session->pool);
 
 	/* Set read format. */
-	ast_channel_readtrans_set(chan, NULL);
-	ast_channel_set_readformat(chan, app_session->nreadformat);
-	ast_channel_set_rawreadformat(chan, app_session->nreadformat);
+	ast_set_read_format_path(chan, orawreadformat, app_session->nreadformat);
+
 	/* Store old read format. */
 	app_session->readformat = oreadformat;
 	app_session->rawreadformat = orawreadformat;
 
 	/* Set write format. */
-	ast_channel_writetrans_set(chan, NULL);
-	ast_channel_set_writeformat(chan, app_session->nwriteformat);
-	ast_channel_set_rawwriteformat(chan, app_session->nwriteformat);
+	ast_set_write_format_path(chan, app_session->nwriteformat, orawwriteformat);
+
 	/* Store old write format. */
 	app_session->writeformat = owriteformat;
 	app_session->rawwriteformat = orawwriteformat;

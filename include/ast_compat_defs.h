@@ -329,6 +329,24 @@ static APR_INLINE ast_format_compat* ast_channel_get_rawwriteformat(struct ast_c
 }
 #endif
 
+#if AST_VERSION_AT_LEAST(13,13,0)
+#else
+static APR_INLINE int ast_set_read_format_path(struct ast_channel *chan, struct ast_format *raw_format, struct ast_format *core_format)
+{
+	ast_channel_readtrans_set(chan, NULL);
+	ast_channel_set_readformat(chan, core_format);
+	ast_channel_set_rawreadformat(chan, raw_format);
+	return 0;
+}
+static APR_INLINE int ast_set_write_format_path(struct ast_channel *chan, struct ast_format *core_format, struct ast_format *raw_format)
+{
+	ast_channel_writetrans_set(chan, NULL);
+	ast_channel_set_writeformat(chan, core_format);
+	ast_channel_set_rawwriteformat(chan, raw_format);
+	return 0;
+}
+#endif
+
 /**
  * Backward compatible frame accessors.
  */
