@@ -125,6 +125,8 @@ static APR_INLINE ast_format_compat* ast_get_speechformat(ast_format_compat *raw
 		return raw_format;
 
 	int sample_rate = ast_format_get_sample_rate(raw_format);
+	if(sample_rate != 8000 && sample_rate != 16000)
+		sample_rate = 8000;
 	return ast_format_cache_get_slin_by_rate(sample_rate);
 }
 static APR_INLINE const char* ast_format_get_unicodec(const ast_format_compat *format)
