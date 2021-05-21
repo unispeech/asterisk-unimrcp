@@ -43,6 +43,8 @@ typedef struct ast_json_error ast_json_error;
 		<see-also>
 			<ref type="function">RECOG_GRAMMAR</ref>
 			<ref type="function">RECOG_INPUT</ref>
+			<ref type="function">RECOG_INPUT_MODE</ref>
+			<ref type="function">RECOG_INPUT_CONFIDENCE</ref>
 			<ref type="function">RECOG_INSTANCE</ref>
 		</see-also>
 	</function>
@@ -62,6 +64,8 @@ typedef struct ast_json_error ast_json_error;
 		<see-also>
 			<ref type="function">RECOG_CONFIDENCE</ref>
 			<ref type="function">RECOG_INPUT</ref>
+			<ref type="function">RECOG_INPUT_MODE</ref>
+			<ref type="function">RECOG_INPUT_CONFIDENCE</ref>
 			<ref type="function">RECOG_INSTANCE</ref>
 		</see-also>
 	</function>
@@ -81,6 +85,50 @@ typedef struct ast_json_error ast_json_error;
 		<see-also>
 			<ref type="function">RECOG_CONFIDENCE</ref>
 			<ref type="function">RECOG_GRAMMAR</ref>
+			<ref type="function">RECOG_INPUT_MODE</ref>
+			<ref type="function">RECOG_INPUT_CONFIDENCE</ref>
+			<ref type="function">RECOG_INSTANCE</ref>
+		</see-also>
+	</function>
+	<function name="RECOG_INPUT_MODE" language="en_US">
+		<synopsis>
+			Get the mode of an input.
+		</synopsis>
+		<syntax>
+			<parameter name="nbest_number" required="false">
+				<para>The parameter nbest_number specifies the index in the list of interpretations sorted best-first.
+				This parameter defaults to 0, if not specified.</para>
+			</parameter>
+		</syntax>
+		<description>
+			<para>This function returns the mode of the specified input.</para>
+		</description>
+		<see-also>
+			<ref type="function">RECOG_CONFIDENCE</ref>
+			<ref type="function">RECOG_GRAMMAR</ref>
+			<ref type="function">RECOG_INPUT</ref>
+			<ref type="function">RECOG_INPUT_CONFIDENCE</ref>
+			<ref type="function">RECOG_INSTANCE</ref>
+		</see-also>
+	</function>
+	<function name="RECOG_INPUT_CONFIDENCE" language="en_US">
+		<synopsis>
+			Get the confidence score of an input.
+		</synopsis>
+		<syntax>
+			<parameter name="nbest_number" required="false">
+				<para>The parameter nbest_number specifies the index in the list of interpretations sorted best-first.
+				This parameter defaults to 0, if not specified.</para>
+			</parameter>
+		</syntax>
+		<description>
+			<para>This function returns the confidence score of the specified input.</para>
+		</description>
+		<see-also>
+			<ref type="function">RECOG_CONFIDENCE</ref>
+			<ref type="function">RECOG_GRAMMAR</ref>
+			<ref type="function">RECOG_INPUT</ref>
+			<ref type="function">RECOG_INPUT_MODE</ref>
 			<ref type="function">RECOG_INSTANCE</ref>
 		</see-also>
 	</function>
@@ -108,6 +156,8 @@ typedef struct ast_json_error ast_json_error;
 			<ref type="function">RECOG_CONFIDENCE</ref>
 			<ref type="function">RECOG_GRAMMAR</ref>
 			<ref type="function">RECOG_INPUT</ref>
+			<ref type="function">RECOG_INPUT_MODE</ref>
+			<ref type="function">RECOG_INPUT_CONFIDENCE</ref>
 		</see-also>
 	</function>
  ***/
@@ -421,6 +471,67 @@ static struct ast_custom_function recog_input_function = {
 	.write = NULL,
 };
 
+/* RECOG_INPUT_MODE() Dialplan Function */
+static int recog_input_mode(struct ast_channel *chan, const char *cmd, char *data, char *buf, size_t len)
+{
+	app_session_t *app_session = app_datastore_session_find(chan);
+	if(!app_session)
+		return -1;
+	
+	nlsml_interpretation_t *interpretation = recog_interpretation_find(app_session, data);
+	nlsml_input_t *input;
+	const char *mode;
+
+	if (!interpretation)
+		return -1;
+
+	input = nlsml_interpretation_input_get(interpretation);
+	if(!input)
+		return -1;
+
+	mode = nlsml_input_mode_get(input);
+	if(!mode)
+		return -1;
+
+	ast_copy_string(buf, mode, len);
+	return 0;
+}
+
+static struct ast_custom_function recog_input_mode_function = {
+	.name = "RECOG_INPUT_MODE",
+	.read = recog_input_mode,
+	.write = NULL,
+};
+
+/* RECOG_INPUT_CONFIDENCE() Dialplan Function */
+static int recog_input_confidence(struct ast_channel *chan, const char *cmd, char *data, char *buf, size_t len)
+{
+	app_session_t *app_session = app_datastore_session_find(chan);
+	if(!app_session)
+		return -1;
+	
+	nlsml_interpretation_t *interpretation = recog_interpretation_find(app_session, data);
+	nlsml_input_t *input;
+	char tmp[128];
+
+	if (!interpretation)
+		return -1;
+
+	input = nlsml_interpretation_input_get(interpretation);
+	if(!input)
+		return -1;
+
+	snprintf(tmp, sizeof(tmp), "%.2f", nlsml_input_confidence_get(input));
+	ast_copy_string(buf, tmp, len);
+	return 0;
+}
+
+static struct ast_custom_function recog_input_confidence_function = {
+	.name = "RECOG_INPUT_CONFIDENCE",
+	.read = recog_input_confidence,
+	.write = NULL,
+};
+
 /* Helper recursive function used to find a nested element based on specified path */
 static const apr_xml_elem* recog_instance_find_elem(const apr_xml_elem *elem, const char **path)
 {
@@ -603,6 +714,8 @@ int app_datastore_functions_register(struct ast_module *mod)
 	res |= __ast_custom_function_register(&recog_confidence_function, mod);
 	res |= __ast_custom_function_register(&recog_grammar_function, mod);
 	res |= __ast_custom_function_register(&recog_input_function, mod);
+	res |= __ast_custom_function_register(&recog_input_mode_function, mod);
+	res |= __ast_custom_function_register(&recog_input_confidence_function, mod);
 	res |= __ast_custom_function_register(&recog_instance_function, mod);
 
 	return res;
@@ -616,6 +729,8 @@ int app_datastore_functions_unregister(struct ast_module *mod)
 	res |= ast_custom_function_unregister(&recog_confidence_function);
 	res |= ast_custom_function_unregister(&recog_grammar_function);
 	res |= ast_custom_function_unregister(&recog_input_function);
+	res |= ast_custom_function_unregister(&recog_input_mode_function);
+	res |= ast_custom_function_unregister(&recog_input_confidence_function);
 	res |= ast_custom_function_unregister(&recog_instance_function);
 
 	return res;
