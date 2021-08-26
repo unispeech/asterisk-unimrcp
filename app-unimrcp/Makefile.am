@@ -11,13 +11,17 @@ app_unimrcp_la_SOURCES = audio_queue.c \
                          app_datastore.c \
                          app_mrcpsynth.c \
                          app_mrcprecog.c \
+                         app_mrcpverif.c \
                          app_synthandrecog.c \
+                         app_recogverif.c \
                          app_unimrcp.c
 app_unimrcp_la_LDFLAGS = -avoid-version -no-undefined -module
 app_unimrcp_la_LIBADD  = $(UNIMRCP_LIBS)
 
 XMLDOC_FILES           = app_mrcpsynth.c \
                          app_mrcprecog.c \
+                         app_mrcpverif.c \
+                         app_recogverif.c \
                          app_synthandrecog.c \
                          app_datastore.c
 

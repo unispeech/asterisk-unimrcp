@@ -36,6 +36,8 @@
 #include "mrcp_synth_resource.h"
 #include "mrcp_recog_header.h"
 #include "mrcp_recog_resource.h"
+#include "mrcp_verifier_header.h"
+#include "mrcp_verifier_resource.h"
 #include "uni_version.h"
 #include "mrcp_resource_loader.h"
 #include "mpf_engine.h"

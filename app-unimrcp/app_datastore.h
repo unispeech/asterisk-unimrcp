@@ -50,6 +50,7 @@ struct app_session_t {
 	apr_uint32_t                schannel_number;    /* speech channel number */
 	speech_channel_t           *recog_channel;      /* recognition channel */
 	speech_channel_t           *synth_channel;      /* synthesis channel, if any */
+	speech_channel_t           *verif_channel;      /* synthesis channel, if any */
 	ast_format_compat          *readformat;         /* old read format, to be restored */
 	ast_format_compat          *rawreadformat;      /* old raw read format, to be restored (>= Asterisk 13) */
 	ast_format_compat          *writeformat;        /* old write format, to be restored */

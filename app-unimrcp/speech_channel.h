@@ -39,7 +39,8 @@
 /* Type of MRCP channel. */
 enum speech_channel_type_t {
 	SPEECH_CHANNEL_SYNTHESIZER,
-	SPEECH_CHANNEL_RECOGNIZER
+	SPEECH_CHANNEL_RECOGNIZER,
+	SPEECH_CHANNEL_VERIFIER
 };
 typedef enum speech_channel_type_t speech_channel_type_t;
 
