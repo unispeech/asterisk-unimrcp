@@ -78,6 +78,9 @@
 					<option name="f"> <para>Filename to play (if empty or not specified, no file is played).</para> </option>
 					<option name="t"> <para>Recognition timeout (msec).</para> </option>
 					<option name="b"> <para>Bargein value (0: no barge-in, 1: enable barge-in).</para> </option>
+					<option name="vc"> <para>Verificarion score (-1.0 - 1.0).</para> </option>
+					<option name="minph"> <para>Minimum verification phrases.</para> </option>
+					<option name="maxph"> <para>Maximum verification phrases.</para> </option>
 					<option name="gd"> <para>Grammar delimiters.</para> </option>
 					<option name="ct"> <para>Confidence threshold (0.0 - 1.0).</para> </option>
 					<option name="sl"> <para>Sensitivity level (0.0 - 1.0).</para> </option>
@@ -90,6 +93,7 @@
 					<option name="dtt"> <para>DTMF terminate timeout (msec).</para> </option>
 					<option name="dttc"> <para>DTMF terminate characters.</para> </option>
 					<option name="sw"> <para>Save waveform (true/false).</para> </option>
+					<option name="rm"> <para>Verification mode (verify/enroll).</para> </option>
 					<option name="nac"> <para>New audio channel (true/false).</para> </option>
 					<option name="spl"> <para>Speech language (e.g. "en-GB", "en-US", "en-AU", etc.).</para> </option>
 					<option name="rm"> <para>Recognition mode (normal/hotword).</para> </option>
@@ -98,6 +102,8 @@
 					<option name="cdb"> <para>Clear DTMF buffer (true/false).</para> </option>
 					<option name="enm"> <para>Early nomatch (true/false).</para> </option>
 					<option name="iwu"> <para>Input waveform URI.</para> </option>
+					<option name="rpuri"> <para>Repository URI.</para> </option>
+					<option name="vpid"> <para>Voiceprint identifier.</para> </option>
 					<option name="mt"> <para>Media type.</para> </option>
 					<option name="epe"> <para>Exit on play error 
 						(1: terminate recognition on file play error, 0: continue even if file play fails).</para>
@@ -121,9 +127,9 @@
 		<description>
 			<para>This application establishes an MRCP session for speech recognition and optionally plays a prompt file.
 			Once recognition completes, the application exits and returns results to the dialplan.</para>
-			<para>If recognition completed, the variable ${RECOGSTATUS} is set to "OK". Otherwise, if recognition couldn't be started,
-			the variable ${RECOGSTATUS} is set to "ERROR". If the caller hung up while recognition was still in-progress,
-			the variable ${RECOGSTATUS} is set to "INTERRUPTED".</para>
+			<para>If recognition completed, the variable ${RECOG_VERIF_STATUS} is set to "OK". Otherwise, if recognition couldn't be started,
+			the variable ${RECOG_VERIF_STATUS} is set to "ERROR". If the caller hung up while recognition was still in-progress,
+			the variable ${RECOG_VERIF_STATUS} is set to "INTERRUPTED".</para>
 			<para>The variable ${RECOG_COMPLETION_CAUSE} indicates whether recognition completed successfully with a match or
 			an error occurred. ("000" - success, "001" - nomatch, "002" - noinput) </para>
 			<para>If recognition completed successfully, the variable ${RECOG_RESULT} is set to an NLSML result received
@@ -190,14 +196,16 @@ enum mrcprecog_it_policies {
 };
 
 /* The structure which holds the application options (including the MRCP params). */
-struct mrcprecog_options_t {
+struct mrcprecogverif_options_t {
 	apr_hash_t *recog_hfs;
+	apr_hash_t *verif_session_hfs;
+	apr_hash_t *verif_hfs;
 
 	int         flags;
 	const char *params[OPT_ARG_ARRAY_SIZE];
 };
 
-typedef struct mrcprecog_options_t mrcprecog_options_t;
+typedef struct mrcprecogverif_options_t mrcprecogverif_options_t;
 
 /* --- MRCP SPEECH CHANNEL INTERFACE TO UNIMRCP --- */
 
@@ -605,13 +613,13 @@ static int recog_channel_start(speech_channel_t *schannel, const char *name, int
 }
 
 /* Start VERIFY request. */
-static int verif_channel_start(speech_channel_t *schannel, const char *name, int start_input_timers, apr_hash_t *header_fields)
+static int verif_channel_start(speech_channel_t *schannel, const char *name, int start_input_timers, mrcprecogverif_options_t *options)
 {
 	int status = 0;
 	mrcp_message_t *mrcp_message = NULL;
 	mrcp_message_t *verif_message = NULL;
 	mrcp_generic_header_t *generic_header = NULL;
-	mrcp_recog_header_t *recog_header = NULL;
+	mrcp_verifier_header_t *verif_header = NULL;
 	recognizer_data_t *r = NULL;
 	grammar_t *grammar = NULL;
 
@@ -665,30 +673,19 @@ static int verif_channel_start(speech_channel_t *schannel, const char *name, int
 		return -1;
 	}
 
-	/* Set Content-Type to text/uri-list. */
-	const char *mime_type = grammar_type_to_mime(GRAMMAR_TYPE_URI, schannel->profile);
-	apt_string_assign(&generic_header->content_type, mime_type, mrcp_message->pool);
-	mrcp_generic_header_property_add(mrcp_message, GENERIC_HEADER_CONTENT_TYPE);
-
 	/* Allocate recognizer-specific header. */
-	if ((recog_header = (mrcp_recog_header_t *)mrcp_resource_header_prepare(mrcp_message)) == NULL) {
+	if ((verif_header = (mrcp_verifier_header_t *)mrcp_resource_header_prepare(mrcp_message)) == NULL) {
 		ast_log(LOG_ERROR, "verif_channel_start: error on VERIFIER_START_SESSION resource header!\n");
 		apr_thread_mutex_unlock(schannel->mutex);
 		return -1;
 	}
-#if 0
-	/* Set Cancel-If-Queue. */
-	if (mrcp_message->start_line.version == MRCP_VERSION_2) {
-		recog_header->cancel_if_queue = FALSE;
-		mrcp_resource_header_property_add(mrcp_message, RECOGNIZER_HEADER_CANCEL_IF_QUEUE);
-	}
-#endif
+
 	/* Set Start-Input-Timers. */
-	recog_header->start_input_timers = start_input_timers ? TRUE : FALSE;
+	verif_header->start_input_timers = start_input_timers ? TRUE : FALSE;
 	mrcp_resource_header_property_add(mrcp_message, VERIFIER_HEADER_START_INPUT_TIMERS);
 
 	/* Set parameters. */
-	speech_channel_set_params(schannel, mrcp_message, header_fields);
+	speech_channel_set_params(schannel, mrcp_message, options->verif_session_hfs);
 #if 0
 	/* Set message body. */
 	apt_string_assign_n(&mrcp_message->body, grammar_refs, length, mrcp_message->pool);
@@ -716,6 +713,9 @@ static int verif_channel_start(speech_channel_t *schannel, const char *name, int
 		apr_thread_mutex_unlock(schannel->mutex);
 		return -1;
 	}
+
+	/* Set parameters. */
+	speech_channel_set_params(schannel, verif_message, options->verif_hfs);
 
 	if (mrcp_application_message_send(schannel->unimrcp_session, schannel->unimrcp_channel, verif_message) == FALSE) {
 		ast_log(LOG_ERROR, "verif_channel_start: error on VERIFIER_VERIFY_FROM_BUFFER send!\n");
@@ -1087,7 +1087,7 @@ static apt_bool_t recog_stream_read(mpf_audio_stream_t *stream, mpf_frame_t *fra
 }
 
 /* Apply application options. */
-static int mrcprecog_option_apply(mrcprecog_options_t *options, const char *key, const char *value)
+static int mrcprecogverif_option_apply(mrcprecogverif_options_t *options, const char *key, const char *value)
 {
 	if (strcasecmp(key, "ct") == 0) {
 		apr_hash_set(options->recog_hfs, "Confidence-Threshold", APR_HASH_KEY_STRING, value);
@@ -1131,7 +1131,19 @@ static int mrcprecog_option_apply(mrcprecog_options_t *options, const char *key,
 		apr_hash_set(options->recog_hfs, "Media-Type", APR_HASH_KEY_STRING, value);
 	} else if (strcasecmp(key, "vsp") == 0) {
 		apr_hash_set(options->recog_hfs, "Vendor-Specific-Parameters", APR_HASH_KEY_STRING, value);
-	} else if (strcasecmp(key, "p") == 0) {
+	} else if (strcasecmp(key, "vc") == 0) {
+		apr_hash_set(options->verif_session_hfs, "Min-Verification-Score", APR_HASH_KEY_STRING, value);
+	} else if (strcasecmp(key, "minph") == 0) {
+		apr_hash_set(options->verif_session_hfs, "Num-Min-Verification-Phrases", APR_HASH_KEY_STRING, value);
+	} else if (strcasecmp(key, "maxph") == 0) {
+		apr_hash_set(options->verif_session_hfs, "Num-Max-Verification-Phrases", APR_HASH_KEY_STRING, value);
+	}  else if (strcasecmp(key, "vm") == 0) {
+		apr_hash_set(options->verif_session_hfs, "Verification-Mode", APR_HASH_KEY_STRING, value);
+	} else if (strcasecmp(key, "rpuri") == 0) {
+		apr_hash_set(options->verif_session_hfs, "Repository-URI", APR_HASH_KEY_STRING, value);
+	} else if (strcasecmp(key, "vpid") == 0) {
+		apr_hash_set(options->verif_session_hfs, "Voiceprint-Identifier", APR_HASH_KEY_STRING, value);
+	}else if (strcasecmp(key, "p") == 0) {
 		options->flags |= MRCPRECOG_PROFILE;
 		options->params[OPT_ARG_PROFILE] = value;
 	} else if (strcasecmp(key, "i") == 0) {
@@ -1176,7 +1188,7 @@ static int mrcprecog_option_apply(mrcprecog_options_t *options, const char *key,
 }
 
 /* Parse application options. */
-static int mrcprecog_options_parse(char *str, mrcprecog_options_t *options, apr_pool_t *pool)
+static int mrcprecogverif_options_parse(char *str, mrcprecogverif_options_t *options, apr_pool_t *pool)
 {
 	char *s;
 	char *name, *value;
@@ -1185,6 +1197,14 @@ static int mrcprecog_options_parse(char *str, mrcprecog_options_t *options, apr_
 		return 0;
 
 	if ((options->recog_hfs = apr_hash_make(pool)) == NULL) {
+		return -1;
+	}
+
+	if ((options->verif_hfs = apr_hash_make(pool)) == NULL) {
+		return -1;
+	}
+
+	if ((options->verif_session_hfs = apr_hash_make(pool)) == NULL) {
 		return -1;
 	}
 
@@ -1209,11 +1229,20 @@ static int mrcprecog_options_parse(char *str, mrcprecog_options_t *options, apr_
 			value = s;
 			if ((name = strsep(&value, "=")) && value) {
 				ast_log(LOG_DEBUG, "Apply option %s: %s\n", name, value);
-				mrcprecog_option_apply(options, name, value);
+				mrcprecogverif_option_apply(options, name, value);
 			}
 		}
 	}
 	while (str);
+
+	if (!apr_hash_get(options->verif_session_hfs, "Verification-Mode", APR_HASH_KEY_STRING))
+		return -1;
+
+	if (!apr_hash_get(options->verif_session_hfs, "Repository-URI", APR_HASH_KEY_STRING))
+		return -1;
+
+	if (!apr_hash_get(options->verif_session_hfs, "Voiceprint-Identifier", APR_HASH_KEY_STRING))
+		return -1;
 
 	return 0;
 }
@@ -1236,7 +1265,7 @@ static APR_INLINE int mrcprecog_prompts_advance(app_session_t *app_session)
 }
 
 /* Start playing the current prompt. */
-static struct ast_filestream* mrcprecog_prompt_play(app_session_t *app_session, mrcprecog_options_t *mrcprecog_options, off_t *max_filelength)
+static struct ast_filestream* mrcprecog_prompt_play(app_session_t *app_session, mrcprecogverif_options_t *mrcprecogverif_options, off_t *max_filelength)
 {
 	if (app_session->cur_prompt >= app_session->prompts->nelts) {
 		ast_log(LOG_ERROR, "(%s) Out of bounds prompt index\n", app_session->recog_channel->name);
@@ -1271,7 +1300,7 @@ static int mrcprecog_exit(struct ast_channel *chan, app_session_t *app_session, 
 		}
 		if (app_session->verif_channel) {
 			if (app_session->verif_channel->session_id)
-				pbx_builtin_setvar_helper(chan, "RECOG_SID", app_session->verif_channel->session_id);
+				pbx_builtin_setvar_helper(chan, "VERIF_SID", app_session->verif_channel->session_id);
 
 			if (app_session->lifetime == APP_SESSION_LIFETIME_DYNAMIC) {
 				ast_log(LOG_NOTICE, "%s() Will stop verif on %s\n", app_recog, ast_channel_name(chan));
@@ -1282,7 +1311,7 @@ static int mrcprecog_exit(struct ast_channel *chan, app_session_t *app_session, 
 	}
 
 	const char *status_str = speech_channel_status_to_string(status);
-	pbx_builtin_setvar_helper(chan, "RECOGSTATUS", status_str);
+	pbx_builtin_setvar_helper(chan, "RECOG_VERIF_STATUS", status_str);
 	ast_log(LOG_NOTICE, "%s() exiting status: %s on %s\n", app_recog, status_str, ast_channel_name(chan));
 	return 0;
 }
@@ -1297,7 +1326,7 @@ static int app_recog_verif_exec(struct ast_channel *chan, ast_app_data data)
 	speech_channel_status_t status = SPEECH_CHANNEL_STATUS_OK;
 	char *parse;
 	int i;
-	mrcprecog_options_t mrcprecog_options;
+	mrcprecogverif_options_t mrcprecogverif_options;
 	const char *profile_name = NULL;
 	ast_mrcp_profile_t *profile;
 
@@ -1329,16 +1358,16 @@ static int app_recog_verif_exec(struct ast_channel *chan, ast_app_data data)
 		return mrcprecog_exit(chan, NULL, SPEECH_CHANNEL_STATUS_ERROR);
 	}
 
-	mrcprecog_options.recog_hfs = NULL;
-	mrcprecog_options.flags = 0;
+	mrcprecogverif_options.recog_hfs = NULL;
+	mrcprecogverif_options.flags = 0;
 	for (i=0; i<OPT_ARG_ARRAY_SIZE; i++)
-		mrcprecog_options.params[i] = NULL;
+		mrcprecogverif_options.params[i] = NULL;
 
 	if (!ast_strlen_zero(args.options)) {
 		args.options = normalize_input_string(args.options);
 		ast_log(LOG_NOTICE, "%s() options: %s\n", app_recog, args.options);
 		char *options_buf = apr_pstrdup(datastore->pool, args.options);
-		mrcprecog_options_parse(options_buf, &mrcprecog_options, datastore->pool);
+		mrcprecogverif_options_parse(options_buf, &mrcprecogverif_options, datastore->pool);
 	}
 
 	/* Answer if it's not already going. */
@@ -1353,17 +1382,17 @@ static int app_recog_verif_exec(struct ast_channel *chan, ast_app_data data)
 
 	/* Get datastore entry. */
 	const char *entry = DEFAULT_DATASTORE_ENTRY;
-	if ((mrcprecog_options.flags & MRCPRECOG_DATASTORE_ENTRY) == MRCPRECOG_DATASTORE_ENTRY) {
-		if (!ast_strlen_zero(mrcprecog_options.params[OPT_ARG_DATASTORE_ENTRY])) {
-			entry = mrcprecog_options.params[OPT_ARG_DATASTORE_ENTRY];
+	if ((mrcprecogverif_options.flags & MRCPRECOG_DATASTORE_ENTRY) == MRCPRECOG_DATASTORE_ENTRY) {
+		if (!ast_strlen_zero(mrcprecogverif_options.params[OPT_ARG_DATASTORE_ENTRY])) {
+			entry = mrcprecogverif_options.params[OPT_ARG_DATASTORE_ENTRY];
 			lifetime = APP_SESSION_LIFETIME_PERSISTENT;
 		}
 	}
 
 	/* Check session lifetime. */
-	if ((mrcprecog_options.flags & MRCPRECOG_PERSISTENT_LIFETIME) == MRCPRECOG_PERSISTENT_LIFETIME) {
-		if (!ast_strlen_zero(mrcprecog_options.params[OPT_ARG_PERSISTENT_LIFETIME])) {
-			lifetime = (atoi(mrcprecog_options.params[OPT_ARG_PERSISTENT_LIFETIME]) == 0) ?
+	if ((mrcprecogverif_options.flags & MRCPRECOG_PERSISTENT_LIFETIME) == MRCPRECOG_PERSISTENT_LIFETIME) {
+		if (!ast_strlen_zero(mrcprecogverif_options.params[OPT_ARG_PERSISTENT_LIFETIME])) {
+			lifetime = (atoi(mrcprecogverif_options.params[OPT_ARG_PERSISTENT_LIFETIME]) == 0) ?
 				APP_SESSION_LIFETIME_DYNAMIC : APP_SESSION_LIFETIME_PERSISTENT;
 		}
 	}
@@ -1401,9 +1430,9 @@ static int app_recog_verif_exec(struct ast_channel *chan, ast_app_data data)
 			return mrcprecog_exit(chan, app_session, SPEECH_CHANNEL_STATUS_ERROR);
 		}
 
-		if ((mrcprecog_options.flags & MRCPRECOG_PROFILE) == MRCPRECOG_PROFILE) {
-			if (!ast_strlen_zero(mrcprecog_options.params[OPT_ARG_PROFILE])) {
-				profile_name = mrcprecog_options.params[OPT_ARG_PROFILE];
+		if ((mrcprecogverif_options.flags & MRCPRECOG_PROFILE) == MRCPRECOG_PROFILE) {
+			if (!ast_strlen_zero(mrcprecogverif_options.params[OPT_ARG_PROFILE])) {
+				profile_name = mrcprecogverif_options.params[OPT_ARG_PROFILE];
 			}
 		}
 
@@ -1436,29 +1465,29 @@ static int app_recog_verif_exec(struct ast_channel *chan, ast_app_data data)
 
 	/* Check if barge-in is allowed. */
 	int bargein = 1;
-	if ((mrcprecog_options.flags & MRCPRECOG_BARGEIN) == MRCPRECOG_BARGEIN) {
-		if (!ast_strlen_zero(mrcprecog_options.params[OPT_ARG_BARGEIN])) {
-			bargein = (atoi(mrcprecog_options.params[OPT_ARG_BARGEIN]) == 0) ? 0 : 1;
+	if ((mrcprecogverif_options.flags & MRCPRECOG_BARGEIN) == MRCPRECOG_BARGEIN) {
+		if (!ast_strlen_zero(mrcprecogverif_options.params[OPT_ARG_BARGEIN])) {
+			bargein = (atoi(mrcprecogverif_options.params[OPT_ARG_BARGEIN]) == 0) ? 0 : 1;
 		}
 	}
 
 	dtmf_enable = 2;
-	if ((mrcprecog_options.flags & MRCPRECOG_INTERRUPT) == MRCPRECOG_INTERRUPT) {
-		if (!ast_strlen_zero(mrcprecog_options.params[OPT_ARG_INTERRUPT])) {
+	if ((mrcprecogverif_options.flags & MRCPRECOG_INTERRUPT) == MRCPRECOG_INTERRUPT) {
+		if (!ast_strlen_zero(mrcprecogverif_options.params[OPT_ARG_INTERRUPT])) {
 			dtmf_enable = 1;
-			if (strcasecmp(mrcprecog_options.params[OPT_ARG_INTERRUPT], "any") == 0)
-				mrcprecog_options.params[OPT_ARG_INTERRUPT] = AST_DIGIT_ANY;
-			else if (strcasecmp(mrcprecog_options.params[OPT_ARG_INTERRUPT], "none") == 0)
+			if (strcasecmp(mrcprecogverif_options.params[OPT_ARG_INTERRUPT], "any") == 0)
+				mrcprecogverif_options.params[OPT_ARG_INTERRUPT] = AST_DIGIT_ANY;
+			else if (strcasecmp(mrcprecogverif_options.params[OPT_ARG_INTERRUPT], "none") == 0)
 				dtmf_enable = 2;
-			else if (strcasecmp(mrcprecog_options.params[OPT_ARG_INTERRUPT], "disable") == 0)
+			else if (strcasecmp(mrcprecogverif_options.params[OPT_ARG_INTERRUPT], "disable") == 0)
 				dtmf_enable = 0;
 		}
 	}
 
 	/* Get NLSML instance format, if specified */
-	if ((mrcprecog_options.flags & MRCPRECOG_INSTANCE_FORMAT) == MRCPRECOG_INSTANCE_FORMAT) {
-		if (!ast_strlen_zero(mrcprecog_options.params[OPT_ARG_INSTANCE_FORMAT])) {
-			const char *format = mrcprecog_options.params[OPT_ARG_INSTANCE_FORMAT];
+	if ((mrcprecogverif_options.flags & MRCPRECOG_INSTANCE_FORMAT) == MRCPRECOG_INSTANCE_FORMAT) {
+		if (!ast_strlen_zero(mrcprecogverif_options.params[OPT_ARG_INSTANCE_FORMAT])) {
+			const char *format = mrcprecogverif_options.params[OPT_ARG_INSTANCE_FORMAT];
 			if (strcasecmp(format, "xml") == 0)
 				app_session->instance_format = NLSML_INSTANCE_FORMAT_XML;
 			else if (strcasecmp(format, "json") == 0)
@@ -1468,9 +1497,9 @@ static int app_recog_verif_exec(struct ast_channel *chan, ast_app_data data)
 
 	const char *grammar_delimiters = ",";
 	/* Get grammar delimiters. */
-	if ((mrcprecog_options.flags & MRCPRECOG_GRAMMAR_DELIMITERS) == MRCPRECOG_GRAMMAR_DELIMITERS) {
-		if (!ast_strlen_zero(mrcprecog_options.params[OPT_ARG_GRAMMAR_DELIMITERS])) {
-			grammar_delimiters = mrcprecog_options.params[OPT_ARG_GRAMMAR_DELIMITERS];
+	if ((mrcprecogverif_options.flags & MRCPRECOG_GRAMMAR_DELIMITERS) == MRCPRECOG_GRAMMAR_DELIMITERS) {
+		if (!ast_strlen_zero(mrcprecogverif_options.params[OPT_ARG_GRAMMAR_DELIMITERS])) {
+			grammar_delimiters = mrcprecogverif_options.params[OPT_ARG_GRAMMAR_DELIMITERS];
 			ast_log(LOG_DEBUG, "(%s) Grammar delimiters: %s\n", name, grammar_delimiters);
 		}
 	}
@@ -1508,18 +1537,18 @@ static int app_recog_verif_exec(struct ast_channel *chan, ast_app_data data)
 	}
 
 	const char *filenames = NULL;
-	if ((mrcprecog_options.flags & MRCPRECOG_FILENAME) == MRCPRECOG_FILENAME) {
-		if (!ast_strlen_zero(mrcprecog_options.params[OPT_ARG_FILENAME])) {
-			filenames = mrcprecog_options.params[OPT_ARG_FILENAME];
+	if ((mrcprecogverif_options.flags & MRCPRECOG_FILENAME) == MRCPRECOG_FILENAME) {
+		if (!ast_strlen_zero(mrcprecogverif_options.params[OPT_ARG_FILENAME])) {
+			filenames = mrcprecogverif_options.params[OPT_ARG_FILENAME];
 		}
 	}
 
 	if (filenames) {
 		/* Get output delimiters. */
 		const char *output_delimiters = "^";
-		if ((mrcprecog_options.flags & MRCPRECOG_OUTPUT_DELIMITERS) == MRCPRECOG_OUTPUT_DELIMITERS) {
-			if (!ast_strlen_zero(mrcprecog_options.params[OPT_ARG_OUTPUT_DELIMITERS])) {
-				output_delimiters = mrcprecog_options.params[OPT_ARG_OUTPUT_DELIMITERS];
+		if ((mrcprecogverif_options.flags & MRCPRECOG_OUTPUT_DELIMITERS) == MRCPRECOG_OUTPUT_DELIMITERS) {
+			if (!ast_strlen_zero(mrcprecogverif_options.params[OPT_ARG_OUTPUT_DELIMITERS])) {
+				output_delimiters = mrcprecogverif_options.params[OPT_ARG_OUTPUT_DELIMITERS];
 				ast_log(LOG_DEBUG, "(%s) Output delimiters: %s\n", output_delimiters, name);
 			}
 		}
@@ -1538,9 +1567,9 @@ static int app_recog_verif_exec(struct ast_channel *chan, ast_app_data data)
 	}
 
 	int exit_on_playerror = 0;
-	if ((mrcprecog_options.flags & MRCPRECOG_EXIT_ON_PLAYERROR) == MRCPRECOG_EXIT_ON_PLAYERROR) {
-		if (!ast_strlen_zero(mrcprecog_options.params[OPT_ARG_EXIT_ON_PLAYERROR])) {
-			exit_on_playerror = atoi(mrcprecog_options.params[OPT_ARG_EXIT_ON_PLAYERROR]);
+	if ((mrcprecogverif_options.flags & MRCPRECOG_EXIT_ON_PLAYERROR) == MRCPRECOG_EXIT_ON_PLAYERROR) {
+		if (!ast_strlen_zero(mrcprecogverif_options.params[OPT_ARG_EXIT_ON_PLAYERROR])) {
+			exit_on_playerror = atoi(mrcprecogverif_options.params[OPT_ARG_EXIT_ON_PLAYERROR]);
 			if ((exit_on_playerror < 0) || (exit_on_playerror > 2))
 				exit_on_playerror = 1;
 		}
@@ -1553,7 +1582,7 @@ static int app_recog_verif_exec(struct ast_channel *chan, ast_app_data data)
 	/* If bargein is not allowed, play all the prompts and wait for for them to complete. */
 	if (!bargein && prompt_processing) {
 		/* Start playing first prompt. */
-		filestream = mrcprecog_prompt_play(app_session, &mrcprecog_options, &max_filelength);
+		filestream = mrcprecog_prompt_play(app_session, &mrcprecogverif_options, &max_filelength);
 		if (!filestream && exit_on_playerror) {
 			return mrcprecog_exit(chan, app_session, SPEECH_CHANNEL_STATUS_ERROR);
 		}
@@ -1577,7 +1606,7 @@ static int app_recog_verif_exec(struct ast_channel *chan, ast_app_data data)
 			/* End of current prompt -> advance to the next one. */
 			if (mrcprecog_prompts_advance(app_session) > 0) {
 				/* Start playing current prompt. */
-				filestream = mrcprecog_prompt_play(app_session, &mrcprecog_options, &max_filelength);
+				filestream = mrcprecog_prompt_play(app_session, &mrcprecogverif_options, &max_filelength);
 				if (!filestream && exit_on_playerror) {
 					return mrcprecog_exit(chan, app_session, SPEECH_CHANNEL_STATUS_ERROR);
 				}
@@ -1593,9 +1622,9 @@ static int app_recog_verif_exec(struct ast_channel *chan, ast_app_data data)
 	}
 
 	/* Check the policy for input timers. */
-	if ((mrcprecog_options.flags & MRCPRECOG_INPUT_TIMERS) == MRCPRECOG_INPUT_TIMERS) {
-		if (!ast_strlen_zero(mrcprecog_options.params[OPT_ARG_INPUT_TIMERS])) {
-			switch(atoi(mrcprecog_options.params[OPT_ARG_INPUT_TIMERS])) {
+	if ((mrcprecogverif_options.flags & MRCPRECOG_INPUT_TIMERS) == MRCPRECOG_INPUT_TIMERS) {
+		if (!ast_strlen_zero(mrcprecogverif_options.params[OPT_ARG_INPUT_TIMERS])) {
+			switch(atoi(mrcprecogverif_options.params[OPT_ARG_INPUT_TIMERS])) {
 				case 0: app_session->it_policy = IT_POLICY_OFF; break;
 				case 1: app_session->it_policy = IT_POLICY_ON; break;
 				default: app_session->it_policy = IT_POLICY_AUTO;
@@ -1611,7 +1640,7 @@ static int app_recog_verif_exec(struct ast_channel *chan, ast_app_data data)
 	ast_log(LOG_NOTICE, "(%s) Recognizing, enable DTMFs: %d, start input timers: %d\n", name, dtmf_enable, start_input_timers);
 
 	/* Start recognition. */
-	if (recog_channel_start(app_session->recog_channel, name, start_input_timers, mrcprecog_options.recog_hfs) != 0) {
+	if (recog_channel_start(app_session->recog_channel, name, start_input_timers, mrcprecogverif_options.recog_hfs) != 0) {
 		ast_log(LOG_ERROR, "(%s) Unable to start recognition\n", name);
 
 		const char *completion_cause = NULL;
@@ -1624,7 +1653,7 @@ static int app_recog_verif_exec(struct ast_channel *chan, ast_app_data data)
 
 	if (prompt_processing) {
 		/* Start playing first prompt. */
-		filestream = mrcprecog_prompt_play(app_session, &mrcprecog_options, &max_filelength);
+		filestream = mrcprecog_prompt_play(app_session, &mrcprecogverif_options, &max_filelength);
 		if (!filestream && exit_on_playerror) {
 			ast_log(LOG_ERROR, " Error on prompt processing\n");
 			return mrcprecog_exit(chan, app_session, SPEECH_CHANNEL_STATUS_ERROR);
@@ -1677,7 +1706,7 @@ static int app_recog_verif_exec(struct ast_channel *chan, ast_app_data data)
 				/* End of current prompt -> advance to the next one. */
 				if (mrcprecog_prompts_advance(app_session) > 0) {
 					/* Start playing current prompt. */
-					filestream = mrcprecog_prompt_play(app_session, &mrcprecog_options, &max_filelength);
+					filestream = mrcprecog_prompt_play(app_session, &mrcprecogverif_options, &max_filelength);
 					if (!filestream && exit_on_playerror) {
 						ast_log(LOG_ERROR, " Error on filestream processing\n");
 						return mrcprecog_exit(chan, app_session, SPEECH_CHANNEL_STATUS_ERROR);
@@ -1734,7 +1763,7 @@ static int app_recog_verif_exec(struct ast_channel *chan, ast_app_data data)
 				}
 			} else if (dtmf_enable == 1) {
 				/* Stop streaming if within i chars. */
-				if (strchr(mrcprecog_options.params[OPT_ARG_INTERRUPT], dtmfkey) || (strcmp(mrcprecog_options.params[OPT_ARG_INTERRUPT],"any"))) {
+				if (strchr(mrcprecogverif_options.params[OPT_ARG_INTERRUPT], dtmfkey) || (strcmp(mrcprecogverif_options.params[OPT_ARG_INTERRUPT],"any"))) {
 					ast_frfree(f);
 					ast_log(LOG_ERROR, " Error on dtmf processing\n");
 					mrcprecog_exit(chan, app_session, SPEECH_CHANNEL_STATUS_OK);
@@ -1762,9 +1791,9 @@ static int app_recog_verif_exec(struct ast_channel *chan, ast_app_data data)
 	if (status == SPEECH_CHANNEL_STATUS_OK) {
 		int uri_encoded_results = 0;
 		/* Check if the results should be URI-encoded. */
-		if ((mrcprecog_options.flags & MRCPRECOG_URI_ENCODED_RESULTS) == MRCPRECOG_URI_ENCODED_RESULTS) {
-			if (!ast_strlen_zero(mrcprecog_options.params[OPT_ARG_URI_ENCODED_RESULTS])) {
-				uri_encoded_results = (atoi(mrcprecog_options.params[OPT_ARG_URI_ENCODED_RESULTS]) == 0) ? 0 : 1;
+		if ((mrcprecogverif_options.flags & MRCPRECOG_URI_ENCODED_RESULTS) == MRCPRECOG_URI_ENCODED_RESULTS) {
+			if (!ast_strlen_zero(mrcprecogverif_options.params[OPT_ARG_URI_ENCODED_RESULTS])) {
+				uri_encoded_results = (atoi(mrcprecogverif_options.params[OPT_ARG_URI_ENCODED_RESULTS]) == 0) ? 0 : 1;
 			}
 		}
 
@@ -1817,7 +1846,7 @@ static int app_recog_verif_exec(struct ast_channel *chan, ast_app_data data)
 			return mrcprecog_exit(chan, app_session, SPEECH_CHANNEL_STATUS_ERROR);
 	}
 	/* Start Verification. */
-	if (verif_channel_start(app_session->verif_channel, name, start_input_timers, mrcprecog_options.recog_hfs) != 0) {
+	if (verif_channel_start(app_session->verif_channel, name, start_input_timers, &mrcprecogverif_options) != 0) {
 		ast_log(LOG_ERROR, "(%s) Unable to start verification\n", name);
 
 		const char *completion_cause = NULL;

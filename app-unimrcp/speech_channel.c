@@ -654,6 +654,7 @@ int speech_channel_read(speech_channel_t *schannel, void *data, apr_size_t *len,
 		apr_size_t req_len = *len;
 #endif
 		if (!schannel->mutex) return 1;
+		apr_thread_mutex_lock(schannel->mutex);
 		audio_queue_t *queue = schannel->audio_queue;
 
 		if (schannel->state == SPEECH_CHANNEL_PROCESSING)
