@@ -27,6 +27,7 @@ SCRIPTS_DIR="${REPO_INSTALL_DIR}/scripts"
 INSTALL_SCRIPT_NAME="install_asterisk_unimrcp.sh"
 INSTALL_SCRIPT="${SCRIPTS_DIR}/${INSTALL_SCRIPT_NAME}"
 MAKESELF="${SCRIPTS_DIR}/makeself/makeself.sh"
+ASTERISK_VERSION="16.8.0"
 
 echo $REPO_DIR
 
@@ -56,8 +57,14 @@ if [[ -e /etc/redhat-release ]]; then
   lib_expat_version="0.5.0"
   lib_expat_system_version="1.6.0"
   is_rhel="true"
+elif [[ -e /etc/debian_version ]]; then
+  ASTERISK_VERSION="18.7.1"
+  lib_expat_version="0.5.0"
+  lib_expat_system_version="1.6.0"
+  is_deb="true"
 else
   is_rhel="false"
+  is_deb="false"
 fi
 
 cat <<EOF
@@ -72,6 +79,7 @@ cat <<EOF
        libsofia-sip-ua $lib_sip_version
        libapr $lib_apr_version
        libaprutil $lib_aprutil_version
+       asterisk $ASTERISK_VERSION
        Looking for libexpat: $is_rhel $lib_expat_version
        Looking for libexpat from system: $is_rhel $lib_expat_system_version
   #####################################################
@@ -97,7 +105,7 @@ ret=$(echo $?)
 
 # Build Asterisk Unimrcp
 cd $BUILD_DIR
-./bootstrap && ./configure --with-asterisk-version=16.8.0 && make && make install
+./bootstrap && ./configure --with-asterisk-version=${ASTERISK_VERSION} && make && make install
 
 ret=$(echo $?)
 [[ $ret -ne 0 ]] && { echo "Please check your ASTERISK UNIMRCP Dependencies build."; exit 1; }
@@ -208,11 +216,12 @@ echo "ln -s libunimrcpclient.so.$(awk -F'.' '{print $1"."$2}' <<<$lib_uni_versio
         libunimrcpclient.so.$(awk -F'.' '{print $1}' <<<$lib_uni_version)" >>${TMP_PATH}/$UNIMRCP_INSTALL_DIR/lib/lib_map
 
 # Library only needed in RHEL based Distro:
-if [[ $is_rhel == "true" ]]; then
+if [[ $is_rhel == "true" || $is_deb == "true" ]]; then
    LIB_APR_EXPAT="$APR_LIB_DIR/libexpat.so.$lib_expat_version"
    LIB64_EXPAT="/usr/lib64/libexpat.so.$lib_expat_system_version"
 
   if [[ -e ${LIB_APR_EXPAT} ]]; then
+    echo "Installing LIB EXPAT in ${LIB_APR_EXPAT}"
     cp ${LIB_APR_EXPAT} ${TMP_PATH}/$UNIMRCP_INSTALL_DIR/../apr/lib
     echo "ln -s libexpat.so.$lib_expat_version \
           libexpat.so.$(awk -F'.' '{print $1"."$2}' <<<$lib_expat_version)" >>${TMP_PATH}/$UNIMRCP_INSTALL_DIR/../apr/lib/lib_map
@@ -229,7 +238,6 @@ if [[ $is_rhel == "true" ]]; then
     echo "Missing lib_expat. Exiting..."
     exit 1
   fi
-
 fi
 
 echo "Running MakeSelf"
