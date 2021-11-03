@@ -1,0 +1,6 @@
+[submodule "docker/asterisk-unimrcp"]
+	path = docker/asterisk-unimrcp
+	url = ssh://git@bitbucket.cpqd.com.br:7999/~fzaruch/asterisk-unimrcp.git
+[submodule "docker/asterisk-deb"]
+	path = docker/asterisk-deb
+	url = git@github.com:fzaruch/asterisk.git
