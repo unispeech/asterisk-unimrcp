@@ -690,7 +690,7 @@ static int verif_channel_start(speech_channel_t *schannel, const char *name, int
 	/* Set message body. */
 	apt_string_assign_n(&mrcp_message->body, grammar_refs, length, mrcp_message->pool);
 #endif
-	/* Empty audio queue and send RECOGNIZE to MRCP server. */
+	/* Empty audio queue and send START_SESSION to MRCP server. */
 	audio_queue_clear(schannel->audio_queue);
 
 	if (mrcp_application_message_send(schannel->unimrcp_session, schannel->unimrcp_channel, mrcp_message) == FALSE) {
@@ -1888,7 +1888,6 @@ static int app_recog_verif_exec(struct ast_channel *chan, ast_app_data data)
 		int uri_encoded_results = 0;
 		/* Store the results for further reference from the dialplan. */
 		apr_size_t result_len = strlen(result);
-		app_session->nlsml_result = nlsml_result_parse(result, result_len, datastore->pool);
 
 		if (uri_encoded_results != 0) {
 			apr_size_t len = result_len * 2;

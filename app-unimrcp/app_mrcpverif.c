@@ -40,7 +40,7 @@
  *
  * \brief MRCPVerif application
  *
- * \author\verbatim J.W.F. Thirion <derik@molo.co.za> \endverbatim
+ * \author\verbatim F.Z.C Zaruch Chinasso <fzaruch@cpqd.com.br> \endverbatim
  * 
  * MRCPVerif application
  * \ingroup applications
@@ -1280,7 +1280,6 @@ static int app_verif_exec(struct ast_channel *chan, ast_app_data data)
 		if (result) {
 			/* Store the results for further reference from the dialplan. */
 			apr_size_t result_len = strlen(result);
-			app_session->nlsml_result = nlsml_result_parse(result, result_len, datastore->pool);
 
 			if (uri_encoded_results != 0) {
 				apr_size_t len = result_len * 2;
