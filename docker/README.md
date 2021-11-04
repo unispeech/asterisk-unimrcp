@@ -5,7 +5,8 @@ The first one is using docker containers as describe bellow.
 
 ## Using with docker containers
 
-The folder asterisk-unimrcp contains the Dockerfiles to build and execute.
+The folders build-os_name and exec-os_name contains the Dockerfiles to build and execute
+Asterisk + unimrcp application with docker containers.
 
 ### Build
 
@@ -46,7 +47,7 @@ docker run -it --rm --name asterisk-exec \
 ## Using a Ubuntu 18.04/Centos 7.8 machine with Asterisk installed from Debian/RPM package
 
 The second way to use the Asterisk + unimrcp application is used a machine with
-asterisk installed from a debian pakages and install the aplication
+asterisk installed from a debian or RPM pakages and install the aplication
 using the installer built above.
 
 ### Generate debian/RPM packages
