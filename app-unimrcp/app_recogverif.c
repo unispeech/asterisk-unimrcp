@@ -1244,6 +1244,8 @@ static int mrcprecogverif_options_parse(char *str, mrcprecogverif_options_t *opt
 	if (!apr_hash_get(options->verif_session_hfs, "Voiceprint-Identifier", APR_HASH_KEY_STRING))
 		return -1;
 
+	apr_hash_set(options->recog_hfs, "Ver-Buffer-Utterance", APR_HASH_KEY_STRING, "true");
+
 	return 0;
 }
 
