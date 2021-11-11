@@ -17,25 +17,30 @@ RUN apt-get update && \
     build-essential \
     libjansson-dev \
     libxml2-dev \
-    uuid-dev && \
+    uuid-dev \
+    aptitude && \
     apt-get autoremove -y
 
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get -y install tzdata
 RUN apt-get -y install locales
 
+ARG UNIMRCP_DEPS=1.6.0
+ARG UNIMRCP_VER=1.7.0
+ARG ASTERISK_VER=18.7.1
+
 # Install deps do unimrcp
-RUN cd /tmp/ && \
-    curl https://www.unimrcp.org/project/component-view/unimrcp-deps-1-6-0-tar-gz/download --output unimrcp-deps-1.6.0.tar.gz && \
-    tar -zxvf unimrcp-deps-1.6.0.tar.gz && \
-    cd unimrcp-deps-1.6.0 && \
+RUN UNIMRCP_DEPS_DASH=$(echo ${UNIMRCP_DEPS} | tr . -) && cd /tmp/ && \
+    curl https://www.unimrcp.org/project/component-view/unimrcp-deps-${UNIMRCP_DEPS_DASH}-tar-gz/download --output unimrcp-deps-${UNIMRCP_DEPS}.tar.gz && \
+    tar -zxvf unimrcp-deps-${UNIMRCP_DEPS}.tar.gz && \
+    cd unimrcp-deps-${UNIMRCP_DEPS} && \
     ./build-dep-libs.sh --silent
 
 # Install unimrcp
 RUN cd /tmp/ && \
     git clone https://github.com/unispeech/unimrcp.git && \
     cd unimrcp && \
-    git checkout tags/unimrcp-1.7.0 && \
+    git checkout tags/unimrcp-${UNIMRCP_VER} && \
     ./bootstrap && \
     ./configure && \
     make -j 4 && \
@@ -46,7 +51,7 @@ RUN cd /tmp/ && \
     git clone https://github.com/asterisk/asterisk.git
 
 RUN cd /tmp/asterisk/ && \
-    git checkout 18.7.1 && \
+    git checkout ${ASTERISK_VER} && \
     ./bootstrap.sh && \
     cd contrib/scripts/ && \
     ./install_prereq install && \
@@ -58,16 +63,17 @@ RUN cd /tmp/asterisk/ && \
     make install && \
     make samples && \
     make config && \
-    make install-logrotate && \
-    make install-headers
+    make install-logrotate
+
+RUN make install-headers || echo "WARNING no-install-headers"
 
 # Asterisk-unimrcp
 RUN cd /tmp/ && \
     git clone https://github.com/unispeech/asterisk-unimrcp.git && \
     cd asterisk-unimrcp && \
-    git checkout tags/asterisk-unimrcp-1.7.0 && \
+    git checkout tags/asterisk-unimrcp-${UNIMRCP_VER} && \
     ./bootstrap && \
-    ./configure --with-asterisk-version=18.7.1 && \
+    ./configure --with-asterisk-version=${ASTERISK_VER} && \
     make && \
     make install
     # ./configure --with-asterisk=/tmp/asterisk/ --with-asterisk-version=17.5.0 && \
@@ -81,4 +87,4 @@ ENTRYPOINT ["/opt/start.sh"]
 
 CMD ["asterisk", "-vvvdddf", "-T", "-p"]
 
-LABEL modules="ubuntu:18.04,unimrcp-deps:1.6.0,unimrcp:1.7.0,asterisk:18.7.1,asterisk-unimrcp:1.7.0"
+LABEL modules="ubuntu:18.04,unimrcp-deps:${UNIMRCP_DEPS},unimrcp:${UNIMRCP_VER},asterisk:${ASTERISK_VER},asterisk-unimrcp:${UNIMRCP_VER}"

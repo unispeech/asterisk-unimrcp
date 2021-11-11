@@ -3,7 +3,9 @@
 Usage() {
 cat <<EOF
 
-  Usage: $0 <pack_name> [UniMRCP Asterisk module installation dir] [UniMRCP module installation dir] [build dir]
+  Usage: $0 <pack_name> <asterisk_version> [UniMRCP Asterisk module installation dir] [UniMRCP module installation dir] [build dir]
+
+    You must provide the Asterisk version, like 13.18.3
 
     You must provide the UniMRCP Asterisk module installation directory, if it is not in "/usr/lib/asterisk/modules"
 
@@ -14,9 +16,11 @@ cat <<EOF
 EOF
 }
 
-[[ $# -eq 0 ]] && { Usage; exit 1; }
+[[ $# -lt 2 ]] && { Usage; exit 1; }
 
 PACK_NAME=$1
+#ASTERISK_VERSION="16.8.0"
+ASTERISK_VERSION=$2
 
 ## Directories and make package tools definition
 REPO_INSTALL_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
@@ -27,18 +31,17 @@ SCRIPTS_DIR="${REPO_INSTALL_DIR}/scripts"
 INSTALL_SCRIPT_NAME="install_asterisk_unimrcp.sh"
 INSTALL_SCRIPT="${SCRIPTS_DIR}/${INSTALL_SCRIPT_NAME}"
 MAKESELF="${SCRIPTS_DIR}/makeself/makeself.sh"
-ASTERISK_VERSION="16.8.0"
 
 echo $REPO_DIR
 
 ## Build dir
-[[ ! -z $3 ]] && { BUILD_DIR="$REPO_DIR/$4"; } || { BUILD_DIR="$REPO_DIR"; }
+[[ ! -z $5 ]] && { BUILD_DIR="$REPO_DIR/$5"; } || { BUILD_DIR="$REPO_DIR"; }
 
 ## Project dependencies definition
-[[ ! -z $2 ]] && { UNIMRCP_INSTALL_DIR=$3; } || { UNIMRCP_INSTALL_DIR="/usr/local/unimrcp"; }
+[[ ! -z $4 ]] && { UNIMRCP_INSTALL_DIR=$4; } || { UNIMRCP_INSTALL_DIR="/usr/local/unimrcp"; }
 
 ## Project install target
-[[ ! -z $2 ]] && { ASTERISK_UNIMRCP_INSTALL_DIR=$2; } || { ASTERISK_UNIMRCP_INSTALL_DIR="/usr/lib/asterisk/modules"; }
+[[ ! -z $3 ]] && { ASTERISK_UNIMRCP_INSTALL_DIR=$3; } || { ASTERISK_UNIMRCP_INSTALL_DIR="/usr/lib/asterisk/modules"; }
 echo "REPO_INSTALL_DIR=$REPO_INSTALL_DIR"
 echo "BUILD_DIR=$BUILD_DIR"
 echo "REPO_DIR=$REPO_DIR"
@@ -53,14 +56,11 @@ lib_uni_version="0.7.0"
 lib_sip_version="0.6.0"
 lib_apr_version="0.5.2"
 lib_aprutil_version="0.5.4"
+lib_expat_version="0.5.0"
+lib_expat_system_version="1.6.0"
 if [[ -e /etc/redhat-release ]]; then
-  lib_expat_version="0.5.0"
-  lib_expat_system_version="1.6.0"
   is_rhel="true"
 elif [[ -e /etc/debian_version ]]; then
-  ASTERISK_VERSION="18.7.1"
-  lib_expat_version="0.5.0"
-  lib_expat_system_version="1.6.0"
   is_deb="true"
 else
   is_rhel="false"

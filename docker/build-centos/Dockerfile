@@ -5,18 +5,22 @@ RUN yum groupinstall -y "Development Tools" && \
         sudo \
         cmake
 
+ARG UNIMRCP_DEPS=1.6.0
+ARG UNIMRCP_VER=1.7.0
+ARG ASTERISK_VER=16.8.0
+
 # Install deps do unimrcp
-RUN cd /tmp/ && \
-    curl https://www.unimrcp.org/project/component-view/unimrcp-deps-1-6-0-tar-gz/download --output unimrcp-deps-1.6.0.tar.gz && \
-    tar -zxvf unimrcp-deps-1.6.0.tar.gz && \
-    cd unimrcp-deps-1.6.0 && \
+RUN UNIMRCP_DEPS_DASH=$(echo ${UNIMRCP_DEPS} | tr . -) && cd /tmp/ && \
+    curl https://www.unimrcp.org/project/component-view/unimrcp-deps-${UNIMRCP_DEPS_DASH}-tar-gz/download --output unimrcp-deps-${UNIMRCP_DEPS}.tar.gz && \
+    tar -zxvf unimrcp-deps-${UNIMRCP_DEPS}.tar.gz && \
+    cd unimrcp-deps-${UNIMRCP_DEPS} && \
     ./build-dep-libs.sh --silent
 
 # Install unimrcp
 RUN cd /tmp/ && \
     git clone https://github.com/unispeech/unimrcp.git && \
     cd unimrcp && \
-    git checkout tags/unimrcp-1.7.0 && \
+    git checkout tags/unimrcp-${UNIMRCP_VER} && \
     ./bootstrap && \
     ./configure && \
     make -j 4 && \
@@ -27,7 +31,7 @@ RUN cd /tmp/ && \
     git clone https://github.com/asterisk/asterisk.git
 
 RUN cd /tmp/asterisk/ && \
-    git checkout certified/16.8-cert2 && \
+    git checkout ${ASTERISK_VER} && \
     ./bootstrap.sh && \
     cd contrib/scripts/ && \
     ./install_prereq install && \
@@ -45,9 +49,9 @@ RUN cd /tmp/asterisk/ && \
 RUN cd /tmp/ && \
     git clone https://github.com/unispeech/asterisk-unimrcp.git && \
     cd asterisk-unimrcp && \
-    git checkout tags/asterisk-unimrcp-1.7.0 && \
+    git checkout tags/asterisk-unimrcp-${UNIMRCP_VER} && \
     ./bootstrap && \
-    ./configure --with-asterisk-version=16.8.0 && \
+    ./configure --with-asterisk-version=${ASTERISK_VER} && \
     make && \
     make install
     # ./configure --with-asterisk=/tmp/asterisk/ --with-asterisk-version=17.5.0 && \
@@ -61,4 +65,4 @@ ENTRYPOINT ["/opt/start.sh"]
 
 CMD ["asterisk", "-vvvdddf", "-T", "-p"]
 
-LABEL modules="unimrcp-deps:1.6.0,unimrcp:1.7.0,asterisk:certified/16.8-cert2,asterisk-unimrcp:1.7.0"
+LABEL modules="centos:7.8,unimrcp-deps:${UNIMRCP_DEPS},unimrcp:${UNIMRCP_VER},asterisk:${ASTERISK_VER},asterisk-unimrcp:${UNIMRCP_VER}"

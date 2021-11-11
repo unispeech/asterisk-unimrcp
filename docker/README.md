@@ -8,6 +8,9 @@ The first one is using docker containers as describe bellow.
 The folders build-os_name and exec-os_name contains the Dockerfiles to build and execute
 Asterisk + unimrcp application with docker containers.
 
+You can select the Asterisk Version with argument *--build-arg ASTERISK_VER=13.18.3*
+in docker commands.
+
 ### Build
 
 Enter in build directory for the selected SO and generate the container to build:
@@ -21,7 +24,7 @@ Execute built image and generate the installation file.
 
 ```bash
 docker run --rm -v <path_to_asterisk_unimrcp_sources>:/src --name asterisk-build \
-       asterisk-unimrcp-build /src/install/make_asterisk_unimrcp_install.sh <installation file name>
+       asterisk-unimrcp-build /src/install/make_asterisk_unimrcp_install.sh <installation file name> <asterisk version>
 ```
 
 The installation file is generated in install directory of asterisk unimrcp sources.

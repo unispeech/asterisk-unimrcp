@@ -5,12 +5,14 @@ RUN yum groupinstall -y "Development Tools" && \
         sudo \
         cmake
 
+ARG ASTERISK_VER=16.8.0
+
 # Asterisk
 RUN cd /tmp/ && \
     git clone https://github.com/asterisk/asterisk.git
 
 RUN cd /tmp/asterisk/ && \
-    git checkout certified/16.8-cert2 && \
+    git checkout ${ASTERISK_VER} && \
     ./bootstrap.sh && \
     cd contrib/scripts/ && \
     ./install_prereq install && \
@@ -33,4 +35,4 @@ ENTRYPOINT ["/opt/start.sh"]
 
 CMD ["asterisk", "-vvvdddf", "-T", "-p"]
 
-LABEL modules="asterisk:certified/16.8-cert2"
+LABEL modules="centos:7.8,asterisk:${ASTERISK_VER}"
