@@ -65,7 +65,7 @@ RUN cd /tmp/asterisk/ && \
     make config && \
     make install-logrotate
 
-RUN make install-headers || echo "WARNING no-install-headers"
+RUN cd /tmp/asterisk/ && make install-headers || echo "WARNING no-install-headers"
 
 # Asterisk-unimrcp
 RUN cd /tmp/ && \
