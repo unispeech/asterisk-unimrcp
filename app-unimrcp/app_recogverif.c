@@ -93,7 +93,7 @@
 					<option name="dtt"> <para>DTMF terminate timeout (msec).</para> </option>
 					<option name="dttc"> <para>DTMF terminate characters.</para> </option>
 					<option name="sw"> <para>Save waveform (true/false).</para> </option>
-					<option name="rm"> <para>Verification mode (verify/enroll).</para> </option>
+					<option name="vm"> <para>Verification mode (verify/enroll).</para> </option>
 					<option name="nac"> <para>New audio channel (true/false).</para> </option>
 					<option name="spl"> <para>Speech language (e.g. "en-GB", "en-US", "en-AU", etc.).</para> </option>
 					<option name="rm"> <para>Recognition mode (normal/hotword).</para> </option>
@@ -137,12 +137,8 @@
 			functions RECOG_CONFIDENCE(), RECOG_GRAMMAR(), RECOG_INPUT(), and RECOG_INSTANCE().</para>
 		</description>
 		<see-also>
-			<ref type="application">MRCPSynth</ref>
-			<ref type="application">SynthAndRecog</ref>
-			<ref type="function">RECOG_CONFIDENCE</ref>
-			<ref type="function">RECOG_GRAMMAR</ref>
-			<ref type="function">RECOG_INPUT</ref>
-			<ref type="function">RECOG_INSTANCE</ref>
+			<ref type="application">MRCPRecog</ref>
+			<ref type="application">MRCPVerif</ref>
 		</see-also>
 	</application>
  ***/
@@ -1890,6 +1886,7 @@ static int app_recog_verif_exec(struct ast_channel *chan, ast_app_data data)
 		int uri_encoded_results = 0;
 		/* Store the results for further reference from the dialplan. */
 		apr_size_t result_len = strlen(result);
+		//app_session->nlsml_verif_result = nlsml_verification_result_parse(result, result_len, datastore->pool);
 
 		if (uri_encoded_results != 0) {
 			apr_size_t len = result_len * 2;
