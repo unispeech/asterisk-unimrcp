@@ -69,9 +69,9 @@ RUN cd /tmp/asterisk/ && make install-headers || echo "WARNING no-install-header
 
 # Asterisk-unimrcp
 RUN cd /tmp/ && \
-    git clone https://github.com/unispeech/asterisk-unimrcp.git && \
+    git clone https://github.com/CPqD/asterisk-unimrcp.git && \
     cd asterisk-unimrcp && \
-    git checkout tags/asterisk-unimrcp-${UNIMRCP_VER} && \
+    git checkout feature/BMT-167 && \
     ./bootstrap && \
     ./configure --with-asterisk-version=${ASTERISK_VER} && \
     make && \
