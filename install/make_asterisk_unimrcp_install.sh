@@ -42,6 +42,9 @@ echo $REPO_DIR
 
 ## Project install target
 [[ ! -z $3 ]] && { ASTERISK_UNIMRCP_INSTALL_DIR=$3; } || { ASTERISK_UNIMRCP_INSTALL_DIR="/usr/lib/asterisk/modules"; }
+
+ASTERISK_UNIMRCP_DOC_DIR="/var/lib/asterisk/documentation/"
+
 echo "REPO_INSTALL_DIR=$REPO_INSTALL_DIR"
 echo "BUILD_DIR=$BUILD_DIR"
 echo "REPO_DIR=$REPO_DIR"
@@ -49,6 +52,7 @@ echo "UNIMRCP_DEPS_DIR=$UNIMRCP_DEPS_DIR"
 echo "UNIMRCP_DIR=$UNIMRCP_DIR"
 echo "ASTERISK_UNIMRCP_INSTALL_DIR=$ASTERISK_UNIMRCP_INSTALL_DIR"
 echo "UNIMRCP_INSTALL_DIR=$UNIMRCP_INSTALL_DIR"
+echo "ASTERISK_UNIMRCP_DOC_DIR=$ASTERISK_UNIMRCP_DOC_DIR"
 
 APR_LIB_DIR=/usr/local/apr/lib
 SIP_LIB_DIR=/usr/local/lib
@@ -125,7 +129,7 @@ mkdir -p ${TMP_PATH}/$UNIMRCP_INSTALL_DIR/lib
 mkdir -p ${TMP_PATH}/$UNIMRCP_INSTALL_DIR/var
 mkdir -p ${TMP_PATH}/$ASTERISK_UNIMRCP_INSTALL_DIR
 mkdir -p ${TMP_PATH}/$UNIMRCP_INSTALL_DIR/bin
-
+mkdir -p ${TMP_PATH}/$ASTERISK_UNIMRCP_DOC_DIR
 
 # The CPqD MRCP stuff that will be installed
 README="$REPO_INSTALL_DIR/resources/README.md"
@@ -134,7 +138,7 @@ ASTERISK_UNIMRCP_LIB_SO="$(readlink -e $ASTERISK_UNIMRCP_INSTALL_DIR/res_speech_
 ASTERISK_UNIMRCP_LIB_LA="$(readlink -e $ASTERISK_UNIMRCP_INSTALL_DIR/res_speech_unimrcp.la)"
 ASTERISK_UNIMRCP_APP_SO="$(readlink -e $ASTERISK_UNIMRCP_INSTALL_DIR/app_unimrcp.so)"
 ASTERISK_UNIMRCP_APP_LA="$(readlink -e $ASTERISK_UNIMRCP_INSTALL_DIR/app_unimrcp.la)"
-#CPQD_VER_PLUGIN="$(readlink -e $BUILD_DIR/installed/plugin/cpqd_mrcp_ver.so)"
+ASTERISK_UNIMRCP_APP_DOC="../app-unimrcp/.xmldocs/app_unimrcp-en_US.xml"
 ASTERISK_MRCP_CONF_DIR="$REPO_INSTALL_DIR/resources/usr"
 ASTERISK_ETC_DIR="$REPO_INSTALL_DIR/resources/etc"
 
@@ -158,6 +162,9 @@ UNIMRCP_CLIENT_UMC="$UNIMRCP_INSTALL_DIR/bin/umc"
   { echo "Missing ${ASTERISK_UNIMRCP_APP_SO} Exiting..."; exit 1; }
 
 [[ -e ${ASTERISK_UNIMRCP_APP_LA} ]] && {  cp ${ASTERISK_UNIMRCP_APP_LA} ${TMP_PATH}/$ASTERISK_UNIMRCP_INSTALL_DIR; } ||
+  { echo "Missing ${ASTERISK_UNIMRCP_APP_LA} Exiting..."; exit 1; }
+
+[[ -e ${ASTERISK_UNIMRCP_APP_DOC} ]] && {  cp ${ASTERISK_UNIMRCP_APP_DOC} ${TMP_PATH}/$ASTERISK_UNIMRCP_DOC_DIR; } ||
   { echo "Missing ${ASTERISK_UNIMRCP_APP_LA} Exiting..."; exit 1; }
 
 # Copy configuration files
