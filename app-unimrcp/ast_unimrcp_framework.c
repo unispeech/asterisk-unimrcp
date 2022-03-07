@@ -671,10 +671,13 @@ mrcp_client_t *mod_unimrcp_client_create(apr_pool_t *mod_pool)
 
 	apt_str_t resource_class_synth;
 	apt_str_t resource_class_recog;
+	apt_str_t resource_class_verif;
 	apt_string_set(&resource_class_synth, "speechsynth");
 	apt_string_set(&resource_class_recog, "speechrecog");
+	apt_string_set(&resource_class_verif, "speakverify");
 	mrcp_resource_load(resource_loader, &resource_class_synth);
 	mrcp_resource_load(resource_loader, &resource_class_recog);
+	mrcp_resource_load(resource_loader, &resource_class_verif);
 
 	resource_factory = mrcp_resource_factory_get(resource_loader);
 

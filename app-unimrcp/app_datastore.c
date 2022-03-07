@@ -256,6 +256,7 @@ app_session_t* app_datastore_session_add(app_datastore_t* app_datastore, const c
 		session->schannel_number = get_next_speech_channel_number();
 		session->lifetime = APP_SESSION_LIFETIME_DYNAMIC;
 		session->recog_channel = NULL;
+		session->verif_channel = NULL;
 		session->synth_channel = NULL;
 		session->readformat = NULL;
 		session->rawreadformat = NULL;

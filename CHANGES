@@ -1,3 +1,9 @@
+Changes for Asterisk UniMRCP Modules Unreleased
+
+2. Dialplan Applications (app_unimrcp.so)
+
+Added MRCPVerif and MRCPRecogVerif (with Verify from buffer)
+
 Changes for Asterisk UniMRCP Modules 1.8.0
 
 1. Generic Speech Recognition API (res_speech_unimrcp.so)

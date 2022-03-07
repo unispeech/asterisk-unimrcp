@@ -81,6 +81,7 @@ static const char *speech_channel_type_to_string(speech_channel_type_t type)
 	switch (type) {
 		case SPEECH_CHANNEL_SYNTHESIZER: return "SYNTHESIZER";
 		case SPEECH_CHANNEL_RECOGNIZER: return "RECOGNIZER";
+		case SPEECH_CHANNEL_VERIFIER: return "VERIFIER";
 		default: return "UNKNOWN";
 	}
 }
@@ -117,7 +118,7 @@ void speech_channel_set_state_unlocked(speech_channel_t *schannel, speech_channe
 /* Set the current channel state. */
 void speech_channel_set_state(speech_channel_t *schannel, speech_channel_state_t state)
 {
-	if (schannel) {
+	if (schannel && schannel->mutex) {
 		apr_thread_mutex_lock(schannel->mutex);
 
 		speech_channel_set_state_unlocked(schannel, state);
@@ -431,30 +432,38 @@ int speech_channel_open(speech_channel_t *schannel, ast_mrcp_profile_t *profile)
 	mpf_termination_t *termination = NULL;
 	mrcp_resource_type_e resource_type;
 
-	if (!schannel || !profile)
-		return -1;
-
-	apr_thread_mutex_lock(schannel->mutex);
-
-	/* Make sure we can open channel. */
-	if (schannel->state != SPEECH_CHANNEL_CLOSED) {
-		apr_thread_mutex_unlock(schannel->mutex);
+	if (!schannel || !profile) {
+		ast_log(LOG_ERROR, "Invalid paramenters for open channel\n");
 		return -1;
 	}
+
+	apr_thread_mutex_lock(schannel->mutex);
 
 	schannel->profile = profile;
 
 	/* Create MRCP session. */
-	if ((schannel->unimrcp_session = mrcp_application_session_create(schannel->application->app, profile->name, schannel)) == NULL) {
-		/* Profile doesn't exist? */
-		ast_log(LOG_ERROR, "(%s) Unable to create session with %s\n", schannel->name, profile->name);
+	if (!schannel->unimrcp_session) {
+		/* Make sure we can open channel. */
+		if (schannel->state != SPEECH_CHANNEL_CLOSED) {
+			ast_log(LOG_ERROR, "Invalid Speech channel state\n");
+			apr_thread_mutex_unlock(schannel->mutex);
+			return -1;
+		}
 
-		apr_thread_mutex_unlock(schannel->mutex);
-		return 2;
+		if ((schannel->unimrcp_session = mrcp_application_session_create(schannel->application->app, profile->name, schannel)) == NULL) {
+			/* Profile doesn't exist? */
+			ast_log(LOG_ERROR, "(%s) Unable to create session with %s\n", schannel->name, profile->name);
+
+			apr_thread_mutex_unlock(schannel->mutex);
+			return 2;
+		}
+
+		/* Set session name for logging purposes. */
+		mrcp_application_session_name_set(schannel->unimrcp_session, schannel->name);
+	} else {
+		schannel->state = SPEECH_CHANNEL_CLOSED;
+		mrcp_application_session_object_set(schannel->unimrcp_session, schannel);
 	}
-	
-	/* Set session name for logging purposes. */
-	mrcp_application_session_name_set(schannel->unimrcp_session, schannel->name);
 
 	/* Create audio termination and add to channel. */
 	if ((termination = speech_channel_create_mpf_termination(schannel)) == NULL) {
@@ -466,11 +475,13 @@ int speech_channel_open(speech_channel_t *schannel, ast_mrcp_profile_t *profile)
 		apr_thread_mutex_unlock(schannel->mutex);
 		return -1;
 	}
-
+	ast_log(LOG_NOTICE, "Termination created\n");
 	if (schannel->type == SPEECH_CHANNEL_SYNTHESIZER)
 		resource_type = MRCP_SYNTHESIZER_RESOURCE;
-	else
+	if (schannel->type == SPEECH_CHANNEL_RECOGNIZER)
 		resource_type = MRCP_RECOGNIZER_RESOURCE;
+	else
+		resource_type = MRCP_VERIFIER_RESOURCE;
 
 	if ((schannel->unimrcp_channel = mrcp_application_channel_create(schannel->unimrcp_session, resource_type, termination, NULL, schannel)) == NULL) {
 		ast_log(LOG_ERROR, "(%s) Unable to create channel with %s\n", schannel->name, profile->name);
@@ -481,7 +492,7 @@ int speech_channel_open(speech_channel_t *schannel, ast_mrcp_profile_t *profile)
 		apr_thread_mutex_unlock(schannel->mutex);
 		return -1;
 	}
-
+	ast_log(LOG_NOTICE, "Channel created\n");
 	/* Add channel to session. This establishes the connection to the MRCP server. */
 	if (mrcp_application_channel_add(schannel->unimrcp_session, schannel->unimrcp_channel) != TRUE) {
 		ast_log(LOG_ERROR, "(%s) Unable to add channel to session with %s\n", schannel->name, profile->name);
@@ -492,11 +503,13 @@ int speech_channel_open(speech_channel_t *schannel, ast_mrcp_profile_t *profile)
 		apr_thread_mutex_unlock(schannel->mutex);
 		return -1;
 	}
-
+	ast_log(LOG_NOTICE, "Channel ADDED\n");
 	/* Wait for channel to be ready. */
-	while (schannel->state == SPEECH_CHANNEL_CLOSED)
+	while (schannel->state == SPEECH_CHANNEL_CLOSED) {
 		apr_thread_cond_timedwait(schannel->cond, schannel->mutex, globals.speech_channel_timeout);
-
+		ast_log(LOG_NOTICE, "Channel waiting...\n");
+	}
+	ast_log(LOG_NOTICE, "Channel ready\n");
 	if (schannel->state == SPEECH_CHANNEL_READY) {
 		ast_log(LOG_DEBUG, "(%s) channel is ready\n", schannel->name);
 	} else if (schannel->state == SPEECH_CHANNEL_CLOSED) {
@@ -520,16 +533,17 @@ int speech_channel_open(speech_channel_t *schannel, ast_mrcp_profile_t *profile)
 		}
 	}
 
-	if (schannel->type == SPEECH_CHANNEL_RECOGNIZER) {
+	if (schannel->type == SPEECH_CHANNEL_RECOGNIZER || schannel->type == SPEECH_CHANNEL_VERIFIER) {
 		recognizer_data_t *r = (recognizer_data_t *)apr_palloc(schannel->pool, sizeof(recognizer_data_t));
 
 		if (r != NULL) {
 			schannel->data = r;
 			memset(r, 0, sizeof(recognizer_data_t));
-
-			if ((r->grammars = apr_hash_make(schannel->pool)) == NULL) {
-				ast_log(LOG_ERROR, "Unable to allocate hash for grammars\n");
-				status = -1;
+			if (schannel->type == SPEECH_CHANNEL_RECOGNIZER) {
+				if ((r->grammars = apr_hash_make(schannel->pool)) == NULL) {
+					ast_log(LOG_ERROR, "Unable to allocate hash for grammars\n");
+					status = -1;
+				}
 			}
 		} else {
 			ast_log(LOG_ERROR, "Unable to allocate recognizer data structure\n");
@@ -639,9 +653,9 @@ int speech_channel_read(speech_channel_t *schannel, void *data, apr_size_t *len,
 #if SPEECH_CHANNEL_TRACE
 		apr_size_t req_len = *len;
 #endif
-		audio_queue_t *queue = schannel->audio_queue;
-
+		if (!schannel->mutex) return 1;
 		apr_thread_mutex_lock(schannel->mutex);
+		audio_queue_t *queue = schannel->audio_queue;
 
 		if (schannel->state == SPEECH_CHANNEL_PROCESSING)
 			status = audio_queue_read(queue, data, len, block);

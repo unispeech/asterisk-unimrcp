@@ -1,0 +1,3 @@
+[submodule "docker/asterisk-deb"]
+	path = docker/asterisk-deb
+	url = git@github.com:fzaruch/asterisk.git
