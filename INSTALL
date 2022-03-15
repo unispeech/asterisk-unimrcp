@@ -76,6 +76,10 @@ To explicitly specify the Asterisk version, use the option "--with-asterisk-vers
 
 	./configure --with-asterisk-version=11.2.1
 
+To explicitly specify where to install modules, use the option "--prefix". For example:
+
+	./configure --prefix=/usr/lib64/asterisk/modules
+
 To explicitly specify where to look for UniMRCP, use the option "--with-unimrcp=". For example,
 if UniMRCP is installed in /opt/unimrcp, use:
 
