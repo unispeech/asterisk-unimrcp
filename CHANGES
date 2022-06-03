@@ -1,3 +1,34 @@
+Changes for Asterisk UniMRCP Modules 1.9.0
+
+1. Generic Speech Recognition API (res_speech_unimrcp.so)
+
+    * N/A.
+
+2. Dialplan Applications (app_unimrcp.so)
+
+  2.1. MRCPSynth()
+
+    * N/A.
+
+  2.2. MRCPRecog()
+
+    * Introduced new helper functions RECOG_INPUT_MODE() and RECOG_INPUT_CONFIDENCE().
+    * If the option 'nif' is set to 'json' and the path provided as an input parameter to RECOG_INSTANCE() does not exist, then return 'null'.
+
+  2.3. SynthAndRecog()
+
+    * Introduced new helper functions RECOG_INPUT_MODE() and RECOG_INPUT_CONFIDENCE().
+    * If the option 'nif' is set to 'json' and the path provided as an input parameter to RECOG_INSTANCE() does not exist, then return 'null'.
+
+  2.4. Framework
+
+    * N/A.
+
+3. Miscellaneous
+
+    * Added support for Asterisk 19.
+
+
 Changes for Asterisk UniMRCP Modules 1.8.0
 
 1. Generic Speech Recognition API (res_speech_unimrcp.so)
