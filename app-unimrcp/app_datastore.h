@@ -51,6 +51,7 @@ struct app_session_t {
 	speech_channel_t           *recog_channel;      /* recognition channel */
 	speech_channel_t           *synth_channel;      /* synthesis channel, if any */
 	speech_channel_t           *verif_channel;      /* synthesis channel, if any */
+	mrcp_app_message_process_dispatcher_t *msg_process_dispatcher;
 	ast_format_compat          *readformat;         /* old read format, to be restored */
 	ast_format_compat          *rawreadformat;      /* old raw read format, to be restored (>= Asterisk 13) */
 	ast_format_compat          *writeformat;        /* old write format, to be restored */
@@ -63,6 +64,7 @@ struct app_session_t {
 	off_t                       max_filelength;     /* max file length used with file playing, if any */
 	int                         it_policy;          /* input timers policy (sar_it_policies) */
 	nlsml_result_t             *nlsml_result;       /* parsed NLSML result */
+	nlsml_verification_result_t *nlsml_verif_result;/* parsed NLSML verif result */
 	apt_bool_t                  stop_barged_synth;  /* whether or not to always stop barged synthesis request */
 	enum nlsml_instance_format  instance_format;    /* NLSML instance format */
 };

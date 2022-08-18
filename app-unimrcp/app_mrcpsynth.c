@@ -136,6 +136,7 @@ enum mrcpsynth_option_args {
 /* The structure which holds the application options (including the MRCP params). */
 struct mrcpsynth_options_t {
 	apr_hash_t *synth_hfs;
+	apr_hash_t *vendor_par_list;
 
 	int         flags;
 	const char *params[OPT_ARG_ARRAY_SIZE];
@@ -320,7 +321,7 @@ static apt_bool_t synth_stream_write(mpf_audio_stream_t *stream, const mpf_frame
 }
 
 /* Send SPEAK request to synthesizer. */
-static int synth_channel_speak(speech_channel_t *schannel, const char *content, const char *content_type, apr_hash_t *header_fields)
+static int synth_channel_speak(speech_channel_t *schannel, const char *content, const char *content_type, mrcpsynth_options_t *options)
 {
 	int status = 0;
 	mrcp_message_t *mrcp_message = NULL;
@@ -362,7 +363,7 @@ static int synth_channel_speak(speech_channel_t *schannel, const char *content, 
 	}
 
 	/* Add params to MRCP message. */
-	speech_channel_set_params(schannel, mrcp_message, header_fields);
+	speech_channel_set_params(schannel, mrcp_message, options->synth_hfs, options->vendor_par_list);
 
 	/* Set body (plain text or SSML). */
 	apt_string_assign(&mrcp_message->body, content, schannel->pool);
@@ -390,8 +391,9 @@ static int synth_channel_speak(speech_channel_t *schannel, const char *content, 
 }
 
 /* Apply application options. */
-static int mrcpsynth_option_apply(mrcpsynth_options_t *options, const char *key, const char *value)
+static int mrcpsynth_option_apply(mrcpsynth_options_t *options, const char *key, char *value)
 {
+	char *vendor_name, *vendor_value;
 	if (strcasecmp(key, "p") == 0) {
 		options->flags |= MRCPSYNTH_PROFILE;
 		options->params[OPT_ARG_PROFILE] = value;
@@ -418,7 +420,10 @@ static int mrcpsynth_option_apply(mrcpsynth_options_t *options, const char *key,
 	} else if (strcasecmp(key, "a") == 0) {
 		apr_hash_set(options->synth_hfs, "Voice-Age", APR_HASH_KEY_STRING, value);
 	} else if (strcasecmp(key, "vsp") == 0) {
-		apr_hash_set(options->synth_hfs, "Vendor-Specific-Parameters", APR_HASH_KEY_STRING, value);
+		vendor_value = value;
+		if ((vendor_name = strsep(&vendor_value, "=")) && vendor_value) {
+			apr_hash_set(options->vendor_par_list, vendor_name, APR_HASH_KEY_STRING, vendor_value);
+		}
 	} else if (strcasecmp(key, "plt") == 0) {
 		options->flags |= MRCPSYNTH_PERSISTENT_LIFETIME;
 		options->params[OPT_ARG_PERSISTENT_LIFETIME] = value;
@@ -444,6 +449,10 @@ static int mrcpsynth_options_parse(char *str, mrcpsynth_options_t *options, apr_
 		return 0;
 
 	if ((options->synth_hfs = apr_hash_make(pool)) == NULL) {
+		return -1;
+	}
+
+	if ((options->vendor_par_list = apr_hash_make(pool)) == NULL) {
 		return -1;
 	}
 
@@ -653,7 +662,7 @@ static int app_synth_exec(struct ast_channel *chan, ast_app_data data)
 
 	ast_log(LOG_NOTICE, "(%s) Synthesizing, enable DTMFs: %d\n", name, dtmf_enable);
 
-	if (synth_channel_speak(app_session->synth_channel, content, content_type, mrcpsynth_options.synth_hfs) != 0) {
+	if (synth_channel_speak(app_session->synth_channel, content, content_type, &mrcpsynth_options) != 0) {
 		ast_log(LOG_WARNING, "(%s) Unable to start synthesis\n", name);
 		return mrcpsynth_exit(chan, app_session, SPEECH_CHANNEL_STATUS_ERROR);
 	}

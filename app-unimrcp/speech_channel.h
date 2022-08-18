@@ -53,7 +53,8 @@ enum speech_channel_state_t {
 	/* Processing speech request. */
 	SPEECH_CHANNEL_PROCESSING,
 	/* Error opening channel. */
-	SPEECH_CHANNEL_ERROR
+	SPEECH_CHANNEL_ERROR,
+	SPEECH_CHANNEL_WAIT_CLOSED
 };
 typedef enum speech_channel_state_t speech_channel_state_t;
 
@@ -199,7 +200,7 @@ int speech_channel_open(speech_channel_t *schannel, ast_mrcp_profile_t *profile)
 int speech_channel_stop(speech_channel_t *schannel);
 
 /* Set parameters in an MRCP header. */
-int speech_channel_set_params(speech_channel_t *schannel, mrcp_message_t *msg, apr_hash_t *header_fields);
+int speech_channel_set_params(speech_channel_t *schannel, mrcp_message_t *msg, apr_hash_t *header_fields, apr_hash_t *vendor_specific_fields);
 
 /* Read synthesized speech / speech to be recognized. */
 int speech_channel_read(speech_channel_t *schannel, void *data, apr_size_t *len, int block);

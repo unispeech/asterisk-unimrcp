@@ -611,8 +611,48 @@ int speech_channel_stop(speech_channel_t *schannel)
 	return status;
 }
 
+int MrcpAddVendorSpecificParam(mrcp_message_t* mrcp_message, const char* param_name, const char* param_value)
+{
+	if (!mrcp_message || !param_name || !param_value) {
+		return -1;
+	}
+
+	if (mrcp_message->start_line.method_id != RECOGNIZER_RECOGNIZE &&
+		mrcp_message->start_line.method_id != RECOGNIZER_SET_PARAMS &&
+		mrcp_message->start_line.method_id != RECOGNIZER_GET_PARAMS &&
+		mrcp_message->start_line.method_id != VERIFIER_VERIFY &&
+		mrcp_message->start_line.method_id != VERIFIER_SET_PARAMS &&
+		mrcp_message->start_line.method_id != VERIFIER_GET_PARAMS) {
+		return -1;
+	}
+
+	mrcp_generic_header_t* generic_header = mrcp_generic_header_get(mrcp_message);
+
+	if (!generic_header) {
+		/* get/allocate generic header */
+		generic_header = mrcp_generic_header_prepare(mrcp_message);
+		if (!generic_header) {
+			return -1;
+		}
+	}
+
+	if (!generic_header->vendor_specific_params) {
+		generic_header->vendor_specific_params =
+		apt_pair_array_create(1, mrcp_message->pool);
+	}
+
+	apt_str_t param_name_;
+	apt_str_t param_value_;
+	apt_string_set(&param_name_, param_name);
+	apt_string_set(&param_value_, param_value);
+	apt_pair_array_append(generic_header->vendor_specific_params, &param_name_, &param_value_,
+				mrcp_message->pool);
+
+	return 0;
+}
+
 /* Set parameters in an MRCP header. */
-int speech_channel_set_params(speech_channel_t *schannel, mrcp_message_t *msg, apr_hash_t *header_fields)
+int speech_channel_set_params(speech_channel_t *schannel, mrcp_message_t *msg, apr_hash_t *header_fields, apr_hash_t *vendor_specific_fields)
 {
 	if (schannel && msg && header_fields) {
 		/* Loop through each param and add to the message. */
@@ -638,6 +678,28 @@ int speech_channel_set_params(speech_channel_t *schannel, mrcp_message_t *msg, a
 					}
 				}
 			}
+		}
+		if (vendor_specific_fields) {
+			for (hi = apr_hash_first(NULL, vendor_specific_fields); hi; hi = apr_hash_next(hi)) {
+				char *param_name = NULL;
+				char *param_val = NULL;
+				const void *key;
+				void *val;
+
+				apr_hash_this(hi, &key, NULL, &val);
+				param_name = (char *)key;
+				param_val = (char *)val;
+
+				if (param_name && (strlen(param_name) > 0) && param_val && (strlen(param_val) > 0)) {
+				ast_log(LOG_DEBUG, "(%s) Vendor Specific Parameter %s: %s\n", schannel->name, param_name, param_val);
+					if (MrcpAddVendorSpecificParam(msg, param_name, param_val) < 0) {
+						ast_log(LOG_WARNING, "Error setting MRCP header %s=%s\n", param_name, param_val);
+					}
+				}
+			}
+			mrcp_generic_header_t* generic_header = mrcp_generic_header_get(msg);
+			if (generic_header && generic_header->vendor_specific_params)
+				mrcp_generic_header_property_add(msg, GENERIC_HEADER_VENDOR_SPECIFIC_PARAMS);
 		}
 	}
 

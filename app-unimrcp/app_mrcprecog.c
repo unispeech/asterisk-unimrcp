@@ -57,6 +57,8 @@
 
 /* UniMRCP includes. */
 #include "app_datastore.h"
+#include "app_msg_process_dispatcher.h"
+#include "mrcp_client_session.h"
 
 /*** DOCUMENTATION
 	<application name="MRCPRecog" language="en_US">
@@ -98,6 +100,7 @@
 					<option name="cdb"> <para>Clear DTMF buffer (true/false).</para> </option>
 					<option name="enm"> <para>Early nomatch (true/false).</para> </option>
 					<option name="iwu"> <para>Input waveform URI.</para> </option>
+					<option name="vbu"> <para>Verify Buffer Utterance (true/false).</para> </option>
 					<option name="mt"> <para>Media type.</para> </option>
 					<option name="epe"> <para>Exit on play error 
 						(1: terminate recognition on file play error, 0: continue even if file play fails).</para>
@@ -192,6 +195,7 @@ enum mrcprecog_it_policies {
 /* The structure which holds the application options (including the MRCP params). */
 struct mrcprecog_options_t {
 	apr_hash_t *recog_hfs;
+	apr_hash_t *vendor_par_list;
 
 	int         flags;
 	const char *params[OPT_ARG_ARRAY_SIZE];
@@ -200,98 +204,6 @@ struct mrcprecog_options_t {
 typedef struct mrcprecog_options_t mrcprecog_options_t;
 
 /* --- MRCP SPEECH CHANNEL INTERFACE TO UNIMRCP --- */
-
-/* Get speech channel associated with provided MRCP session. */
-static APR_INLINE speech_channel_t * get_speech_channel(mrcp_session_t *session)
-{
-	if (session)
-		return (speech_channel_t *)mrcp_application_session_object_get(session);
-
-	return NULL;
-}
-
-/* Handle the UniMRCP responses sent to session terminate requests. */
-static apt_bool_t speech_on_session_terminate(mrcp_application_t *application, mrcp_session_t *session, mrcp_sig_status_code_e status)
-{
-	speech_channel_t *schannel = get_speech_channel(session);
-	if (!schannel) {
-		ast_log(LOG_ERROR, "speech_on_session_terminate: unknown channel error!\n");
-		return FALSE;
-	}
-
-	ast_log(LOG_DEBUG, "(%s) speech_on_session_terminate\n", schannel->name);
-
-	if (schannel->dtmf_generator != NULL) {
-		ast_log(LOG_DEBUG, "(%s) DTMF generator destroyed\n", schannel->name);
-		mpf_dtmf_generator_destroy(schannel->dtmf_generator);
-		schannel->dtmf_generator = NULL;
-	}
-
-	ast_log(LOG_DEBUG, "(%s) Destroying MRCP session\n", schannel->name);
-
-	if (!mrcp_application_session_destroy(session))
-		ast_log(LOG_WARNING, "(%s) Unable to destroy application session\n", schannel->name);
-
-	speech_channel_set_state(schannel, SPEECH_CHANNEL_CLOSED);
-	return TRUE;
-}
-
-/* Handle the UniMRCP responses sent to channel add requests. */
-static apt_bool_t speech_on_channel_add(mrcp_application_t *application, mrcp_session_t *session, mrcp_channel_t *channel, mrcp_sig_status_code_e status)
-{
-	speech_channel_t *schannel = get_speech_channel(session);
-	if (!schannel || !channel) {
-		ast_log(LOG_ERROR, "speech_on_channel_add: unknown channel error!\n");
-		return FALSE;
-	}
-
-	ast_log(LOG_DEBUG, "(%s) speech_on_channel_add\n", schannel->name);
-
-	if (status == MRCP_SIG_STATUS_CODE_SUCCESS) {
-		const mpf_codec_descriptor_t *descriptor = mrcp_application_source_descriptor_get(channel);
-		if (!descriptor) {
-			ast_log(LOG_ERROR, "(%s) Unable to determine codec descriptor\n", schannel->name);
-			speech_channel_set_state(schannel, SPEECH_CHANNEL_ERROR);
-			return FALSE;
-		}
-
-		if (schannel->stream != NULL) {
-			schannel->dtmf_generator = mpf_dtmf_generator_create(schannel->stream, schannel->pool);
-			/* schannel->dtmf_generator = mpf_dtmf_generator_create_ex(schannel->stream, MPF_DTMF_GENERATOR_OUTBAND, 70, 50, schannel->pool); */
-
-			if (schannel->dtmf_generator != NULL)
-				ast_log(LOG_DEBUG, "(%s) DTMF generator created\n", schannel->name);
-			else
-				ast_log(LOG_WARNING, "(%s) Unable to create DTMF generator\n", schannel->name);
-		}
-
-		schannel->rate = descriptor->sampling_rate;
-		const char *codec_name = NULL;
-		if (descriptor->name.length > 0)
-			codec_name = descriptor->name.buf;
-		else
-			codec_name = "unknown";
-
-		if (!schannel->session_id) {
-			const apt_str_t *session_id = mrcp_application_session_id_get(session);
-			if (session_id && session_id->buf) {
-				schannel->session_id = apr_pstrdup(schannel->pool, session_id->buf);
-			}
-		}
-		
-		ast_log(LOG_NOTICE, "(%s) Channel ready codec=%s, sample rate=%d\n",
-			schannel->name,
-			codec_name,
-			schannel->rate);
-		speech_channel_set_state(schannel, SPEECH_CHANNEL_READY);
-	} else {
-		int rc = mrcp_application_session_response_code_get(session);
-		ast_log(LOG_ERROR, "(%s) Channel error status=%d, response code=%d!\n", schannel->name, status, rc);
-		speech_channel_set_state(schannel, SPEECH_CHANNEL_ERROR);
-	}
-
-	return TRUE;
-}
 
 /* --- MRCP ASR --- */
 
@@ -477,7 +389,7 @@ static int recog_channel_set_timers_started(speech_channel_t *schannel)
 }
 
 /* Start RECOGNIZE request. */
-static int recog_channel_start(speech_channel_t *schannel, const char *name, int start_input_timers, apr_hash_t *header_fields)
+static int recog_channel_start(speech_channel_t *schannel, const char *name, int start_input_timers, mrcprecog_options_t *options)
 {
 	int status = 0;
 	mrcp_message_t *mrcp_message = NULL;
@@ -493,12 +405,14 @@ static int recog_channel_start(speech_channel_t *schannel, const char *name, int
 	
 	apr_thread_mutex_lock(schannel->mutex);
 
-	if (schannel->state != SPEECH_CHANNEL_READY) {
+	if (schannel->state != SPEECH_CHANNEL_READY && schannel->state != SPEECH_CHANNEL_WAIT_CLOSED) {
+		ast_log(LOG_ERROR, "Channel not ready!\n");
 		apr_thread_mutex_unlock(schannel->mutex);
 		return -1;
 	}
 
 	if (schannel->data == NULL) {
+		ast_log(LOG_ERROR, "Channel data NULL!\n");
 		apr_thread_mutex_unlock(schannel->mutex);
 		return -1;
 	}
@@ -553,6 +467,7 @@ static int recog_channel_start(speech_channel_t *schannel, const char *name, int
 
 	/* Allocate generic header. */
 	if ((generic_header = (mrcp_generic_header_t *)mrcp_generic_header_prepare(mrcp_message)) == NULL) {
+		ast_log(LOG_ERROR, "Error to allocate generic header!\n");
 		apr_thread_mutex_unlock(schannel->mutex);
 		return -1;
 	}
@@ -564,6 +479,7 @@ static int recog_channel_start(speech_channel_t *schannel, const char *name, int
 
 	/* Allocate recognizer-specific header. */
 	if ((recog_header = (mrcp_recog_header_t *)mrcp_resource_header_prepare(mrcp_message)) == NULL) {
+		ast_log(LOG_ERROR, "Error to allocate specific header!\n");
 		apr_thread_mutex_unlock(schannel->mutex);
 		return -1;
 	}
@@ -579,7 +495,7 @@ static int recog_channel_start(speech_channel_t *schannel, const char *name, int
 	mrcp_resource_header_property_add(mrcp_message, RECOGNIZER_HEADER_START_INPUT_TIMERS);
 
 	/* Set parameters. */
-	speech_channel_set_params(schannel, mrcp_message, header_fields);
+	speech_channel_set_params(schannel, mrcp_message, options->recog_hfs, options->vendor_par_list);
 
 	/* Set message body. */
 	apt_string_assign_n(&mrcp_message->body, grammar_refs, length, mrcp_message->pool);
@@ -596,6 +512,7 @@ static int recog_channel_start(speech_channel_t *schannel, const char *name, int
 	apr_thread_cond_timedwait(schannel->cond, schannel->mutex, globals.speech_channel_timeout);
 
 	if (schannel->state != SPEECH_CHANNEL_PROCESSING) {
+		ast_log(LOG_ERROR, "Channel not processing!\n");
 		apr_thread_mutex_unlock(schannel->mutex);
 		return -1;
 	}
@@ -625,7 +542,8 @@ static int recog_channel_load_grammar(speech_channel_t *schannel, const char *na
 
 	apr_thread_mutex_lock(schannel->mutex);
 
-	if (schannel->state != SPEECH_CHANNEL_READY) {
+	if (schannel->state != SPEECH_CHANNEL_READY && schannel->state != SPEECH_CHANNEL_WAIT_CLOSED) {
+		ast_log(LOG_ERROR, "Channel not ready!\n");
 		apr_thread_mutex_unlock(schannel->mutex);
 		return -1;
 	}
@@ -854,8 +772,9 @@ static apt_bool_t recog_stream_read(mpf_audio_stream_t *stream, mpf_frame_t *fra
 }
 
 /* Apply application options. */
-static int mrcprecog_option_apply(mrcprecog_options_t *options, const char *key, const char *value)
+static int mrcprecog_option_apply(mrcprecog_options_t *options, const char *key, char *value)
 {
+	char *vendor_name, *vendor_value;
 	if (strcasecmp(key, "ct") == 0) {
 		apr_hash_set(options->recog_hfs, "Confidence-Threshold", APR_HASH_KEY_STRING, value);
 	} else if (strcasecmp(key, "sva") == 0) {
@@ -896,8 +815,13 @@ static int mrcprecog_option_apply(mrcprecog_options_t *options, const char *key,
 		apr_hash_set(options->recog_hfs, "Speech-Language", APR_HASH_KEY_STRING, value);
 	} else if (strcasecmp(key, "mt") == 0) {
 		apr_hash_set(options->recog_hfs, "Media-Type", APR_HASH_KEY_STRING, value);
+	} else if (strcasecmp(key, "vbu") == 0) {
+		apr_hash_set(options->recog_hfs, "Verify-Buffer-Utterance", APR_HASH_KEY_STRING, value);
 	} else if (strcasecmp(key, "vsp") == 0) {
-		apr_hash_set(options->recog_hfs, "Vendor-Specific-Parameters", APR_HASH_KEY_STRING, value);
+		vendor_value = value;
+		if ((vendor_name = strsep(&vendor_value, "=")) && vendor_value) {
+			apr_hash_set(options->vendor_par_list, vendor_name, APR_HASH_KEY_STRING, vendor_value);
+		}
 	} else if (strcasecmp(key, "p") == 0) {
 		options->flags |= MRCPRECOG_PROFILE;
 		options->params[OPT_ARG_PROFILE] = value;
@@ -952,6 +876,10 @@ static int mrcprecog_options_parse(char *str, mrcprecog_options_t *options, apr_
 		return 0;
 
 	if ((options->recog_hfs = apr_hash_make(pool)) == NULL) {
+		return -1;
+	}
+
+	if ((options->vendor_par_list = apr_hash_make(pool)) == NULL) {
 		return -1;
 	}
 
@@ -1032,6 +960,8 @@ static int mrcprecog_exit(struct ast_channel *chan, app_session_t *app_session, 
 			if (app_session->lifetime == APP_SESSION_LIFETIME_DYNAMIC) {
 				speech_channel_destroy(app_session->recog_channel);
 				app_session->recog_channel = NULL;
+			} else {
+				speech_channel_set_state(app_session->recog_channel, SPEECH_CHANNEL_WAIT_CLOSED);
 			}
 		}
 	}
@@ -1126,6 +1056,7 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 	if (!app_session) {
 		return mrcprecog_exit(chan, NULL, SPEECH_CHANNEL_STATUS_ERROR);
 	}
+	mrcprecog->app_session = app_session;
 
 	datastore->last_recog_entry = entry;
 	app_session->nlsml_result = NULL;
@@ -1134,6 +1065,7 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 	app_session->cur_prompt = 0;
 	app_session->it_policy = IT_POLICY_AUTO;
 	app_session->lifetime = lifetime;
+	app_session->msg_process_dispatcher = &mrcprecog->message_process;
 
 	if(!app_session->recog_channel) {
 		/* Get new read format. */
@@ -1365,7 +1297,7 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 	ast_log(LOG_NOTICE, "(%s) Recognizing, enable DTMFs: %d, start input timers: %d\n", name, dtmf_enable, start_input_timers);
 
 	/* Start recognition. */
-	if (recog_channel_start(app_session->recog_channel, name, start_input_timers, mrcprecog_options.recog_hfs) != 0) {
+	if (recog_channel_start(app_session->recog_channel, name, start_input_timers, &mrcprecog_options) != 0) {
 		ast_log(LOG_ERROR, "(%s) Unable to start recognition\n", name);
 
 		const char *completion_cause = NULL;
@@ -1576,7 +1508,7 @@ int load_mrcprecog_app()
 #endif
 
 	/* Create the recognizer application and link its callbacks */
-	if ((mrcprecog->app = mrcp_application_create(recog_message_handler, (void *)0, pool)) == NULL) {
+	if ((mrcprecog->app = mrcp_application_create(recog_message_handler, (void *)mrcprecog, pool)) == NULL) {
 		ast_log(LOG_ERROR, "Unable to create recognizer MRCP application %s\n", app_recog);
 		mrcprecog = NULL;
 		return -1;
@@ -1586,9 +1518,10 @@ int load_mrcprecog_app()
 	mrcprecog->dispatcher.on_session_terminate = speech_on_session_terminate;
 	mrcprecog->dispatcher.on_channel_add = speech_on_channel_add;
 	mrcprecog->dispatcher.on_channel_remove = NULL;
-	mrcprecog->dispatcher.on_message_receive = recog_on_message_receive;
+	mrcprecog->dispatcher.on_message_receive = mrcp_on_message_receive;
 	mrcprecog->dispatcher.on_terminate_event = NULL;
 	mrcprecog->dispatcher.on_resource_discover = NULL;
+	mrcprecog->message_process.recog_message_process = recog_on_message_receive;
 	mrcprecog->audio_stream_vtable.destroy = NULL;
 	mrcprecog->audio_stream_vtable.open_rx = recog_stream_open;
 	mrcprecog->audio_stream_vtable.close_rx = NULL;

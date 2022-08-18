@@ -72,6 +72,7 @@
 					<option name="cdb"> <para>Clear DTMF buffer (true/false).</para> </option>
 					<option name="enm"> <para>Early nomatch (true/false).</para> </option>
 					<option name="iwu"> <para>Input waveform URI.</para> </option>
+					<option name="vbu"> <para>Verify Buffer Utterance (true/false).</para> </option>
 					<option name="mt"> <para>Media type.</para> </option>
 					<option name="pv"> <para>Prosody volume (silent/x-soft/soft/medium/loud/x-loud/default).</para> </option>
 					<option name="pr"> <para>Prosody rate (x-slow/slow/medium/fast/x-fast/default).</para> </option>
@@ -170,6 +171,8 @@ enum sar_it_policies {
 struct sar_options_t {
 	apr_hash_t *synth_hfs;
 	apr_hash_t *recog_hfs;
+	apr_hash_t *syn_vendor_par_list;
+	apr_hash_t *rec_vendor_par_list;
 
 	int         flags;
 	const char *params[OPT_ARG_ARRAY_SIZE];
@@ -389,7 +392,7 @@ static apt_bool_t synth_stream_write(mpf_audio_stream_t *stream, const mpf_frame
 }
 
 /* Send SPEAK request to synthesizer. */
-static int synth_channel_speak(speech_channel_t *schannel, const char *content, const char *content_type, apr_hash_t *header_fields)
+static int synth_channel_speak(speech_channel_t *schannel, const char *content, const char *content_type, sar_options_t *options)
 {
 	int status = 0;
 	mrcp_message_t *mrcp_message = NULL;
@@ -431,7 +434,7 @@ static int synth_channel_speak(speech_channel_t *schannel, const char *content, 
 	}
 
 	/* Add params to MRCP message. */
-	speech_channel_set_params(schannel, mrcp_message, header_fields);
+	speech_channel_set_params(schannel, mrcp_message, options->synth_hfs, options->syn_vendor_par_list);
 
 	/* Set body (plain text or SSML). */
 	apt_string_assign(&mrcp_message->body, content, schannel->pool);
@@ -680,7 +683,7 @@ static int recog_channel_set_timers_started(speech_channel_t *schannel)
 }
 
 /* Start RECOGNIZE request. */
-static int recog_channel_start(speech_channel_t *schannel, const char *name, int start_input_timers, apr_hash_t *header_fields)
+static int recog_channel_start(speech_channel_t *schannel, const char *name, int start_input_timers, sar_options_t *options)
 {
 	int status = 0;
 	mrcp_message_t *mrcp_message = NULL;
@@ -782,7 +785,7 @@ static int recog_channel_start(speech_channel_t *schannel, const char *name, int
 	mrcp_resource_header_property_add(mrcp_message, RECOGNIZER_HEADER_START_INPUT_TIMERS);
 
 	/* Set parameters. */
-	speech_channel_set_params(schannel, mrcp_message, header_fields);
+	speech_channel_set_params(schannel, mrcp_message, options->recog_hfs, options->rec_vendor_par_list);
 
 	/* Set message body. */
 	apt_string_assign_n(&mrcp_message->body, grammar_refs, length, mrcp_message->pool);
@@ -1040,8 +1043,9 @@ static apt_bool_t recog_stream_read(mpf_audio_stream_t *stream, mpf_frame_t *fra
 }
 
 /* Apply application options. */
-static int synthandrecog_option_apply(sar_options_t *options, const char *key, const char *value)
+static int synthandrecog_option_apply(sar_options_t *options, const char *key, char *value)
 {
+	char *vendor_name, *vendor_value;
 	if (strcasecmp(key, "ct") == 0) {
 		apr_hash_set(options->recog_hfs, "Confidence-Threshold", APR_HASH_KEY_STRING, value);
 	} else if (strcasecmp(key, "sva") == 0) {
@@ -1083,6 +1087,8 @@ static int synthandrecog_option_apply(sar_options_t *options, const char *key, c
 		apr_hash_set(options->synth_hfs, "Speech-Language", APR_HASH_KEY_STRING, value);
 	} else if (strcasecmp(key, "mt") == 0) {
 		apr_hash_set(options->recog_hfs, "Media-Type", APR_HASH_KEY_STRING, value);
+	} else if (strcasecmp(key, "vbu") == 0) {
+		apr_hash_set(options->recog_hfs, "Verify-Buffer-Utterance", APR_HASH_KEY_STRING, value);
 	} else if (strcasecmp(key, "pv") == 0) {
 		apr_hash_set(options->synth_hfs, "Prosody-Volume", APR_HASH_KEY_STRING, value);
 	} else if (strcasecmp(key, "pr") == 0) {
@@ -1096,12 +1102,21 @@ static int synthandrecog_option_apply(sar_options_t *options, const char *key, c
 	} else if (strcasecmp(key, "a") == 0) {
 		apr_hash_set(options->synth_hfs, "Voice-Age", APR_HASH_KEY_STRING, value);
 	} else if (strcasecmp(key, "vsp") == 0) {
-		apr_hash_set(options->recog_hfs, "Vendor-Specific-Parameters", APR_HASH_KEY_STRING, value);
-		apr_hash_set(options->synth_hfs, "Vendor-Specific-Parameters", APR_HASH_KEY_STRING, value);
+		vendor_value = value;
+		if ((vendor_name = strsep(&vendor_value, "=")) && vendor_value) {
+			apr_hash_set(options->rec_vendor_par_list, vendor_name, APR_HASH_KEY_STRING, vendor_value);
+			apr_hash_set(options->syn_vendor_par_list, vendor_name, APR_HASH_KEY_STRING, vendor_value);
+		}
 	} else if (strcasecmp(key, "vsprec") == 0) {
-		apr_hash_set(options->recog_hfs, "Vendor-Specific-Parameters", APR_HASH_KEY_STRING, value);
+		vendor_value = value;
+		if ((vendor_name = strsep(&vendor_value, "=")) && vendor_value) {
+			apr_hash_set(options->rec_vendor_par_list, vendor_name, APR_HASH_KEY_STRING, vendor_value);
+		}
 	} else if (strcasecmp(key, "vspsyn") == 0) {
-		apr_hash_set(options->synth_hfs, "Vendor-Specific-Parameters", APR_HASH_KEY_STRING, value);
+		vendor_value = value;
+		if ((vendor_name = strsep(&vendor_value, "=")) && vendor_value) {
+			apr_hash_set(options->syn_vendor_par_list, vendor_name, APR_HASH_KEY_STRING, vendor_value);
+		}
 	} else if (strcasecmp(key, "p") == 0) {
 		/* Set the same profile for synth and recog. There might be a separate 
 		configuration option for each of them in the future. */
@@ -1164,6 +1179,13 @@ static int synthandrecog_options_parse(char *str, sar_options_t *options, apr_po
 		return -1;
 	}
 	if ((options->synth_hfs = apr_hash_make(pool)) == NULL) {
+		return -1;
+	}
+
+	if ((options->syn_vendor_par_list = apr_hash_make(pool)) == NULL) {
+		return -1;
+	}
+	if ((options->rec_vendor_par_list = apr_hash_make(pool)) == NULL) {
 		return -1;
 	}
 
@@ -1263,7 +1285,7 @@ static sar_prompt_item_t* synthandrecog_prompt_play(app_datastore_t* datastore, 
 		}
 
 		/* Start synthesis. */
-		if (synth_channel_speak(app_session->synth_channel, content, content_type, sar_options->synth_hfs) != 0) {
+		if (synth_channel_speak(app_session->synth_channel, content, content_type, sar_options) != 0) {
 			ast_log(LOG_ERROR, "(%s) Unable to send SPEAK request\n", app_session->synth_channel->name);
 			return NULL;
 		}
@@ -1662,7 +1684,7 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 	ast_log(LOG_NOTICE, "(%s) Recognizing, Start-Input-Timers: %d\n", recog_name, start_input_timers);
 
 	/* Start recognition. */
-	if (recog_channel_start(app_session->recog_channel, recog_name, start_input_timers, sar_options.recog_hfs) != 0) {
+	if (recog_channel_start(app_session->recog_channel, recog_name, start_input_timers, &sar_options) != 0) {
 		ast_log(LOG_ERROR, "(%s) Unable to start recognition\n", recog_name);
 
 		const char *completion_cause = NULL;
