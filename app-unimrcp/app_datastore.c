@@ -590,7 +590,7 @@ static ast_json* recog_instance_find_json_object(ast_json *json, const char **pa
 
 	if (!child_json){
 		ast_log(LOG_DEBUG, "No such JSON object %s\n", *path);
-		return NULL;
+		child_json = ast_json_null();
 	}
 	
 	if (tmp) {
@@ -622,6 +622,9 @@ static int recog_instance_process_json(app_session_t *app_session, nlsml_instanc
 	if (child_json) {
 		switch (ast_json_typeof(child_json))
 		{
+			case AST_JSON_NULL:
+				buf = apr_pstrdup(app_session->pool, "null");
+				break;
 			case AST_JSON_TRUE:
 				buf = apr_pstrdup(app_session->pool, "true");
 				break;
