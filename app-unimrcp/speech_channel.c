@@ -478,7 +478,7 @@ int speech_channel_open(speech_channel_t *schannel, ast_mrcp_profile_t *profile)
 	ast_log(LOG_NOTICE, "Termination created\n");
 	if (schannel->type == SPEECH_CHANNEL_SYNTHESIZER)
 		resource_type = MRCP_SYNTHESIZER_RESOURCE;
-	if (schannel->type == SPEECH_CHANNEL_RECOGNIZER)
+	else if (schannel->type == SPEECH_CHANNEL_RECOGNIZER)
 		resource_type = MRCP_RECOGNIZER_RESOURCE;
 	else
 		resource_type = MRCP_VERIFIER_RESOURCE;
