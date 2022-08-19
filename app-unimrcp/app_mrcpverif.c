@@ -58,6 +58,7 @@
 /* UniMRCP includes. */
 #include "app_datastore.h"
 #include "app_msg_process_dispatcher.h"
+#include "app_channel_methods.h"
 #include "mrcp_client_session.h"
 
 /*** DOCUMENTATION
@@ -127,42 +128,6 @@ static const char *app_recog = "MRCPVerif";
 /* The application instance. */
 static ast_mrcp_application_t *mrcpverif = NULL;
 
-/* The enumeration of application options (excluding the MRCP params). */
-enum mrcpverif_option_flags {
-	MRCPVERIF_PROFILE             = (1 << 0),
-	MRCPVERIF_INTERRUPT           = (1 << 1),
-	MRCPVERIF_FILENAME            = (1 << 2),
-	MRCPVERIF_BARGEIN             = (1 << 3),
-	MRCPVERIF_EXIT_ON_PLAYERROR   = (1 << 4),
-	MRCPVERIF_URI_ENCODED_RESULTS = (1 << 5),
-	MRCPVERIF_OUTPUT_DELIMITERS   = (1 << 6),
-	MRCPVERIF_INPUT_TIMERS        = (1 << 7),
-	MRCPVERIF_PERSISTENT_LIFETIME = (1 << 8),
-	MRCPVERIF_DATASTORE_ENTRY     = (1 << 9),
-	MRCPVERIF_INSTANCE_FORMAT     = (1 << 10),
-	MRCPVERIF_BUF_HND             = (1 << 12)
-};
-
-/* The enumeration of option arguments. */
-enum mrcprecog_option_args {
-	OPT_ARG_PROFILE              = 0,
-	OPT_ARG_INTERRUPT            = 1,
-	OPT_ARG_FILENAME             = 2,
-	OPT_ARG_BARGEIN              = 3,
-	OPT_ARG_GRAMMAR_DELIMITERS   = 4,
-	OPT_ARG_EXIT_ON_PLAYERROR    = 5,
-	OPT_ARG_URI_ENCODED_RESULTS  = 6,
-	OPT_ARG_OUTPUT_DELIMITERS    = 7,
-	OPT_ARG_INPUT_TIMERS         = 8,
-	OPT_ARG_PERSISTENT_LIFETIME  = 9,
-	OPT_ARG_DATASTORE_ENTRY      = 10,
-	OPT_ARG_INSTANCE_FORMAT      = 11,
-	OPT_ARG_BUF_HND              = 12,
-
-	/* This MUST be the last value in this enum! */
-	OPT_ARG_ARRAY_SIZE           = 13
-};
-
 /* The enumeration of policies for the use of input timers. */
 enum mrcpverif_it_policies {
 	IT_POLICY_OFF               = 0, /* do not start input timers */
@@ -170,388 +135,9 @@ enum mrcpverif_it_policies {
 	IT_POLICY_AUTO                   /* start input timers once prompt is finished [default] */
 };
 
-/* The structure which holds the application options (including the MRCP params). */
-struct mrcpverif_options_t {
-	apr_hash_t *verif_session_hfs;
-	apr_hash_t *verif_hfs;
-	apr_hash_t *vendor_par_list;
-
-	int         flags;
-	const char *params[OPT_ARG_ARRAY_SIZE];
-};
-
-typedef struct mrcpverif_options_t mrcpverif_options_t;
-
 /* --- MRCP SPEECH CHANNEL INTERFACE TO UNIMRCP --- */
 
 /* --- MRCP ASR --- */
-
-/* Start verifier's input timers. */
-static int verif_channel_start_input_timers(speech_channel_t *schannel)
-{   
-	int status = 0;
-
-	if (!schannel) {
-		ast_log(LOG_ERROR, "start_input_timers: unknown channel error!\n");
-		return -1;
-	}
-
-	apr_thread_mutex_lock(schannel->mutex);
-
-	recognizer_data_t *r = (recognizer_data_t *)schannel->data;
-
-	if (r == NULL) {
-		ast_log(LOG_ERROR, "(%s) Recognizer data struct is NULL\n", schannel->name);
-
-		apr_thread_mutex_unlock(schannel->mutex);
-		return -1;
-	}
-
-	if ((schannel->state == SPEECH_CHANNEL_PROCESSING) && (!r->timers_started)) {
-		mrcp_message_t *mrcp_message;
-		ast_log(LOG_DEBUG, "(%s) Sending START-INPUT-TIMERS request\n", schannel->name);
-
-		/* Send START-INPUT-TIMERS to MRCP server. */
-		mrcp_message = mrcp_application_message_create(schannel->unimrcp_session, schannel->unimrcp_channel, VERIFIER_START_INPUT_TIMERS);
-
-		if (mrcp_message) {
-			mrcp_application_message_send(schannel->unimrcp_session, schannel->unimrcp_channel, mrcp_message);
-		} else {
-			ast_log(LOG_ERROR, "(%s) Failed to create START-INPUT-TIMERS message\n", schannel->name);
-			status = -1;
-		}
-	}
- 
-	apr_thread_mutex_unlock(schannel->mutex);
-	return status;
-}
-
-/* Flag that input has started. */
-static int verif_channel_set_start_of_input(speech_channel_t *schannel)
-{
-	int status = 0;
-
-	if (!schannel) {
-		ast_log(LOG_ERROR, "set_start_of_input: unknown channel error!\n");
-		return -1;
-	}
-
-	apr_thread_mutex_lock(schannel->mutex);
-
-	recognizer_data_t *r = (recognizer_data_t *)schannel->data;
-
-	if (r == NULL) {
-		ast_log(LOG_ERROR, "(%s) Recognizer data struct is NULL\n", schannel->name);
-
-		apr_thread_mutex_unlock(schannel->mutex);
-		return -1;
-	}
-
-	r->start_of_input = 1;
-
-	apr_thread_mutex_unlock(schannel->mutex);
-	return status;
-}
-
-/* Set the verification results. */
-static int verif_channel_set_results(speech_channel_t *schannel, int completion_cause, const apt_str_t *result, const apt_str_t *waveform_uri)
-{
-	int status = 0;
-
-	if (!schannel) {
-		ast_log(LOG_ERROR, "set_results: unknown channel error!\n");
-		return -1;
-	}
-
-	apr_thread_mutex_lock(schannel->mutex);
-
-	recognizer_data_t *r = (recognizer_data_t *)schannel->data;
-
-	if (r == NULL) {
-		ast_log(LOG_ERROR, "(%s) Recognizer data struct is NULL\n", schannel->name);
-
-		apr_thread_mutex_unlock(schannel->mutex);
-		return -1;
-	}
-
-	if (r->completion_cause >= 0) {
-		ast_log(LOG_DEBUG, "(%s) Result is already set\n", schannel->name);
-
-		apr_thread_mutex_unlock(schannel->mutex);
-		return -1;
-	}
-
-	if (result && result->length > 0) {
-		/* The duplicated string will always be NUL-terminated. */
-		r->result = apr_pstrndup(schannel->pool, result->buf, result->length);
-		ast_log(LOG_DEBUG, "(%s) Set result:\n\n%s\n", schannel->name, r->result);
-	}
-	r->completion_cause = completion_cause;
-	if (waveform_uri && waveform_uri->length > 0)
-		r->waveform_uri = apr_pstrndup(schannel->pool, waveform_uri->buf, waveform_uri->length);
-
-	apr_thread_mutex_unlock(schannel->mutex);
-	return status;
-}
-
-/* Get the verification results. */
-static int verif_channel_get_completion_cause(speech_channel_t *schannel, const char **completion_cause)
-{
-	if (!schannel) {
-		ast_log(LOG_ERROR, "verif_channel_get_completion_cause: unknown channel error!\n");
-		return -1;
-	}
-
-	apr_thread_mutex_lock(schannel->mutex);
-
-	recognizer_data_t *r = (recognizer_data_t *)schannel->data;
-
-	if (r == NULL) {
-		ast_log(LOG_ERROR, "(%s) Verifier data struct is NULL\n", schannel->name);
-
-		apr_thread_mutex_unlock(schannel->mutex);
-		return -1;
-	}
-
-	if (r->completion_cause < 0) {
-		ast_log(LOG_ERROR, "(%s) Verifier terminated prematurely\n", schannel->name);
-
-		apr_thread_mutex_unlock(schannel->mutex);
-		return -1;
-	}
-
-	if (completion_cause) {
-		*completion_cause = apr_psprintf(schannel->pool, "%03d", r->completion_cause);
-		ast_log(LOG_DEBUG, "(%s) Completion-Cause: %s\n", schannel->name, *completion_cause);
-		r->completion_cause = 0;
-	}
-
-	apr_thread_mutex_unlock(schannel->mutex);
-	return 0;
-}
-
-/* Get the verification results. */
-static int verif_channel_get_results(speech_channel_t *schannel, const char **completion_cause, const char **result, const char **waveform_uri)
-{
-	if (!schannel) {
-		ast_log(LOG_ERROR, "get_results: unknown channel error!\n");
-		return -1;
-	}
-
-	apr_thread_mutex_lock(schannel->mutex);
-
-	recognizer_data_t *r = (recognizer_data_t *)schannel->data;
-
-	if (r == NULL) {
-		ast_log(LOG_ERROR, "(%s) Verifier data struct is NULL\n", schannel->name);
-
-		apr_thread_mutex_unlock(schannel->mutex);
-		return -1;
-	}
-
-	if (r->completion_cause < 0) {
-		ast_log(LOG_ERROR, "(%s) Verifier terminated prematurely\n", schannel->name);
-
-		apr_thread_mutex_unlock(schannel->mutex);
-		return -1;
-	}
-
-	if (completion_cause) {
-		*completion_cause = apr_psprintf(schannel->pool, "%03d", r->completion_cause);
-		ast_log(LOG_DEBUG, "(%s) Completion-Cause: %s\n", schannel->name, *completion_cause);
-		r->completion_cause = 0;
-	}
-
-	if (result && r->result && strlen(r->result) > 0) {
-		*result = apr_pstrdup(schannel->pool, r->result);
-		ast_log(LOG_NOTICE, "(%s) Result:\n\n%s\n", schannel->name, *result);
-		r->result = NULL;
-	}
-
-	if (waveform_uri && r->waveform_uri && (strlen(r->waveform_uri)) > 0) {
-		*waveform_uri = apr_pstrdup(schannel->pool, r->waveform_uri);
-		ast_log(LOG_DEBUG, "(%s) Waveform-URI: %s\n", schannel->name, *waveform_uri);
-		r->waveform_uri = NULL;
-	}
-
-	apr_thread_mutex_unlock(schannel->mutex);
-	return 0;
-}
-
-/* Flag that the verifier channel timers are started. */
-static int verif_channel_set_timers_started(speech_channel_t *schannel)
-{
-	if (!schannel) {
-		ast_log(LOG_ERROR, "set_timers_started: unknown channel error!\n");
-		return -1;
-	}
-
-	apr_thread_mutex_lock(schannel->mutex);
-
-	recognizer_data_t *r = (recognizer_data_t *)schannel->data;
-
-	if (r == NULL) {
-		ast_log(LOG_ERROR, "(%s) Recognizer data struct is NULL\n", schannel->name);
-
-		apr_thread_mutex_unlock(schannel->mutex);
-		return -1;
-	}
-
-	r->timers_started = 1;
-
-	apr_thread_mutex_unlock(schannel->mutex);
-	return 0;
-}
-
-/* Start VERIFY request. */
-static int verif_channel_start(speech_channel_t *schannel, const char *name, int start_input_timers, mrcpverif_options_t *options)
-{
-	int status = 0;
-	apt_bool_t buffer_handling = FALSE;
-	mrcp_message_t *mrcp_message = NULL;
-	mrcp_message_t *verif_message = NULL;
-	mrcp_generic_header_t *generic_header = NULL;
-	mrcp_verifier_header_t *verif_header = NULL;
-	recognizer_data_t *r = NULL;
-	grammar_t *grammar = NULL;
-
-	if (!schannel || !name) {
-		ast_log(LOG_ERROR, "verif_channel_start: unknown channel error!\n");
-		return -1;
-	}
-
-	apr_thread_mutex_lock(schannel->mutex);
-
-	if (schannel->state != SPEECH_CHANNEL_READY && schannel->state != SPEECH_CHANNEL_WAIT_CLOSED) {
-		ast_log(LOG_ERROR, "verif_channel_start: SPEECH_CHANNEL_READY error!\n");
-		apr_thread_mutex_unlock(schannel->mutex);
-		return -1;
-	}
-
-	if (schannel->data == NULL) {
-		ast_log(LOG_ERROR, "verif_channel_start: SPEECH_CHANNEL_NULL error!\n");
-		apr_thread_mutex_unlock(schannel->mutex);
-		return -1;
-	}
-
-	if ((r = (recognizer_data_t *)schannel->data) == NULL) {
-		ast_log(LOG_ERROR, "(%s) Verify data struct is NULL\n", schannel->name);
-
-		apr_thread_mutex_unlock(schannel->mutex);
-		return -1;
-	}
-
-	r->result = NULL;
-	r->completion_cause = -1;
-	r->start_of_input = 0;
-
-	r->timers_started = start_input_timers;
-
-	apr_hash_index_t *hi;
-	void *val;
-	int length = 0;
-
-	/* Create MRCP message. */
-	if ((mrcp_message = mrcp_application_message_create(schannel->unimrcp_session, schannel->unimrcp_channel, VERIFIER_START_SESSION)) == NULL) {
-		ast_log(LOG_ERROR, "verif_channel_start: Create MRCP message error!\n");
-		apr_thread_mutex_unlock(schannel->mutex);
-		return -1;
-	}
-
-	/* Allocate generic header. */
-	if ((generic_header = (mrcp_generic_header_t *)mrcp_generic_header_prepare(mrcp_message)) == NULL) {
-		ast_log(LOG_ERROR, "verif_channel_start: Allocate generic header error!\n");
-		apr_thread_mutex_unlock(schannel->mutex);
-		return -1;
-	}
-
-	/* Allocate verifier-specific header. */
-	if ((verif_header = (mrcp_verifier_header_t *)mrcp_resource_header_prepare(mrcp_message)) == NULL) {
-		ast_log(LOG_ERROR, "verif_channel_start: Allocate verifier-specific header error!\n");
-		apr_thread_mutex_unlock(schannel->mutex);
-		return -1;
-	}
-
-	/* Set Start-Input-Timers. */
-	verif_header->start_input_timers = start_input_timers ? TRUE : FALSE;
-	mrcp_resource_header_property_add(mrcp_message, VERIFIER_HEADER_START_INPUT_TIMERS);
-
-	/* Set parameters for START SESSION. */
-	speech_channel_set_params(schannel, mrcp_message, options->verif_session_hfs, options->vendor_par_list);
-
-	/* Empty audio queue and send START-SESSION to MRCP server. */
-	audio_queue_clear(schannel->audio_queue);
-
-	if (mrcp_application_message_send(schannel->unimrcp_session, schannel->unimrcp_channel, mrcp_message) == FALSE) {
-		ast_log(LOG_ERROR, "verif_channel_start: mrcp_application_message_send error!\n");
-		apr_thread_mutex_unlock(schannel->mutex);
-		return -1;
-	}
-
-	/* Wait for COMPLETE. */
-	apr_thread_cond_timedwait(schannel->cond, schannel->mutex, globals.speech_channel_timeout);
-
-	if (schannel->state != SPEECH_CHANNEL_READY) {
-		ast_log(LOG_ERROR, "verif_channel_start: Not SPEECH_CHANNEL_READY error!\n");
-		apr_thread_mutex_unlock(schannel->mutex);
-		return -1;
-	}
-
-	if (options->flags | MRCPVERIF_BUF_HND) {
-		if (!strncmp("verify", options->params[OPT_ARG_BUF_HND], 6)) {
-			if ((verif_message = mrcp_application_message_create(schannel->unimrcp_session, schannel->unimrcp_channel, VERIFIER_VERIFY_FROM_BUFFER)) == NULL) {
-				ast_log(LOG_ERROR, "verif_channel_start: Not mrcp_application_message_create error!\n");
-				apr_thread_mutex_unlock(schannel->mutex);
-				return -1;
-			}
-		} else if (!strncmp("clear", options->params[OPT_ARG_BUF_HND], 5)) {
-			if ((verif_message = mrcp_application_message_create(schannel->unimrcp_session, schannel->unimrcp_channel, VERIFIER_CLEAR_BUFFER)) == NULL) {
-				ast_log(LOG_ERROR, "verif_channel_start: Not mrcp_application_message_create error!\n");
-				apr_thread_mutex_unlock(schannel->mutex);
-				return -1;
-			}
-			buffer_handling = TRUE;
-		} else if (!strncmp("rollback", options->params[OPT_ARG_BUF_HND], 8)) {
-			if ((verif_message = mrcp_application_message_create(schannel->unimrcp_session, schannel->unimrcp_channel, VERIFIER_VERIFY_ROLLBACK)) == NULL) {
-				ast_log(LOG_ERROR, "verif_channel_start: Not mrcp_application_message_create error!\n");
-				apr_thread_mutex_unlock(schannel->mutex);
-				return -1;
-			}
-			buffer_handling = TRUE;
-		}
-	}
-
-	if ((!verif_message && (verif_message = mrcp_application_message_create(schannel->unimrcp_session, schannel->unimrcp_channel, VERIFIER_VERIFY)) == NULL)) {
-		ast_log(LOG_ERROR, "verif_channel_start: Not mrcp_application_message_create error!\n");
-		apr_thread_mutex_unlock(schannel->mutex);
-		return -1;
-	}
-
-	/* Set parameters for VERIFY. */
-	speech_channel_set_params(schannel, verif_message, options->verif_hfs, NULL);
-
-	if (mrcp_application_message_send(schannel->unimrcp_session, schannel->unimrcp_channel, verif_message) == FALSE) {
-		ast_log(LOG_ERROR, "verif_channel_start: Not mrcp_application_message_send error!\n");
-		apr_thread_mutex_unlock(schannel->mutex);
-		return -1;
-	}
-
-	/* Wait for IN PROGRESS. */
-	apr_thread_cond_timedwait(schannel->cond, schannel->mutex, globals.speech_channel_timeout);
-
-	if (!buffer_handling && schannel->state != SPEECH_CHANNEL_PROCESSING) {
-		ast_log(LOG_ERROR, "verif_channel_start: SPEECH CHANNEL NOT PROCESSING error!\n");
-		apr_thread_mutex_unlock(schannel->mutex);
-		return -1;
-	} else if (buffer_handling && schannel->state != SPEECH_CHANNEL_READY) {
-		ast_log(LOG_ERROR, "verif_channel_start: SPEECH CHANNEL NOT READY error!\n");
-		apr_thread_mutex_unlock(schannel->mutex);
-		return -1;
-	}
-
-	apr_thread_mutex_unlock(schannel->mutex);
-	return status;
-}
 
 /* Process messages from UniMRCP for the verifier application. */
 static apt_bool_t verif_message_handler(const mrcp_app_message_t *app_message)
@@ -564,156 +150,8 @@ static apt_bool_t verif_message_handler(const mrcp_app_message_t *app_message)
 	return TRUE;
 }
 
-/* Handle the MRCP responses/events. */
-apt_bool_t verif_on_message_receive(mrcp_application_t *application, mrcp_session_t *session, mrcp_channel_t *channel, mrcp_message_t *message)
-{
-	speech_channel_t *schannel = get_speech_channel(session);
-	if (!schannel || !message) {
-		ast_log(LOG_ERROR, "verif_on_message_receive: unknown channel error!\n");
-		return FALSE;
-	}
-
-	mrcp_verifier_header_t *recog_hdr = (mrcp_verifier_header_t *)mrcp_resource_header_get(message);
-	if (message->start_line.message_type == MRCP_MESSAGE_TYPE_RESPONSE) {
-		/* Received MRCP response. */
-		if (message->start_line.method_id == VERIFIER_VERIFY
-			|| message->start_line.method_id == VERIFIER_VERIFY_FROM_BUFFER) {
-			/* Received the response to VERIFY request. */
-			if (message->start_line.request_state == MRCP_REQUEST_STATE_INPROGRESS) {
-				/* VERIFY in progress. */
-				ast_log(LOG_NOTICE, "(%s) VERIFY IN PROGRESS\n", schannel->name);
-				speech_channel_set_state(schannel, SPEECH_CHANNEL_PROCESSING);
-			} else if (message->start_line.request_state == MRCP_REQUEST_STATE_COMPLETE) {
-				/* RECOGNIZE failed to start. */
-				if (recog_hdr->completion_cause == VERIFIER_COMPLETION_CAUSE_UNKNOWN)
-					ast_log(LOG_DEBUG, "(%s) VERIFY failed: status = %d\n", schannel->name, message->start_line.status_code);
-				else {
-					ast_log(LOG_DEBUG, "(%s) VERIFY failed: status = %d, completion-cause = %03d\n", schannel->name, message->start_line.status_code, recog_hdr->completion_cause);
-					verif_channel_set_results(schannel, recog_hdr->completion_cause, NULL, NULL);
-				}
-				speech_channel_set_state(schannel, SPEECH_CHANNEL_ERROR);
-			} else if (message->start_line.request_state == MRCP_REQUEST_STATE_PENDING)
-				/* RECOGNIZE is queued. */
-				ast_log(LOG_NOTICE, "(%s) VERIFY PENDING\n", schannel->name);
-			else {
-				/* Received unexpected request_state. */
-				ast_log(LOG_DEBUG, "(%s) Unexpected VERIFY request state: %d\n", schannel->name, message->start_line.request_state);
-				speech_channel_set_state(schannel, SPEECH_CHANNEL_ERROR);
-			}
-		} else if (message->start_line.method_id == VERIFIER_START_SESSION) {
-			/* Received response to the STOP request. */
-			if (message->start_line.request_state == MRCP_REQUEST_STATE_COMPLETE) {
-				/* Got COMPLETE. */
-				ast_log(LOG_DEBUG, "(%s) VERIFIER STARTED\n", schannel->name);
-				speech_channel_set_state(schannel, SPEECH_CHANNEL_READY);
-			} else {
-				/* Received unexpected request state. */
-				ast_log(LOG_DEBUG, "(%s) Unexpected VERIFIER START request state: %d\n", schannel->name, message->start_line.request_state);
-				speech_channel_set_state(schannel, SPEECH_CHANNEL_ERROR);
-			}
-		} else if (message->start_line.method_id == VERIFIER_START_INPUT_TIMERS) {
-			/* Received response to START-INPUT-TIMERS request. */
-			if (message->start_line.request_state == MRCP_REQUEST_STATE_COMPLETE) {
-				if (message->start_line.status_code >= 200 && message->start_line.status_code <= 299) {
-					ast_log(LOG_DEBUG, "(%s) Timers started\n", schannel->name);
-					verif_channel_set_timers_started(schannel);
-				} else
-					ast_log(LOG_DEBUG, "(%s) Timers failed to start, status code = %d\n", schannel->name, message->start_line.status_code);
-			}
-		} else if (message->start_line.method_id == VERIFIER_VERIFY_ROLLBACK
-			   || message->start_line.method_id == VERIFIER_CLEAR_BUFFER) {
-			/* Received response to START-INPUT-TIMERS request. */
-			if (message->start_line.request_state == MRCP_REQUEST_STATE_COMPLETE) {
-				if (message->start_line.status_code >= 200 && message->start_line.status_code <= 299) {
-					ast_log(LOG_DEBUG, "(%s) Buffer clered / Rollbacked\n", schannel->name);
-					speech_channel_set_state(schannel, SPEECH_CHANNEL_READY);
-				} else
-					ast_log(LOG_WARNING, "(%s) Fail to Buffer handle, status code = %d\n", schannel->name, message->start_line.status_code);
-				verif_channel_set_results(schannel, message->start_line.status_code, NULL, NULL);
-			}
-		} else {
-			/* Received unexpected response. */
-			ast_log(LOG_WARNING, "(%s) Unexpected response, method_id = %d\n", schannel->name, (int)message->start_line.method_id);
-			speech_channel_set_state(schannel, SPEECH_CHANNEL_ERROR);
-		}
-	} else if (message->start_line.message_type == MRCP_MESSAGE_TYPE_EVENT) {
-		/* Received MRCP event. */
-		if (message->start_line.method_id == VERIFIER_VERIFICATION_COMPLETE) {
-			ast_log(LOG_DEBUG, "(%s) VERIFICATION COMPLETE, Completion-Cause: %03d\n", schannel->name, recog_hdr->completion_cause);
-			verif_channel_set_results(schannel, recog_hdr->completion_cause, &message->body, &recog_hdr->waveform_uri);
-			speech_channel_set_state(schannel, SPEECH_CHANNEL_READY);
-		} else if (message->start_line.method_id == VERIFIER_START_OF_INPUT) {
-			ast_log(LOG_DEBUG, "(%s) START OF INPUT\n", schannel->name);
-			verif_channel_set_start_of_input(schannel);
-		} else {
-			ast_log(LOG_DEBUG, "(%s) Unexpected event, method_id = %d\n", schannel->name, (int)message->start_line.method_id);
-			speech_channel_set_state(schannel, SPEECH_CHANNEL_ERROR);
-		}
-	} else {
-		ast_log(LOG_WARNING, "(%s) Unexpected message type, message_type = %d\n", schannel->name, message->start_line.message_type);
-		speech_channel_set_state(schannel, SPEECH_CHANNEL_ERROR);
-	}
-
-	return TRUE;
-}
-
-/* UniMRCP callback requesting stream to be opened. */
-static apt_bool_t verif_stream_open(mpf_audio_stream_t* stream, mpf_codec_t *codec)
-{
-	speech_channel_t* schannel;
-
-	if (stream)
-		schannel = (speech_channel_t*)stream->obj;
-	else
-		schannel = NULL;
-
-	if (!schannel) {
-		ast_log(LOG_ERROR, "verif_stream_open: unknown channel error!\n");
-		return FALSE;
-	}
-
-	schannel->stream = stream;
-	return TRUE;
-}
-
-/* UniMRCP callback requesting next frame for speal verification. */
-static apt_bool_t verif_stream_read(mpf_audio_stream_t *stream, mpf_frame_t *frame)
-{
-	speech_channel_t *schannel;
-
-	if (stream != NULL)
-		schannel = (speech_channel_t *)stream->obj;
-	else
-		schannel = NULL;
-
-	if (!schannel || !frame) {
-		ast_log(LOG_ERROR, "verif_stream_read: unknown channel error!\n");
-		return FALSE;
-	}
-
-	if (schannel->dtmf_generator != NULL) {
-		if (mpf_dtmf_generator_sending(schannel->dtmf_generator)) {
-			ast_log(LOG_DEBUG, "(%s) DTMF frame written\n", schannel->name);
-			mpf_dtmf_generator_put_frame(schannel->dtmf_generator, frame);
-			return TRUE;
-		}
-	}
-
-	apr_size_t to_read = frame->codec_frame.size;
-
-	/* Grab the data. Pad it if there isn't enough. */
-	if (speech_channel_read(schannel, frame->codec_frame.buffer, &to_read, 0) == 0) {
-		if (to_read < frame->codec_frame.size)
-			memset((apr_byte_t *)frame->codec_frame.buffer + to_read, schannel->silence, frame->codec_frame.size - to_read);
-
-		frame->type |= MEDIA_FRAME_TYPE_AUDIO;
-	}
-
-	return TRUE;
-}
-
 /* Apply application options. */
-static int mrcpverif_option_apply(mrcpverif_options_t *options, const char *key, char *value)
+static int mrcpverif_option_apply(mrcprecogverif_options_t *options, const char *key, char *value)
 {
 	char *vendor_name, *vendor_value;
 	if (strcasecmp(key, "vc") == 0) {
@@ -745,43 +183,43 @@ static int mrcpverif_option_apply(mrcpverif_options_t *options, const char *key,
 	} else if (strcasecmp(key, "vsp") == 0) {
 		vendor_value = value;
 		if ((vendor_name = strsep(&vendor_value, "=")) && vendor_value) {
-			apr_hash_set(options->vendor_par_list, vendor_name, APR_HASH_KEY_STRING, vendor_value);
+			apr_hash_set(options->ver_vendor_par_list, vendor_name, APR_HASH_KEY_STRING, vendor_value);
 		}
 	} else if (strcasecmp(key, "p") == 0) {
-		options->flags |= MRCPVERIF_PROFILE;
+		options->flags |= MRCPRECOGVERIF_PROFILE;
 		options->params[OPT_ARG_PROFILE] = value;
 	} else if (strcasecmp(key, "i") == 0) {
-		options->flags |= MRCPVERIF_INTERRUPT;
+		options->flags |= MRCPRECOGVERIF_INTERRUPT;
 		options->params[OPT_ARG_INTERRUPT] = value;
 	} else if (strcasecmp(key, "f") == 0) {
-		options->flags |= MRCPVERIF_FILENAME;
+		options->flags |= MRCPRECOGVERIF_FILENAME;
 		options->params[OPT_ARG_FILENAME] = value;
 	} else if (strcasecmp(key, "b") == 0) {
-		options->flags |= MRCPVERIF_BARGEIN;
+		options->flags |= MRCPRECOGVERIF_BARGEIN;
 		options->params[OPT_ARG_BARGEIN] = value;
 	} else if (strcasecmp(key, "epe") == 0) {
-		options->flags |= MRCPVERIF_EXIT_ON_PLAYERROR;
+		options->flags |= MRCPRECOGVERIF_EXIT_ON_PLAYERROR;
 		options->params[OPT_ARG_EXIT_ON_PLAYERROR] = value;
 	} else if (strcasecmp(key, "uer") == 0) {
-		options->flags |= MRCPVERIF_URI_ENCODED_RESULTS;
+		options->flags |= MRCPRECOGVERIF_URI_ENCODED_RESULTS;
 		options->params[OPT_ARG_URI_ENCODED_RESULTS] = value;
 	} else if (strcasecmp(key, "od") == 0) {
-		options->flags |= MRCPVERIF_OUTPUT_DELIMITERS;
+		options->flags |= MRCPRECOGVERIF_OUTPUT_DELIMITERS;
 		options->params[OPT_ARG_OUTPUT_DELIMITERS] = value;
 	} else if (strcasecmp(key, "sit") == 0) {
-		options->flags |= MRCPVERIF_INPUT_TIMERS;
+		options->flags |= MRCPRECOGVERIF_INPUT_TIMERS;
 		options->params[OPT_ARG_INPUT_TIMERS] = value;
 	} else if (strcasecmp(key, "plt") == 0) {
-		options->flags |= MRCPVERIF_PERSISTENT_LIFETIME;
+		options->flags |= MRCPRECOGVERIF_PERSISTENT_LIFETIME;
 		options->params[OPT_ARG_PERSISTENT_LIFETIME] = value;
 	} else if (strcasecmp(key, "dse") == 0) {
-		options->flags |= MRCPVERIF_DATASTORE_ENTRY;
+		options->flags |= MRCPRECOGVERIF_DATASTORE_ENTRY;
 		options->params[OPT_ARG_DATASTORE_ENTRY] = value;
 	} else if (strcasecmp(key, "nif") == 0) {
-		options->flags |= MRCPVERIF_INSTANCE_FORMAT;
+		options->flags |= MRCPRECOGVERIF_INSTANCE_FORMAT;
 		options->params[OPT_ARG_INSTANCE_FORMAT] = value;
 	} else if (strcasecmp(key, "bufh") == 0) {
-		options->flags |= MRCPVERIF_BUF_HND;
+		options->flags |= MRCPRECOGVERIF_BUF_HND;
 		options->params[OPT_ARG_BUF_HND] = value;
 	} else {
 		ast_log(LOG_WARNING, "Unknown option: %s\n", key);
@@ -790,7 +228,7 @@ static int mrcpverif_option_apply(mrcpverif_options_t *options, const char *key,
 }
 
 /* Parse application options. */
-static int mrcpverif_options_parse(char *str, mrcpverif_options_t *options, apr_pool_t *pool)
+static int mrcpverif_options_parse(char *str, mrcprecogverif_options_t *options, apr_pool_t *pool)
 {
 	char *s;
 	char *name, *value;
@@ -806,7 +244,7 @@ static int mrcpverif_options_parse(char *str, mrcpverif_options_t *options, apr_
 		return -1;
 	}
 
-	if ((options->vendor_par_list = apr_hash_make(pool)) == NULL) {
+	if ((options->ver_vendor_par_list = apr_hash_make(pool)) == NULL) {
 		return -1;
 	}
 
@@ -867,7 +305,7 @@ static APR_INLINE int mrcpverif_prompts_advance(app_session_t *app_session)
 }
 
 /* Start playing the current prompt. */
-static struct ast_filestream* mrcpverif_prompt_play(app_session_t *app_session, mrcpverif_options_t *mrcpverif_options, off_t *max_filelength)
+static struct ast_filestream* mrcpverif_prompt_play(app_session_t *app_session, mrcprecogverif_options_t *mrcpverif_options, off_t *max_filelength)
 {
 	if (app_session->cur_prompt >= app_session->prompts->nelts) {
 		ast_log(LOG_ERROR, "(%s) Out of bounds prompt index\n", app_session->verif_channel->name);
@@ -918,7 +356,7 @@ static int app_verif_exec(struct ast_channel *chan, ast_app_data data)
 	speech_channel_status_t status = SPEECH_CHANNEL_STATUS_OK;
 	char *parse;
 	int i;
-	mrcpverif_options_t mrcpverif_options;
+	mrcprecogverif_options_t mrcpverif_options;
 
 	AST_DECLARE_APP_ARGS(args,
 		AST_APP_ARG(options);
@@ -967,7 +405,7 @@ static int app_verif_exec(struct ast_channel *chan, ast_app_data data)
 
 	/* Get datastore entry. */
 	const char *entry = DEFAULT_DATASTORE_ENTRY;
-	if ((mrcpverif_options.flags & MRCPVERIF_DATASTORE_ENTRY) == MRCPVERIF_DATASTORE_ENTRY) {
+	if ((mrcpverif_options.flags & MRCPRECOGVERIF_DATASTORE_ENTRY) == MRCPRECOGVERIF_DATASTORE_ENTRY) {
 		if (!ast_strlen_zero(mrcpverif_options.params[OPT_ARG_DATASTORE_ENTRY])) {
 			entry = mrcpverif_options.params[OPT_ARG_DATASTORE_ENTRY];
 			lifetime = APP_SESSION_LIFETIME_PERSISTENT;
@@ -975,7 +413,7 @@ static int app_verif_exec(struct ast_channel *chan, ast_app_data data)
 	}
 
 	/* Check session lifetime. */
-	if ((mrcpverif_options.flags & MRCPVERIF_PERSISTENT_LIFETIME) == MRCPVERIF_PERSISTENT_LIFETIME) {
+	if ((mrcpverif_options.flags & MRCPRECOGVERIF_PERSISTENT_LIFETIME) == MRCPRECOGVERIF_PERSISTENT_LIFETIME) {
 		if (!ast_strlen_zero(mrcpverif_options.params[OPT_ARG_PERSISTENT_LIFETIME])) {
 			lifetime = (atoi(mrcpverif_options.params[OPT_ARG_PERSISTENT_LIFETIME]) == 0) ?
 				APP_SESSION_LIFETIME_DYNAMIC : APP_SESSION_LIFETIME_PERSISTENT;
@@ -1017,7 +455,7 @@ static int app_verif_exec(struct ast_channel *chan, ast_app_data data)
 		}
 
 		const char *profile_name = NULL;
-		if ((mrcpverif_options.flags & MRCPVERIF_PROFILE) == MRCPVERIF_PROFILE) {
+		if ((mrcpverif_options.flags & MRCPRECOGVERIF_PROFILE) == MRCPRECOGVERIF_PROFILE) {
 			if (!ast_strlen_zero(mrcpverif_options.params[OPT_ARG_PROFILE])) {
 				profile_name = mrcpverif_options.params[OPT_ARG_PROFILE];
 			}
@@ -1060,14 +498,14 @@ static int app_verif_exec(struct ast_channel *chan, ast_app_data data)
 
 	/* Check if barge-in is allowed. */
 	int bargein = 1;
-	if ((mrcpverif_options.flags & MRCPVERIF_BARGEIN) == MRCPVERIF_BARGEIN) {
+	if ((mrcpverif_options.flags & MRCPRECOGVERIF_BARGEIN) == MRCPRECOGVERIF_BARGEIN) {
 		if (!ast_strlen_zero(mrcpverif_options.params[OPT_ARG_BARGEIN])) {
 			bargein = (atoi(mrcpverif_options.params[OPT_ARG_BARGEIN]) == 0) ? 0 : 1;
 		}
 	}
 
 	dtmf_enable = 2;
-	if ((mrcpverif_options.flags & MRCPVERIF_INTERRUPT) == MRCPVERIF_INTERRUPT) {
+	if ((mrcpverif_options.flags & MRCPRECOGVERIF_INTERRUPT) == MRCPRECOGVERIF_INTERRUPT) {
 		if (!ast_strlen_zero(mrcpverif_options.params[OPT_ARG_INTERRUPT])) {
 			dtmf_enable = 1;
 			if (strcasecmp(mrcpverif_options.params[OPT_ARG_INTERRUPT], "any") == 0)
@@ -1080,7 +518,7 @@ static int app_verif_exec(struct ast_channel *chan, ast_app_data data)
 	}
 
 	/* Get NLSML instance format, if specified */
-	if ((mrcpverif_options.flags & MRCPVERIF_INSTANCE_FORMAT) == MRCPVERIF_INSTANCE_FORMAT) {
+	if ((mrcpverif_options.flags & MRCPRECOGVERIF_INSTANCE_FORMAT) == MRCPRECOGVERIF_INSTANCE_FORMAT) {
 		if (!ast_strlen_zero(mrcpverif_options.params[OPT_ARG_INSTANCE_FORMAT])) {
 			const char *format = mrcpverif_options.params[OPT_ARG_INSTANCE_FORMAT];
 			if (strcasecmp(format, "xml") == 0)
@@ -1091,7 +529,7 @@ static int app_verif_exec(struct ast_channel *chan, ast_app_data data)
 	}
 
 	const char *filenames = NULL;
-	if ((mrcpverif_options.flags & MRCPVERIF_FILENAME) == MRCPVERIF_FILENAME) {
+	if ((mrcpverif_options.flags & MRCPRECOGVERIF_FILENAME) == MRCPRECOGVERIF_FILENAME) {
 		if (!ast_strlen_zero(mrcpverif_options.params[OPT_ARG_FILENAME])) {
 			filenames = mrcpverif_options.params[OPT_ARG_FILENAME];
 		}
@@ -1100,7 +538,7 @@ static int app_verif_exec(struct ast_channel *chan, ast_app_data data)
 	if (filenames) {
 		/* Get output delimiters. */
 		const char *output_delimiters = "^";
-		if ((mrcpverif_options.flags & MRCPVERIF_OUTPUT_DELIMITERS) == MRCPVERIF_OUTPUT_DELIMITERS) {
+		if ((mrcpverif_options.flags & MRCPRECOGVERIF_OUTPUT_DELIMITERS) == MRCPRECOGVERIF_OUTPUT_DELIMITERS) {
 			if (!ast_strlen_zero(mrcpverif_options.params[OPT_ARG_OUTPUT_DELIMITERS])) {
 				output_delimiters = mrcpverif_options.params[OPT_ARG_OUTPUT_DELIMITERS];
 				ast_log(LOG_DEBUG, "(%s) Output delimiters: %s\n", output_delimiters, name);
@@ -1121,7 +559,7 @@ static int app_verif_exec(struct ast_channel *chan, ast_app_data data)
 	}
 
 	int exit_on_playerror = 0;
-	if ((mrcpverif_options.flags & MRCPVERIF_EXIT_ON_PLAYERROR) == MRCPVERIF_EXIT_ON_PLAYERROR) {
+	if ((mrcpverif_options.flags & MRCPRECOGVERIF_EXIT_ON_PLAYERROR) == MRCPRECOGVERIF_EXIT_ON_PLAYERROR) {
 		if (!ast_strlen_zero(mrcpverif_options.params[OPT_ARG_EXIT_ON_PLAYERROR])) {
 			exit_on_playerror = atoi(mrcpverif_options.params[OPT_ARG_EXIT_ON_PLAYERROR]);
 			if ((exit_on_playerror < 0) || (exit_on_playerror > 2))
@@ -1176,7 +614,7 @@ static int app_verif_exec(struct ast_channel *chan, ast_app_data data)
 	}
 
 	/* Check the policy for input timers. */
-	if ((mrcpverif_options.flags & MRCPVERIF_INPUT_TIMERS) == MRCPVERIF_INPUT_TIMERS) {
+	if ((mrcpverif_options.flags & MRCPRECOGVERIF_INPUT_TIMERS) == MRCPRECOGVERIF_INPUT_TIMERS) {
 		if (!ast_strlen_zero(mrcpverif_options.params[OPT_ARG_INPUT_TIMERS])) {
 			switch(atoi(mrcpverif_options.params[OPT_ARG_INPUT_TIMERS])) {
 				case 0: app_session->it_policy = IT_POLICY_OFF; break;
@@ -1197,7 +635,7 @@ static int app_verif_exec(struct ast_channel *chan, ast_app_data data)
 	if (verif_channel_start(app_session->verif_channel, name, start_input_timers, &mrcpverif_options) != 0) {
 
 		const char *completion_cause = NULL;
-		verif_channel_get_results(app_session->verif_channel, &completion_cause, NULL, NULL);
+		channel_get_results(app_session->verif_channel, &completion_cause, NULL, NULL);
 		if (completion_cause)
 			pbx_builtin_setvar_helper(chan, "VERIF_COMPLETION_CAUSE", completion_cause);
 
@@ -1291,21 +729,21 @@ static int app_verif_exec(struct ast_channel *chan, ast_app_data data)
 	const char *result = NULL;
 	const char *waveform_uri = NULL;
 
-	apt_bool_t has_result = !(mrcpverif_options.flags | MRCPVERIF_BUF_HND)
+	apt_bool_t has_result = !(mrcpverif_options.flags & MRCPRECOGVERIF_BUF_HND)
 				|| !strncmp("verify", mrcpverif_options.params[OPT_ARG_BUF_HND], 6);
 	ast_log(LOG_WARNING, "%s has result\n", has_result ? "Yes, it" : "No, it not");
 
 	if (status == SPEECH_CHANNEL_STATUS_OK && has_result) {
 		int uri_encoded_results = 0;
 		/* Check if the results should be URI-encoded. */
-		if ((mrcpverif_options.flags & MRCPVERIF_URI_ENCODED_RESULTS) == MRCPVERIF_URI_ENCODED_RESULTS) {
+		if ((mrcpverif_options.flags & MRCPRECOGVERIF_URI_ENCODED_RESULTS) == MRCPRECOGVERIF_URI_ENCODED_RESULTS) {
 			if (!ast_strlen_zero(mrcpverif_options.params[OPT_ARG_URI_ENCODED_RESULTS])) {
 				uri_encoded_results = (atoi(mrcpverif_options.params[OPT_ARG_URI_ENCODED_RESULTS]) == 0) ? 0 : 1;
 			}
 		}
 
 		/* Get recognition result. */
-		if (verif_channel_get_results(app_session->verif_channel, &completion_cause, &result, &waveform_uri) != 0) {
+		if (channel_get_results(app_session->verif_channel, &completion_cause, &result, &waveform_uri) != 0) {
 			ast_log(LOG_WARNING, "(%s) Unable to retrieve result\n", name);
 			return mrcpverif_exit(chan, app_session, SPEECH_CHANNEL_STATUS_ERROR);
 		}
@@ -1322,7 +760,7 @@ static int app_verif_exec(struct ast_channel *chan, ast_app_data data)
 			}
 		}
 	} else {
-		if (verif_channel_get_completion_cause(app_session->verif_channel, &completion_cause) != 0) {
+		if (channel_get_completion_cause(app_session->verif_channel, &completion_cause) != 0) {
 			ast_log(LOG_WARNING, "(%s) Unable to retrieve result\n", name);
 			return mrcpverif_exit(chan, app_session, SPEECH_CHANNEL_STATUS_ERROR);
 		}
@@ -1381,9 +819,9 @@ int load_mrcpverif_app()
 	mrcpverif->dispatcher.on_resource_discover = NULL;
 	mrcpverif->message_process.verif_message_process = verif_on_message_receive;
 	mrcpverif->audio_stream_vtable.destroy = NULL;
-	mrcpverif->audio_stream_vtable.open_rx = verif_stream_open;
+	mrcpverif->audio_stream_vtable.open_rx = stream_open;
 	mrcpverif->audio_stream_vtable.close_rx = NULL;
-	mrcpverif->audio_stream_vtable.read_frame = verif_stream_read;
+	mrcpverif->audio_stream_vtable.read_frame = stream_read;
 	mrcpverif->audio_stream_vtable.open_tx = NULL;
 	mrcpverif->audio_stream_vtable.close_tx = NULL;
 	mrcpverif->audio_stream_vtable.write_frame = NULL;

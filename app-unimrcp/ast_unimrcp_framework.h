@@ -56,6 +56,8 @@ struct mrcp_app_message_process_dispatcher_t {
 	apt_bool_t (*recog_message_process)(mrcp_application_t *application, mrcp_session_t *session, mrcp_channel_t *channel, mrcp_message_t *message);
 	/* Process response message for verify */
 	apt_bool_t (*verif_message_process)(mrcp_application_t *application, mrcp_session_t *session, mrcp_channel_t *channel, mrcp_message_t *message);
+	/* Process response message for synthesi */
+	apt_bool_t (*synth_message_process)(mrcp_application_t *application, mrcp_session_t *session, mrcp_channel_t *channel, mrcp_message_t *message);
 };
 typedef struct mrcp_app_message_process_dispatcher_t mrcp_app_message_process_dispatcher_t;
 

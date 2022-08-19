@@ -58,18 +58,17 @@
 /* UniMRCP includes. */
 #include "app_datastore.h"
 
-/* Handle the MRCP responses/events from UniMRCP. */
-/* Get speech channel associated with provided MRCP session. */
-APR_INLINE speech_channel_t * get_speech_channel(mrcp_session_t *session)
-{
-	if (session)
-		return (speech_channel_t *)mrcp_application_session_object_get(session);
-
-	return NULL;
-}
- apt_bool_t mrcp_on_message_receive(mrcp_application_t *application, mrcp_session_t *session,
+apt_bool_t mrcp_on_message_receive(mrcp_application_t *application, mrcp_session_t *session,
 					mrcp_channel_t *channel, mrcp_message_t *message);
+apt_bool_t recog_on_message_receive(mrcp_application_t *application, mrcp_session_t *session,
+					mrcp_channel_t *channel, mrcp_message_t *message);
+apt_bool_t verif_on_message_receive(mrcp_application_t *application, mrcp_session_t *session,
+					mrcp_channel_t *channel, mrcp_message_t *message);
+
 apt_bool_t speech_on_channel_add(mrcp_application_t *application, mrcp_session_t *session,
 					mrcp_channel_t *channel, mrcp_sig_status_code_e status);
 apt_bool_t speech_on_session_terminate(mrcp_application_t *application, mrcp_session_t *session,
 					mrcp_sig_status_code_e status);
+
+apt_bool_t stream_open(mpf_audio_stream_t* stream, mpf_codec_t *codec);
+apt_bool_t stream_read(mpf_audio_stream_t *stream, mpf_frame_t *frame);

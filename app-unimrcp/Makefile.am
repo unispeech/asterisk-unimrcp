@@ -9,6 +9,7 @@ app_unimrcp_la_SOURCES = audio_queue.c \
                          speech_channel.c \
                          ast_unimrcp_framework.c \
                          app_msg_process_dispatcher.c \
+												 app_channel_methods.c \
                          app_datastore.c \
                          app_mrcpsynth.c \
                          app_mrcprecog.c \
