@@ -49,7 +49,7 @@ RUN cd /tmp/asterisk/ && \
 RUN cd /tmp/ && \
     git clone https://github.com/CPqD/asterisk-unimrcp.git && \
     cd asterisk-unimrcp && \
-    git checkout feature/BMT-167 && \
+    git checkout master && \
     ./bootstrap && \
     ./configure --with-asterisk-version=${ASTERISK_VER} && \
     make && \
