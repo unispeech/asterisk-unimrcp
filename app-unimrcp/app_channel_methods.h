@@ -116,14 +116,14 @@ typedef struct mrcprecogverif_options_t mrcprecogverif_options_t;
 int channel_start_input_timers(speech_channel_t *schannel, mrcp_method_id method_id);
 int channel_set_start_of_input(speech_channel_t *schannel);
 int channel_set_results(speech_channel_t *schannel, int completion_cause, const apt_str_t *result,
-			const apt_str_t *waveform_uri);
+						const apt_str_t *waveform_uri);
 int channel_get_completion_cause(speech_channel_t *schannel, const char **completion_cause);
 int channel_get_results(speech_channel_t *schannel, const char **completion_cause,
-			const char **result, const char **waveform_uri);
+						const char **result, const char **waveform_uri);
 int channel_set_timers_started(speech_channel_t *schannel);
 int recog_channel_start(speech_channel_t *schannel, const char *name, int start_input_timers,
-			mrcprecogverif_options_t *options);
+						mrcprecogverif_options_t *options);
 int recog_channel_load_grammar(speech_channel_t *schannel, const char *name, grammar_type_t type,
-				const char *data);
+						const char *data);
 int verif_channel_start(speech_channel_t *schannel, const char *name, int start_input_timers,
-			mrcprecogverif_options_t *options);
+						mrcprecogverif_options_t *options);

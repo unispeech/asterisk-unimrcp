@@ -160,9 +160,6 @@ struct sar_prompt_item_t {
 
 typedef struct sar_prompt_item_t sar_prompt_item_t;
 
-/* --- MRCP SPEECH CHANNEL INTERFACE TO UNIMRCP --- */
-static apt_bool_t synth_on_message_receive(speech_channel_t *schannel, mrcp_message_t *message);
-
 /* Get speech channel associated with provided MRCP session. */
 static APR_INLINE speech_channel_t * get_speech_channel(mrcp_session_t *session)
 {
@@ -173,77 +170,6 @@ static APR_INLINE speech_channel_t * get_speech_channel(mrcp_session_t *session)
 }
 
 /* --- MRCP TTS --- */
-
-/* Handle the MRCP synthesizer responses/events from UniMRCP. */
-static apt_bool_t mrcp_synth_on_message_receive(mrcp_application_t *application, mrcp_session_t *session, mrcp_channel_t *channel, mrcp_message_t *message)
-{
-	speech_channel_t *schannel = get_speech_channel(session);
-	if (!schannel || !message) {
-		ast_log(LOG_ERROR, "recog_on_message_receive: unknown channel error!\n");
-		return FALSE;
-	}
-
-	return synth_on_message_receive(schannel, message);
-}
-static apt_bool_t synth_on_message_receive(speech_channel_t *schannel, mrcp_message_t *message)
-{
-	if (message->start_line.message_type == MRCP_MESSAGE_TYPE_RESPONSE) {
-		/* Received MRCP response. */
-		if (message->start_line.method_id == SYNTHESIZER_SPEAK) {
-			/* received the response to SPEAK request */
-			if (message->start_line.request_state == MRCP_REQUEST_STATE_INPROGRESS) {
-				/* Waiting for SPEAK-COMPLETE event. */
-				ast_log(LOG_DEBUG, "(%s) REQUEST IN PROGRESS\n", schannel->name);
-				speech_channel_set_state(schannel, SPEECH_CHANNEL_PROCESSING);
-			} else {
-				/* Received unexpected request_state. */
-				ast_log(LOG_DEBUG, "(%s) Unexpected SPEAK response, request_state = %d\n", schannel->name, message->start_line.request_state);
-				speech_channel_set_state(schannel, SPEECH_CHANNEL_ERROR);
-			}
-		} else if (message->start_line.method_id == SYNTHESIZER_STOP) {
-			/* Received response to the STOP request. */
-			if (message->start_line.request_state == MRCP_REQUEST_STATE_COMPLETE) {
-				/* Got COMPLETE. */
-				ast_log(LOG_DEBUG, "(%s) COMPLETE\n", schannel->name);
-				speech_channel_set_state(schannel, SPEECH_CHANNEL_READY);
-			} else {
-				/* Received unexpected request state. */
-				ast_log(LOG_DEBUG, "(%s) Unexpected STOP response, request_state = %d\n", schannel->name, message->start_line.request_state);
-				speech_channel_set_state(schannel, SPEECH_CHANNEL_ERROR);
-			}
-		} else if (message->start_line.method_id == SYNTHESIZER_BARGE_IN_OCCURRED) {
-			/* Received response to the BARGE_IN_OCCURRED request. */
-			if (message->start_line.request_state == MRCP_REQUEST_STATE_COMPLETE) {
-				/* Got COMPLETE. */
-				ast_log(LOG_DEBUG, "(%s) COMPLETE\n", schannel->name);
-				speech_channel_set_state(schannel, SPEECH_CHANNEL_READY);
-			} else {
-				/* Received unexpected request state. */
-				ast_log(LOG_DEBUG, "(%s) Unexpected BARGE_IN_OCCURRED response, request_state = %d\n", schannel->name, message->start_line.request_state);
-				speech_channel_set_state(schannel, SPEECH_CHANNEL_ERROR);
-			}
-		} else {
-			/* Received unexpected response. */
-			ast_log(LOG_DEBUG, "(%s) Unexpected response, method_id = %d\n", schannel->name, (int)message->start_line.method_id);
-			speech_channel_set_state(schannel, SPEECH_CHANNEL_ERROR); 
-		}
-	} else if (message->start_line.message_type == MRCP_MESSAGE_TYPE_EVENT) {
-		/* Received MRCP event. */
-		if (message->start_line.method_id == SYNTHESIZER_SPEAK_COMPLETE) {
-			/* Got SPEAK-COMPLETE. */
-			ast_log(LOG_DEBUG, "(%s) SPEAK-COMPLETE\n", schannel->name);
-			speech_channel_set_state(schannel, SPEECH_CHANNEL_READY);
-		} else {
-			ast_log(LOG_DEBUG, "(%s) Unexpected event, method_id = %d\n", schannel->name, (int)message->start_line.method_id);
-			speech_channel_set_state(schannel, SPEECH_CHANNEL_ERROR);
-		}
-	} else {
-		ast_log(LOG_DEBUG, "(%s) Unexpected message type, message_type = %d\n", schannel->name, message->start_line.message_type);
-		speech_channel_set_state(schannel, SPEECH_CHANNEL_ERROR);
-	}
-
-	return TRUE;
-}
 
 /* Incoming TTS data from UniMRCP. */
 static apt_bool_t synth_stream_write(mpf_audio_stream_t *stream, const mpf_frame_t *frame)
@@ -287,7 +213,7 @@ static int synth_channel_speak(speech_channel_t *schannel, const char *content, 
 		return -1;
 	}
 
-	if ((mrcp_message = mrcp_application_message_create(schannel->unimrcp_session, schannel->unimrcp_channel, SYNTHESIZER_SPEAK)) == NULL) {
+	if ((mrcp_message = mrcp_application_message_create(schannel->session->unimrcp_session, schannel->unimrcp_channel, SYNTHESIZER_SPEAK)) == NULL) {
 		ast_log(LOG_ERROR, "(%s) Failed to create SPEAK message\n", schannel->name);
 
 		apr_thread_mutex_unlock(schannel->mutex);
@@ -318,7 +244,7 @@ static int synth_channel_speak(speech_channel_t *schannel, const char *content, 
 	/* Empty audio queue and send SPEAK to MRCP server. */
 	audio_queue_clear(schannel->audio_queue);
 
-	if (!mrcp_application_message_send(schannel->unimrcp_session, schannel->unimrcp_channel, mrcp_message)) {
+	if (!mrcp_application_message_send(schannel->session->unimrcp_session, schannel->unimrcp_channel, mrcp_message)) {
 		ast_log(LOG_ERROR,"(%s) Failed to send SPEAK message", schannel->name);
 
 		apr_thread_mutex_unlock(schannel->mutex);
@@ -361,10 +287,10 @@ int synth_channel_bargein_occurred(speech_channel_t *schannel)
 		ast_log(LOG_DEBUG, "(%s) Sending BARGE-IN-OCCURRED request\n", schannel->name);
 
 		/* Send BARGE-IN-OCCURRED to MRCP server. */
-		mrcp_message = mrcp_application_message_create(schannel->unimrcp_session, schannel->unimrcp_channel, method);
+		mrcp_message = mrcp_application_message_create(schannel->session->unimrcp_session, schannel->unimrcp_channel, method);
 
 		if (mrcp_message) {
-			mrcp_application_message_send(schannel->unimrcp_session, schannel->unimrcp_channel, mrcp_message);
+			mrcp_application_message_send(schannel->session->unimrcp_session, schannel->unimrcp_channel, mrcp_message);
 		} else {
 			ast_log(LOG_ERROR, "(%s) Failed to create BARGE-IN-OCCURRED message\n", schannel->name);
 			status = -1;
@@ -584,10 +510,12 @@ static sar_prompt_item_t* synthandrecog_prompt_play(app_datastore_t* datastore, 
 											synthandrecog,
 											app_session->nwriteformat,
 											NULL,
-											datastore->chan);
+											datastore->chan,
+											app_session->recog_channel->session);
 			if (!app_session->synth_channel) {
 				return NULL;
 			}
+			app_session->synth_channel->app_session = app_session;
 
 			ast_mrcp_profile_t *synth_profile = NULL;
 			const char *synth_profile_option = NULL;
@@ -660,7 +588,8 @@ static int synthandrecog_exit(struct ast_channel *chan, app_session_t *app_sessi
 	}
 
 	const char *status_str = speech_channel_status_to_string(status);
-	pbx_builtin_setvar_helper(chan, "RECOG_STATUS", status_str);
+	pbx_builtin_setvar_helper(chan, "RECOGSTATUS", status_str);
+	pbx_builtin_setvar_helper(chan, "SYNTHSTATUS", status_str);
 	ast_log(LOG_NOTICE, "%s() exiting status: %s on %s\n", synthandrecog_name, status_str, ast_channel_name(chan));
 	return 0;
 }
@@ -672,6 +601,7 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 	apr_size_t len;
 
 	const char *recog_name;
+	speech_channel_status_t syn_status = SPEECH_CHANNEL_STATUS_OK;
 	speech_channel_status_t status = SPEECH_CHANNEL_STATUS_OK;
 
 	mrcprecogverif_options_t sar_options;
@@ -760,7 +690,6 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 	if (!app_session) {
 		return synthandrecog_exit(chan, NULL, SPEECH_CHANNEL_STATUS_ERROR);
 	}
-	synthandrecog->app_session = app_session;
 
 	datastore->last_recog_entry = entry;
 	app_session->nlsml_result = NULL;
@@ -787,10 +716,12 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 											synthandrecog,
 											app_session->nreadformat,
 											NULL,
-											chan);
+											chan,
+											NULL);
 		if (app_session->recog_channel == NULL) {
 			return synthandrecog_exit(chan, app_session, SPEECH_CHANNEL_STATUS_ERROR);
 		}
+		app_session->recog_channel->app_session = app_session;
 
 		const char *recog_profile_option = NULL;
 		if ((sar_options.flags & SAR_RECOG_PROFILE) == SAR_RECOG_PROFILE) {
@@ -1146,13 +1077,13 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 			int dtmfkey = ast_frame_get_dtmfkey(f);
 			ast_log(LOG_DEBUG, "(%s) User pressed DTMF key (%d)\n", recog_name, dtmfkey);
 			/* Send DTMF frame to ASR engine. */
-			if (app_session->recog_channel->dtmf_generator != NULL) {
+			if (app_session->dtmf_generator != NULL) {
 				char digits[2];
 				digits[0] = (char)dtmfkey;
 				digits[1] = '\0';
 
 				ast_log(LOG_NOTICE, "(%s) DTMF digit queued (%s)\n", app_session->recog_channel->name, digits);
-				mpf_dtmf_generator_enqueue(app_session->recog_channel->dtmf_generator, digits);
+				mpf_dtmf_generator_enqueue(app_session->dtmf_generator, digits);
 			}
 		}
 
@@ -1266,7 +1197,7 @@ int load_synthandrecog_app()
 	synthandrecog->dispatcher.on_terminate_event = NULL;
 	synthandrecog->dispatcher.on_resource_discover = NULL;
 	synthandrecog->message_process.recog_message_process = recog_on_message_receive;
-	synthandrecog->message_process.synth_message_process = mrcp_synth_on_message_receive;
+	synthandrecog->message_process.synth_message_process = synth_on_message_receive;
 	synthandrecog->audio_stream_vtable.destroy = NULL;
 	synthandrecog->audio_stream_vtable.open_rx = stream_open;
 	synthandrecog->audio_stream_vtable.close_rx = NULL;

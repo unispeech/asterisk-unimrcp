@@ -107,12 +107,12 @@
 		<description>
 			<para>This application establishes an MRCP session for speak verification and optionally plays a prompt file.
 			Once recognition completes, the application exits and returns results to the dialplan.</para>
-			<para>If recognition completed, the variable ${RECOGSTATUS} is set to "OK". Otherwise, if recognition couldn't be started,
-			the variable ${RECOGSTATUS} is set to "ERROR". If the caller hung up while recognition was still in-progress,
-			the variable ${RECOGSTATUS} is set to "INTERRUPTED".</para>
+			<para>If recognition completed, the variable ${VERIFSTATUS} is set to "OK". Otherwise, if recognition couldn't be started,
+			the variable ${VERIFSTATUS} is set to "ERROR". If the caller hung up while recognition was still in-progress,
+			the variable ${VERIFSTATUS} is set to "INTERRUPTED".</para>
 			<para>The variable ${RECOG_COMPLETION_CAUSE} indicates whether recognition completed successfully with a match or
 			an error occurred. ("000" - success, "001" - nomatch, "002" - noinput) </para>
-			<para>If recognition completed successfully, the variable ${RECOG_RESULT} is set to an NLSML result received
+			<para>If recognition completed successfully, the variable ${VERIF_RESULT} is set to an NLSML result received
 			from the MRCP server. Alternatively, the recognition result data can be retrieved by using the following dialplan
 			functions RECOG_CONFIDENCE(), RECOG_GRAMMAR(), RECOG_INPUT(), and RECOG_INSTANCE().</para>
 		</description>
@@ -123,7 +123,7 @@
  ***/
 
 /* The name of the application. */
-static const char *app_recog = "MRCPVerif";
+static const char *app_verif = "MRCPVerif";
 
 /* The application instance. */
 static ast_mrcp_application_t *mrcpverif = NULL;
@@ -164,13 +164,7 @@ static int mrcpverif_option_apply(mrcprecogverif_options_t *options, const char 
 		apr_hash_set(options->verif_hfs, "No-Input-Timeout", APR_HASH_KEY_STRING, value);
 	} else if (strcasecmp(key, "sct") == 0) {
 		apr_hash_set(options->verif_hfs, "Speech-Complete-Timeout", APR_HASH_KEY_STRING, value);
-	}/* else if (strcasecmp(key, "dit") == 0) {
-		apr_hash_set(options->verif_hfs, "Dtmf-Interdigit-Timeout", APR_HASH_KEY_STRING, value);
-	} else if (strcasecmp(key, "dtt") == 0) {
-		apr_hash_set(options->verif_hfs, "Dtmf-Term-Timeout", APR_HASH_KEY_STRING, value);
-	} else if (strcasecmp(key, "dttc") == 0) {
-		apr_hash_set(options->verif_hfs, "Dtmf-Term-Char", APR_HASH_KEY_STRING, value);
-	}*/ else if (strcasecmp(key, "vbu") == 0) {
+	} else if (strcasecmp(key, "vbu") == 0) {
 		apr_hash_set(options->verif_hfs, "Ver-Buffer-Utterance", APR_HASH_KEY_STRING, value);
 	} else if (strcasecmp(key, "vm") == 0) {
 		apr_hash_set(options->verif_session_hfs, "Verification-Mode", APR_HASH_KEY_STRING, value);
@@ -334,15 +328,13 @@ static int mrcpverif_exit(struct ast_channel *chan, app_session_t *app_session, 
 			if (app_session->lifetime == APP_SESSION_LIFETIME_DYNAMIC) {
 				speech_channel_destroy(app_session->verif_channel);
 				app_session->verif_channel = NULL;
-			} else {
-				speech_channel_set_state(app_session->verif_channel, SPEECH_CHANNEL_WAIT_CLOSED);
 			}
 		}
 	}
 
 	const char *status_str = speech_channel_status_to_string(status);
 	pbx_builtin_setvar_helper(chan, "VERIFSTATUS", status_str);
-	ast_log(LOG_NOTICE, "%s() exiting status: %s on %s\n", app_recog, status_str, ast_channel_name(chan));
+	ast_log(LOG_NOTICE, "%s() exiting status: %s on %s\n", app_verif, status_str, ast_channel_name(chan));
 	return 0;
 }
 
@@ -362,8 +354,10 @@ static int app_verif_exec(struct ast_channel *chan, ast_app_data data)
 		AST_APP_ARG(options);
 	);
 
+	ast_log(LOG_NOTICE, "%s() Executing Verification for channel: %s\n", app_verif, ast_channel_name(chan));
+
 	if (ast_strlen_zero(data)) {
-		ast_log(LOG_WARNING, "%s() requires options\n", app_recog);
+		ast_log(LOG_WARNING, "%s() requires options\n", app_verif);
 		return mrcpverif_exit(chan, NULL, SPEECH_CHANNEL_STATUS_ERROR);
 	}
 
@@ -385,10 +379,10 @@ static int app_verif_exec(struct ast_channel *chan, ast_app_data data)
 
 	if (!ast_strlen_zero(args.options)) {
 		args.options = normalize_input_string(args.options);
-		ast_log(LOG_NOTICE, "%s() options: %s\n", app_recog, args.options);
+		ast_log(LOG_NOTICE, "%s() options: %s\n", app_verif, args.options);
 		char *options_buf = apr_pstrdup(datastore->pool, args.options);
 		if (mrcpverif_options_parse(options_buf, &mrcpverif_options, datastore->pool) < 0) {
-			ast_log(LOG_ERROR, "%s() Missing mandatory options: Rpository URI, Voiceprint and Verification mode\n", app_recog);
+			ast_log(LOG_ERROR, "%s() Missing mandatory options: Rpository URI, Voiceprint and Verification mode\n", app_verif);
 			return mrcpverif_exit(chan, NULL, SPEECH_CHANNEL_STATUS_ERROR);
 		}
 	}
@@ -404,7 +398,7 @@ static int app_verif_exec(struct ast_channel *chan, ast_app_data data)
 	int lifetime = APP_SESSION_LIFETIME_DYNAMIC;
 
 	/* Get datastore entry. */
-	const char *entry = DEFAULT_DATASTORE_ENTRY;
+	const char *entry = ast_channel_name(chan);
 	if ((mrcpverif_options.flags & MRCPRECOGVERIF_DATASTORE_ENTRY) == MRCPRECOGVERIF_DATASTORE_ENTRY) {
 		if (!ast_strlen_zero(mrcpverif_options.params[OPT_ARG_DATASTORE_ENTRY])) {
 			entry = mrcpverif_options.params[OPT_ARG_DATASTORE_ENTRY];
@@ -421,11 +415,11 @@ static int app_verif_exec(struct ast_channel *chan, ast_app_data data)
 	}
 
 	/* Get application datastore. */
+	ast_log(LOG_NOTICE, "%s() Using datastore entry: %s\n", app_verif, entry);
 	app_session_t *app_session = app_datastore_session_add(datastore, entry);
 	if (!app_session) {
 		return mrcpverif_exit(chan, NULL, SPEECH_CHANNEL_STATUS_ERROR);
 	}
-	mrcpverif->app_session = app_session;
 
 	datastore->last_recog_entry = entry;
 	app_session->nlsml_result = NULL;
@@ -449,10 +443,12 @@ static int app_verif_exec(struct ast_channel *chan, ast_app_data data)
 										mrcpverif,
 										app_session->nreadformat,
 										NULL,
-										chan);
+										chan,
+										app_session->recog_channel ? app_session->recog_channel->session : NULL);
 		if (!app_session->verif_channel) {
 			return mrcpverif_exit(chan, app_session, SPEECH_CHANNEL_STATUS_ERROR);
 		}
+		app_session->verif_channel->app_session = app_session;
 
 		const char *profile_name = NULL;
 		if ((mrcpverif_options.flags & MRCPRECOGVERIF_PROFILE) == MRCPRECOGVERIF_PROFILE) {
@@ -468,13 +464,12 @@ static int app_verif_exec(struct ast_channel *chan, ast_app_data data)
 			return mrcpverif_exit(chan, app_session, SPEECH_CHANNEL_STATUS_ERROR);
 		}
 		if (app_session->recog_channel) {
-			app_session->verif_channel->unimrcp_session = app_session->recog_channel->unimrcp_session;
 			if (app_session->msg_process_dispatcher) {
 				app_session->msg_process_dispatcher->verif_message_process = mrcpverif->message_process.verif_message_process;
 				mrcpverif->message_process.recog_message_process = app_session->msg_process_dispatcher->recog_message_process;
 			}
-			const char* ch_id = apt_string_buffer_get(&app_session->recog_channel->unimrcp_session->id);
-			ast_log(LOG_NOTICE, "(%s) Using CHANNEL ID, %s\n", app_recog, ch_id);
+			const char* ch_id = apt_string_buffer_get(&app_session->recog_channel->session->unimrcp_session->id);
+			ast_log(LOG_NOTICE, "(%s) Using CHANNEL ID, %s\n", app_verif, ch_id);
 		}
 		/* Open recognition channel. */
 		if (speech_channel_open(app_session->verif_channel, profile) != 0) {
@@ -695,13 +690,13 @@ static int app_verif_exec(struct ast_channel *chan, ast_app_data data)
 			ast_log(LOG_DEBUG, "(%s) User pressed DTMF key (%d)\n", name, dtmfkey);
 			if (dtmf_enable == 2) {
 				/* Send DTMF frame to ASR engine. */
-				if (app_session->verif_channel->dtmf_generator != NULL) {
+				if (app_session->dtmf_generator != NULL) {
 					char digits[2];
 					digits[0] = (char)dtmfkey;
 					digits[1] = '\0';
 
 					ast_log(LOG_NOTICE, "(%s) DTMF digit queued (%s)\n", app_session->verif_channel->name, digits);
-					mpf_dtmf_generator_enqueue(app_session->verif_channel->dtmf_generator, digits);
+					mpf_dtmf_generator_enqueue(app_session->dtmf_generator, digits);
 				}
 			} else if (dtmf_enable == 1) {
 				/* Stop streaming if within i chars. */
@@ -731,7 +726,7 @@ static int app_verif_exec(struct ast_channel *chan, ast_app_data data)
 
 	apt_bool_t has_result = !(mrcpverif_options.flags & MRCPRECOGVERIF_BUF_HND)
 				|| !strncmp("verify", mrcpverif_options.params[OPT_ARG_BUF_HND], 6);
-	ast_log(LOG_WARNING, "%s has result\n", has_result ? "Yes, it" : "No, it not");
+	ast_log(LOG_NOTICE, "%s The result is %s.\n", name, has_result ? "available" : "unavailable");
 
 	if (status == SPEECH_CHANNEL_STATUS_OK && has_result) {
 		int uri_encoded_results = 0;
@@ -791,12 +786,12 @@ int load_mrcpverif_app()
 	}
 
 	if(mrcpverif) {
-		ast_log(LOG_ERROR, "Application %s is already loaded\n", app_recog);
+		ast_log(LOG_ERROR, "Application %s is already loaded\n", app_verif);
 		return -1;
 	}
 
 	mrcpverif = (ast_mrcp_application_t*) apr_palloc(pool, sizeof(ast_mrcp_application_t));
-	mrcpverif->name = app_recog;
+	mrcpverif->name = app_verif;
 	mrcpverif->exec = app_verif_exec;
 #if !AST_VERSION_AT_LEAST(1,6,2)
 	mrcpverif->synopsis = NULL;
@@ -805,7 +800,7 @@ int load_mrcpverif_app()
 
 	/* Create the recognizer application and link its callbacks */
 	if ((mrcpverif->app = mrcp_application_create(verif_message_handler, (void *)mrcpverif, pool)) == NULL) {
-		ast_log(LOG_ERROR, "Unable to create recognizer MRCP application %s\n", app_recog);
+		ast_log(LOG_ERROR, "Unable to create recognizer MRCP application %s\n", app_verif);
 		mrcpverif = NULL;
 		return -1;
 	}
@@ -817,7 +812,9 @@ int load_mrcpverif_app()
 	mrcpverif->dispatcher.on_message_receive = mrcp_on_message_receive;
 	mrcpverif->dispatcher.on_terminate_event = NULL;
 	mrcpverif->dispatcher.on_resource_discover = NULL;
+	mrcpverif->message_process.synth_message_process = synth_on_message_receive;
 	mrcpverif->message_process.verif_message_process = verif_on_message_receive;
+	mrcpverif->message_process.recog_message_process = recog_on_message_receive;
 	mrcpverif->audio_stream_vtable.destroy = NULL;
 	mrcpverif->audio_stream_vtable.open_rx = stream_open;
 	mrcpverif->audio_stream_vtable.close_rx = NULL;
@@ -827,15 +824,15 @@ int load_mrcpverif_app()
 	mrcpverif->audio_stream_vtable.write_frame = NULL;
 	mrcpverif->audio_stream_vtable.trace = NULL;
 
-	if (!mrcp_client_application_register(globals.mrcp_client, mrcpverif->app, app_recog)) {
-		ast_log(LOG_ERROR, "Unable to register recognizer MRCP application %s\n", app_recog);
+	if (!mrcp_client_application_register(globals.mrcp_client, mrcpverif->app, app_verif)) {
+		ast_log(LOG_ERROR, "Unable to register recognizer MRCP application %s\n", app_verif);
 		if (!mrcp_application_destroy(mrcpverif->app))
-			ast_log(LOG_WARNING, "Unable to destroy recognizer MRCP application %s\n", app_recog);
+			ast_log(LOG_WARNING, "Unable to destroy recognizer MRCP application %s\n", app_verif);
 		mrcpverif = NULL;
 		return -1;
 	}
 
-	apr_hash_set(globals.apps, app_recog, APR_HASH_KEY_STRING, mrcpverif);
+	apr_hash_set(globals.apps, app_verif, APR_HASH_KEY_STRING, mrcpverif);
 
 	return 0;
 }
@@ -844,11 +841,11 @@ int load_mrcpverif_app()
 int unload_mrcpverif_app()
 {
 	if(!mrcpverif) {
-		ast_log(LOG_ERROR, "Application %s doesn't exist\n", app_recog);
+		ast_log(LOG_ERROR, "Application %s doesn't exist\n", app_verif);
 		return -1;
 	}
 
-	apr_hash_set(globals.apps, app_recog, APR_HASH_KEY_STRING, NULL);
+	apr_hash_set(globals.apps, app_verif, APR_HASH_KEY_STRING, NULL);
 	mrcpverif = NULL;
 
 	return 0;

@@ -59,16 +59,18 @@
 #include "app_datastore.h"
 
 apt_bool_t mrcp_on_message_receive(mrcp_application_t *application, mrcp_session_t *session,
-					mrcp_channel_t *channel, mrcp_message_t *message);
+								   mrcp_channel_t *channel, mrcp_message_t *message);
+apt_bool_t synth_on_message_receive(mrcp_application_t *application, mrcp_session_t *session,
+									mrcp_channel_t *channel, mrcp_message_t *message);
 apt_bool_t recog_on_message_receive(mrcp_application_t *application, mrcp_session_t *session,
-					mrcp_channel_t *channel, mrcp_message_t *message);
+									mrcp_channel_t *channel, mrcp_message_t *message);
 apt_bool_t verif_on_message_receive(mrcp_application_t *application, mrcp_session_t *session,
-					mrcp_channel_t *channel, mrcp_message_t *message);
+									mrcp_channel_t *channel, mrcp_message_t *message);
 
 apt_bool_t speech_on_channel_add(mrcp_application_t *application, mrcp_session_t *session,
-					mrcp_channel_t *channel, mrcp_sig_status_code_e status);
+								 mrcp_channel_t *channel, mrcp_sig_status_code_e status);
 apt_bool_t speech_on_session_terminate(mrcp_application_t *application, mrcp_session_t *session,
-					mrcp_sig_status_code_e status);
+									   mrcp_sig_status_code_e status);
 
 apt_bool_t stream_open(mpf_audio_stream_t* stream, mpf_codec_t *codec);
 apt_bool_t stream_read(mpf_audio_stream_t *stream, mpf_frame_t *frame);

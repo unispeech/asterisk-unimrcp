@@ -362,8 +362,6 @@ static int mrcprecog_exit(struct ast_channel *chan, app_session_t *app_session, 
 			if (app_session->lifetime == APP_SESSION_LIFETIME_DYNAMIC) {
 				speech_channel_destroy(app_session->recog_channel);
 				app_session->recog_channel = NULL;
-			} else {
-				speech_channel_set_state(app_session->recog_channel, SPEECH_CHANNEL_WAIT_CLOSED);
 			}
 		}
 	}
@@ -390,6 +388,8 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 		AST_APP_ARG(grammar);
 		AST_APP_ARG(options);
 	);
+
+	ast_log(LOG_NOTICE, "%s() Executing Recog for channel: %s\n", app_recog, ast_channel_name(chan));
 
 	if (ast_strlen_zero(data)) {
 		ast_log(LOG_WARNING, "%s() requires an argument (grammar[,options])\n", app_recog);
@@ -437,7 +437,7 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 	int lifetime = APP_SESSION_LIFETIME_DYNAMIC;
 
 	/* Get datastore entry. */
-	const char *entry = DEFAULT_DATASTORE_ENTRY;
+	const char *entry = ast_channel_name(chan);
 	if ((mrcprecog_options.flags & MRCPRECOGVERIF_DATASTORE_ENTRY) == MRCPRECOGVERIF_DATASTORE_ENTRY) {
 		if (!ast_strlen_zero(mrcprecog_options.params[OPT_ARG_DATASTORE_ENTRY])) {
 			entry = mrcprecog_options.params[OPT_ARG_DATASTORE_ENTRY];
@@ -452,13 +452,13 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 				APP_SESSION_LIFETIME_DYNAMIC : APP_SESSION_LIFETIME_PERSISTENT;
 		}
 	}
-	
+
+	ast_log(LOG_NOTICE, "%s() Using datastore entry: %s\n", app_recog, entry);
 	/* Get application datastore. */
 	app_session_t *app_session = app_datastore_session_add(datastore, entry);
 	if (!app_session) {
 		return mrcprecog_exit(chan, NULL, SPEECH_CHANNEL_STATUS_ERROR);
 	}
-	mrcprecog->app_session = app_session;
 
 	datastore->last_recog_entry = entry;
 	app_session->nlsml_result = NULL;
@@ -483,10 +483,12 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 										mrcprecog,
 										app_session->nreadformat,
 										NULL,
-										chan);
+										chan,
+										app_session->synth_channel ? app_session->synth_channel->session : NULL);
 		if (!app_session->recog_channel) {
 			return mrcprecog_exit(chan, app_session, SPEECH_CHANNEL_STATUS_ERROR);
 		}
+		app_session->recog_channel->app_session = app_session;
 
 		const char *profile_name = NULL;
 		if ((mrcprecog_options.flags & MRCPRECOGVERIF_PROFILE) == MRCPRECOGVERIF_PROFILE) {
@@ -500,6 +502,16 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 		if (!profile) {
 			ast_log(LOG_ERROR, "(%s) Can't find profile, %s\n", name, profile_name);
 			return mrcprecog_exit(chan, app_session, SPEECH_CHANNEL_STATUS_ERROR);
+		}
+
+		if (app_session->synth_channel) {
+			if (app_session->msg_process_dispatcher) {
+				ast_log(LOG_DEBUG, "(%s) Adding CALLBACKS\n", app_recog);
+				app_session->msg_process_dispatcher->recog_message_process = mrcprecog->message_process.recog_message_process;
+				mrcprecog->message_process.synth_message_process = app_session->msg_process_dispatcher->synth_message_process;
+			}
+			const char* ch_id = apt_string_buffer_get(&app_session->recog_channel->session->unimrcp_session->id);
+			ast_log(LOG_NOTICE, "(%s) Using CHANNEL ID: %s\n", app_recog, ch_id);
 		}
 
 		/* Open recognition channel. */
@@ -727,11 +739,13 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 	/* Continue with recognition. */
 	while ((waitres = ast_waitfor(chan, 100)) >= 0) {
 		recog_processing = 1;
+		ast_log(LOG_DEBUG, "(%s) Waiting recognition\n", name);
 
 		if (app_session->recog_channel && app_session->recog_channel->mutex) {
 			apr_thread_mutex_lock(app_session->recog_channel->mutex);
 
 			if (app_session->recog_channel->state != SPEECH_CHANNEL_PROCESSING) {
+				ast_log(LOG_DEBUG, "(%s) Speech NOT processing anymore\n", name);
 				recog_processing = 0;
 			}
 
@@ -810,13 +824,13 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 			ast_log(LOG_DEBUG, "(%s) User pressed DTMF key (%d)\n", name, dtmfkey);
 			if (dtmf_enable == 2) {
 				/* Send DTMF frame to ASR engine. */
-				if (app_session->recog_channel->dtmf_generator != NULL) {
+				if (app_session->dtmf_generator != NULL) {
 					char digits[2];
 					digits[0] = (char)dtmfkey;
 					digits[1] = '\0';
 
 					ast_log(LOG_NOTICE, "(%s) DTMF digit queued (%s)\n", app_session->recog_channel->name, digits);
-					mpf_dtmf_generator_enqueue(app_session->recog_channel->dtmf_generator, digits);
+					mpf_dtmf_generator_enqueue(app_session->dtmf_generator, digits);
 				}
 			} else if (dtmf_enable == 1) {
 				/* Stop streaming if within i chars. */
@@ -923,6 +937,8 @@ int load_mrcprecog_app()
 	mrcprecog->dispatcher.on_message_receive = mrcp_on_message_receive;
 	mrcprecog->dispatcher.on_terminate_event = NULL;
 	mrcprecog->dispatcher.on_resource_discover = NULL;
+	mrcprecog->message_process.synth_message_process = synth_on_message_receive;
+	mrcprecog->message_process.verif_message_process = verif_on_message_receive;
 	mrcprecog->message_process.recog_message_process = recog_on_message_receive;
 	mrcprecog->audio_stream_vtable.destroy = NULL;
 	mrcprecog->audio_stream_vtable.open_rx = stream_open;

@@ -76,10 +76,13 @@ int channel_start_input_timers(speech_channel_t *schannel, mrcp_method_id method
 		ast_log(LOG_DEBUG, "(%s) Sending START-INPUT-TIMERS request\n", schannel->name);
 
 		/* Send START-INPUT-TIMERS to MRCP server. */
-		mrcp_message = mrcp_application_message_create(schannel->unimrcp_session, schannel->unimrcp_channel, method_id);
+		mrcp_message = mrcp_application_message_create(schannel->session->unimrcp_session,
+													   schannel->unimrcp_channel,
+													   method_id);
 
 		if (mrcp_message) {
-			mrcp_application_message_send(schannel->unimrcp_session, schannel->unimrcp_channel, mrcp_message);
+			mrcp_application_message_send(schannel->session->unimrcp_session, schannel->unimrcp_channel,
+										  mrcp_message);
 		} else {
 			ast_log(LOG_ERROR, "(%s) Failed to create START-INPUT-TIMERS message\n", schannel->name);
 			status = -1;
@@ -269,7 +272,7 @@ int recog_channel_start(speech_channel_t *schannel, const char *name, int start_
 	
 	apr_thread_mutex_lock(schannel->mutex);
 
-	if (schannel->state != SPEECH_CHANNEL_READY && schannel->state != SPEECH_CHANNEL_WAIT_CLOSED) {
+	if (schannel->state != SPEECH_CHANNEL_READY) {
 		ast_log(LOG_ERROR, "Channel not ready!\n");
 		apr_thread_mutex_unlock(schannel->mutex);
 		return -1;
@@ -324,7 +327,9 @@ int recog_channel_start(speech_channel_t *schannel, const char *name, int start_
 	grammar_refs[length] = '\0';
 
 	/* Create MRCP message. */
-	if ((mrcp_message = mrcp_application_message_create(schannel->unimrcp_session, schannel->unimrcp_channel, RECOGNIZER_RECOGNIZE)) == NULL) {
+	if ((mrcp_message = mrcp_application_message_create(schannel->session->unimrcp_session,
+														schannel->unimrcp_channel,
+														RECOGNIZER_RECOGNIZE)) == NULL) {
 		apr_thread_mutex_unlock(schannel->mutex);
 		return -1;
 	}
@@ -367,7 +372,8 @@ int recog_channel_start(speech_channel_t *schannel, const char *name, int start_
 	/* Empty audio queue and send RECOGNIZE to MRCP server. */
 	audio_queue_clear(schannel->audio_queue);
 
-	if (mrcp_application_message_send(schannel->unimrcp_session, schannel->unimrcp_channel, mrcp_message) == FALSE) {
+	if (mrcp_application_message_send(schannel->session->unimrcp_session, schannel->unimrcp_channel,
+									  mrcp_message) == FALSE) {
 		apr_thread_mutex_unlock(schannel->mutex);
 		return -1;
 	}
@@ -406,7 +412,7 @@ int recog_channel_load_grammar(speech_channel_t *schannel, const char *name, gra
 
 	apr_thread_mutex_lock(schannel->mutex);
 
-	if (schannel->state != SPEECH_CHANNEL_READY && schannel->state != SPEECH_CHANNEL_WAIT_CLOSED) {
+	if (schannel->state != SPEECH_CHANNEL_READY) {
 		ast_log(LOG_ERROR, "Channel not ready!\n");
 		apr_thread_mutex_unlock(schannel->mutex);
 		return -1;
@@ -418,7 +424,9 @@ int recog_channel_load_grammar(speech_channel_t *schannel, const char *name, gra
 		mrcp_generic_header_t *generic_header;
 
 		/* Create MRCP message. */
-		if ((mrcp_message = mrcp_application_message_create(schannel->unimrcp_session, schannel->unimrcp_channel, RECOGNIZER_DEFINE_GRAMMAR)) == NULL) {
+		if ((mrcp_message = mrcp_application_message_create(schannel->session->unimrcp_session,
+															schannel->unimrcp_channel,
+															RECOGNIZER_DEFINE_GRAMMAR)) == NULL) {
 			apr_thread_mutex_unlock(schannel->mutex);
 			return -1;
 		}
@@ -440,7 +448,8 @@ int recog_channel_load_grammar(speech_channel_t *schannel, const char *name, gra
 		/* Send message and wait for response. */
 		speech_channel_set_state_unlocked(schannel, SPEECH_CHANNEL_PROCESSING);
 
-		if (mrcp_application_message_send(schannel->unimrcp_session, schannel->unimrcp_channel, mrcp_message) == FALSE) {
+		if (mrcp_application_message_send(schannel->session->unimrcp_session, schannel->unimrcp_channel,
+										  mrcp_message) == FALSE) {
 			apr_thread_mutex_unlock(schannel->mutex);
 			return -1;
 		}
@@ -485,20 +494,20 @@ int verif_channel_start(speech_channel_t *schannel, const char *name, int start_
 	grammar_t *grammar = NULL;
 
 	if (!schannel || !name) {
-		ast_log(LOG_ERROR, "verif_channel_start: unknown channel error!\n");
+		ast_log(LOG_ERROR, "(%s) verif_channel_start: unknown channel error!\n", schannel->name);
 		return -1;
 	}
 
 	apr_thread_mutex_lock(schannel->mutex);
 
-	if (schannel->state != SPEECH_CHANNEL_READY && schannel->state != SPEECH_CHANNEL_WAIT_CLOSED) {
-		ast_log(LOG_ERROR, "verif_channel_start: SPEECH_CHANNEL_READY error!\n");
+	if (schannel->state != SPEECH_CHANNEL_READY) {
+		ast_log(LOG_ERROR, "(%s) verif_channel_start: SPEECH_CHANNEL_READY error!\n", schannel->name);
 		apr_thread_mutex_unlock(schannel->mutex);
 		return -1;
 	}
 
 	if (schannel->data == NULL) {
-		ast_log(LOG_ERROR, "verif_channel_start: SPEECH_CHANNEL_NULL error!\n");
+		ast_log(LOG_ERROR, "(%s) verif_channel_start: SPEECH_CHANNEL_NULL error!\n", schannel->name);
 		apr_thread_mutex_unlock(schannel->mutex);
 		return -1;
 	}
@@ -520,69 +529,81 @@ int verif_channel_start(speech_channel_t *schannel, const char *name, int start_
 	void *val;
 	int length = 0;
 
-	/* Create MRCP message. */
-	if ((mrcp_message = mrcp_application_message_create(schannel->unimrcp_session, schannel->unimrcp_channel, VERIFIER_START_SESSION)) == NULL) {
-		ast_log(LOG_ERROR, "verif_channel_start: Create MRCP message error!\n");
-		apr_thread_mutex_unlock(schannel->mutex);
-		return -1;
-	}
+	if (!(schannel->has_sess & CHANNEL_VER_SESS)) {
+		/* Create MRCP message. */
+		if ((mrcp_message = mrcp_application_message_create(schannel->session->unimrcp_session,
+															schannel->unimrcp_channel,
+															VERIFIER_START_SESSION)) == NULL) {
+			ast_log(LOG_ERROR, "(%s) verif_channel_start: Create MRCP message error!\n", schannel->name);
+			apr_thread_mutex_unlock(schannel->mutex);
+			return -1;
+		}
 
-	/* Allocate generic header. */
-	if ((generic_header = (mrcp_generic_header_t *)mrcp_generic_header_prepare(mrcp_message)) == NULL) {
-		ast_log(LOG_ERROR, "verif_channel_start: Allocate generic header error!\n");
-		apr_thread_mutex_unlock(schannel->mutex);
-		return -1;
-	}
+		/* Allocate generic header. */
+		if ((generic_header = (mrcp_generic_header_t *)mrcp_generic_header_prepare(mrcp_message)) == NULL) {
+			ast_log(LOG_ERROR, "(%s) verif_channel_start: Allocate generic header error!\n", schannel->name);
+			apr_thread_mutex_unlock(schannel->mutex);
+			return -1;
+		}
 
-	/* Allocate verifier-specific header. */
-	if ((verif_header = (mrcp_verifier_header_t *)mrcp_resource_header_prepare(mrcp_message)) == NULL) {
-		ast_log(LOG_ERROR, "verif_channel_start: Allocate verifier-specific header error!\n");
-		apr_thread_mutex_unlock(schannel->mutex);
-		return -1;
-	}
+		/* Allocate verifier-specific header. */
+		if ((verif_header = (mrcp_verifier_header_t *)mrcp_resource_header_prepare(mrcp_message)) == NULL) {
+			ast_log(LOG_ERROR, "(%s) verif_channel_start: Allocate verifier-specific header error!\n", schannel->name);
+			apr_thread_mutex_unlock(schannel->mutex);
+			return -1;
+		}
 
-	/* Set Start-Input-Timers. */
-	verif_header->start_input_timers = start_input_timers ? TRUE : FALSE;
-	mrcp_resource_header_property_add(mrcp_message, VERIFIER_HEADER_START_INPUT_TIMERS);
+		/* Set Start-Input-Timers. */
+		verif_header->start_input_timers = start_input_timers ? TRUE : FALSE;
+		mrcp_resource_header_property_add(mrcp_message, VERIFIER_HEADER_START_INPUT_TIMERS);
 
-	/* Set parameters for START SESSION. */
-	speech_channel_set_params(schannel, mrcp_message, options->verif_session_hfs, options->ver_vendor_par_list);
+		/* Set parameters for START SESSION. */
+		speech_channel_set_params(schannel, mrcp_message, options->verif_session_hfs, options->ver_vendor_par_list);
 
-	/* Empty audio queue and send START-SESSION to MRCP server. */
-	audio_queue_clear(schannel->audio_queue);
+		/* Empty audio queue and send START-SESSION to MRCP server. */
+		audio_queue_clear(schannel->audio_queue);
 
-	if (mrcp_application_message_send(schannel->unimrcp_session, schannel->unimrcp_channel, mrcp_message) == FALSE) {
-		ast_log(LOG_ERROR, "verif_channel_start: mrcp_application_message_send error!\n");
-		apr_thread_mutex_unlock(schannel->mutex);
-		return -1;
-	}
+		if (mrcp_application_message_send(schannel->session->unimrcp_session, schannel->unimrcp_channel,
+										  mrcp_message) == FALSE) {
+			ast_log(LOG_ERROR, "(%s) verif_channel_start: mrcp_application_message_send error!\n", schannel->name);
+			apr_thread_mutex_unlock(schannel->mutex);
+			return -1;
+		}
 
-	/* Wait for COMPLETE. */
-	apr_thread_cond_timedwait(schannel->cond, schannel->mutex, globals.speech_channel_timeout);
+		/* Wait for COMPLETE. */
+		apr_thread_cond_timedwait(schannel->cond, schannel->mutex, globals.speech_channel_timeout);
 
-	if (schannel->state != SPEECH_CHANNEL_READY) {
-		ast_log(LOG_ERROR, "verif_channel_start: Not SPEECH_CHANNEL_READY error!\n");
-		apr_thread_mutex_unlock(schannel->mutex);
-		return -1;
+		if (schannel->state != SPEECH_CHANNEL_READY) {
+			ast_log(LOG_ERROR, "(%s) verif_channel_start: Not SPEECH_CHANNEL_READY error!\n", schannel->name);
+			apr_thread_mutex_unlock(schannel->mutex);
+			return -1;
+		}
+		schannel->has_sess |= CHANNEL_VER_SESS;
 	}
 
 	if (options->flags & MRCPRECOGVERIF_BUF_HND) {
 		if (!strncmp("verify", options->params[OPT_ARG_BUF_HND], 6)) {
-			if ((verif_message = mrcp_application_message_create(schannel->unimrcp_session, schannel->unimrcp_channel, VERIFIER_VERIFY_FROM_BUFFER)) == NULL) {
-				ast_log(LOG_ERROR, "verif_channel_start: Not mrcp_application_message_create error!\n");
+			if ((verif_message = mrcp_application_message_create(schannel->session->unimrcp_session,
+																 schannel->unimrcp_channel,
+																 VERIFIER_VERIFY_FROM_BUFFER)) == NULL) {
+				ast_log(LOG_ERROR, "(%s) verif_channel_start: Not mrcp_application_message_create error!\n", schannel->name);
 				apr_thread_mutex_unlock(schannel->mutex);
 				return -1;
 			}
 		} else if (!strncmp("clear", options->params[OPT_ARG_BUF_HND], 5)) {
-			if ((verif_message = mrcp_application_message_create(schannel->unimrcp_session, schannel->unimrcp_channel, VERIFIER_CLEAR_BUFFER)) == NULL) {
-				ast_log(LOG_ERROR, "verif_channel_start: Not mrcp_application_message_create error!\n");
+			if ((verif_message = mrcp_application_message_create(schannel->session->unimrcp_session,
+																 schannel->unimrcp_channel,
+																 VERIFIER_CLEAR_BUFFER)) == NULL) {
+				ast_log(LOG_ERROR, "(%s) verif_channel_start: Not mrcp_application_message_create error!\n", schannel->name);
 				apr_thread_mutex_unlock(schannel->mutex);
 				return -1;
 			}
 			buffer_handling = TRUE;
 		} else if (!strncmp("rollback", options->params[OPT_ARG_BUF_HND], 8)) {
-			if ((verif_message = mrcp_application_message_create(schannel->unimrcp_session, schannel->unimrcp_channel, VERIFIER_VERIFY_ROLLBACK)) == NULL) {
-				ast_log(LOG_ERROR, "verif_channel_start: Not mrcp_application_message_create error!\n");
+			if ((verif_message = mrcp_application_message_create(schannel->session->unimrcp_session,
+																 schannel->unimrcp_channel,
+																 VERIFIER_VERIFY_ROLLBACK)) == NULL) {
+				ast_log(LOG_ERROR, "(%s) verif_channel_start: Not mrcp_application_message_create error!\n", schannel->name);
 				apr_thread_mutex_unlock(schannel->mutex);
 				return -1;
 			}
@@ -590,8 +611,10 @@ int verif_channel_start(speech_channel_t *schannel, const char *name, int start_
 		}
 	}
 
-	if ((!verif_message && (verif_message = mrcp_application_message_create(schannel->unimrcp_session, schannel->unimrcp_channel, VERIFIER_VERIFY)) == NULL)) {
-		ast_log(LOG_ERROR, "verif_channel_start: Not mrcp_application_message_create error!\n");
+	if ((!verif_message && (verif_message = mrcp_application_message_create(schannel->session->unimrcp_session,
+																			schannel->unimrcp_channel,
+																			VERIFIER_VERIFY)) == NULL)) {
+		ast_log(LOG_ERROR, "(%s) verif_channel_start: Not mrcp_application_message_create error!\n", schannel->name);
 		apr_thread_mutex_unlock(schannel->mutex);
 		return -1;
 	}
@@ -599,8 +622,8 @@ int verif_channel_start(speech_channel_t *schannel, const char *name, int start_
 	/* Set parameters for VERIFY. */
 	speech_channel_set_params(schannel, verif_message, options->verif_hfs, NULL);
 
-	if (mrcp_application_message_send(schannel->unimrcp_session, schannel->unimrcp_channel, verif_message) == FALSE) {
-		ast_log(LOG_ERROR, "verif_channel_start: Not mrcp_application_message_send error!\n");
+	if (mrcp_application_message_send(schannel->session->unimrcp_session, schannel->unimrcp_channel, verif_message) == FALSE) {
+		ast_log(LOG_ERROR, "(%s) verif_channel_start: Not mrcp_application_message_send error!\n", schannel->name);
 		apr_thread_mutex_unlock(schannel->mutex);
 		return -1;
 	}
@@ -608,14 +631,17 @@ int verif_channel_start(speech_channel_t *schannel, const char *name, int start_
 	/* Wait for IN PROGRESS. */
 	apr_thread_cond_timedwait(schannel->cond, schannel->mutex, globals.speech_channel_timeout);
 
-	if (!buffer_handling && schannel->state != SPEECH_CHANNEL_PROCESSING) {
-		ast_log(LOG_ERROR, "verif_channel_start: SPEECH CHANNEL NOT PROCESSING error!\n");
-		apr_thread_mutex_unlock(schannel->mutex);
-		return -1;
-	} else if (buffer_handling && schannel->state != SPEECH_CHANNEL_READY) {
-		ast_log(LOG_ERROR, "verif_channel_start: SPEECH CHANNEL NOT READY error!\n");
-		apr_thread_mutex_unlock(schannel->mutex);
-		return -1;
+	/* Verify if it is processing when the result was not receive yet; */
+	if (r->completion_cause < 0) {
+		if (!buffer_handling && schannel->state != SPEECH_CHANNEL_PROCESSING) {
+			ast_log(LOG_ERROR, "(%s) verif_channel_start: SPEECH CHANNEL NOT PROCESSING error!\n", schannel->name);
+			apr_thread_mutex_unlock(schannel->mutex);
+			return -1;
+		} else if (buffer_handling && schannel->state != SPEECH_CHANNEL_READY) {
+			ast_log(LOG_ERROR, "(%s) verif_channel_start: SPEECH CHANNEL NOT READY error!\n", schannel->name);
+			apr_thread_mutex_unlock(schannel->mutex);
+			return -1;
+		}
 	}
 
 	apr_thread_mutex_unlock(schannel->mutex);

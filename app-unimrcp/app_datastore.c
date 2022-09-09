@@ -166,13 +166,29 @@ typedef struct ast_json_error ast_json_error;
 static void app_session_destroy(app_session_t *app_session)
 {
 	if(app_session) {
-		if (app_session->synth_channel) {
-			speech_channel_destroy(app_session->synth_channel);
+		if (app_session->dtmf_generator != NULL) {
+			ast_log(LOG_DEBUG, "DTMF generator destroyed\n");
+			mpf_dtmf_generator_destroy(app_session->dtmf_generator);
+			app_session->dtmf_generator = NULL;
 		}
 
+		if (app_session->synth_channel) {
+			ast_log(LOG_DEBUG, "Synth channel destroy\n");
+			speech_channel_destroy(app_session->synth_channel);
+		}
+		app_session->synth_channel = NULL;
+
 		if (app_session->recog_channel) {
+			ast_log(LOG_DEBUG, "Recog channel destroy\n");
 			speech_channel_destroy(app_session->recog_channel);
 		}
+		app_session->recog_channel = NULL;
+
+		if (app_session->verif_channel) {
+			ast_log(LOG_DEBUG, "Verif channel destroy\n");
+			speech_channel_destroy(app_session->verif_channel);
+		}
+		app_session->verif_channel = NULL;
 	}
 }
 
@@ -258,6 +274,7 @@ app_session_t* app_datastore_session_add(app_datastore_t* app_datastore, const c
 		session->recog_channel = NULL;
 		session->verif_channel = NULL;
 		session->synth_channel = NULL;
+		session->dtmf_generator = NULL;
 		session->readformat = NULL;
 		session->rawreadformat = NULL;
 		session->writeformat = NULL; 

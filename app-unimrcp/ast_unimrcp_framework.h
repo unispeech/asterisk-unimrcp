@@ -81,7 +81,6 @@ struct ast_mrcp_application_t {
 	mrcp_app_message_process_dispatcher_t message_process;
 	/* Audio callbacks from UniMRCP to this module's application. */
 	mpf_audio_stream_vtable_t audio_stream_vtable;
-	struct app_session_t* app_session;
 };
 typedef struct ast_mrcp_application_t ast_mrcp_application_t;
 

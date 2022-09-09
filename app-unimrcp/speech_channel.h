@@ -54,7 +54,8 @@ enum speech_channel_state_t {
 	SPEECH_CHANNEL_PROCESSING,
 	/* Error opening channel. */
 	SPEECH_CHANNEL_ERROR,
-	SPEECH_CHANNEL_WAIT_CLOSED
+	/* Channel terminated */
+	SPEECH_CHANNEL_TERMINATED
 };
 typedef enum speech_channel_state_t speech_channel_state_t;
 
@@ -69,6 +70,14 @@ enum speech_channel_status_t {
 };
 typedef enum speech_channel_status_t speech_channel_status_t;
 
+struct mrcp_associated_session_t {
+	/* UniMRCP session. */
+	mrcp_session_t *unimrcp_session;
+	/* Number of associated channels to session */
+	apr_uint16_t associated_channels;
+};
+typedef struct mrcp_associated_session_t mrcp_associated_session_t;
+
 /* An MRCP speech channel. */
 struct speech_channel_t {
 	/* The name of this channel (for logging). */
@@ -80,13 +89,12 @@ struct speech_channel_t {
 	/* Application this channel is running. */
 	ast_mrcp_application_t *application;
 	/* UniMRCP session. */
-	mrcp_session_t *unimrcp_session;
+	//mrcp_session_t *unimrcp_session;
+	mrcp_associated_session_t *session;
 	/* UniMRCP channel. */
 	mrcp_channel_t *unimrcp_channel;
 	/* UniMRCP stream object. */
 	mpf_audio_stream_t *stream;
-	/* UniMRCP DTMF digit generator. */
-	mpf_dtmf_generator_t *dtmf_generator;
 	/* MRCP session identifier. */
 	char *session_id;
 	/* Memory pool. */
@@ -113,8 +121,13 @@ struct speech_channel_t {
 	void *data;
 	/* Asterisk channel. Needed to stop playback on barge-in. */
 	struct ast_channel *chan;
+	struct app_session_t* app_session;
 	/* File to store data streamed to Asterisk. */
 	FILE *rec_file;
+#define CHANNEL_SYN_SESS (1<<0)
+#define CHANNEL_REC_SESS (1<<1)
+#define CHANNEL_VER_SESS (1<<2)
+	apr_byte_t has_sess;
 
 #if SPEECH_CHANNEL_DUMP
 	FILE *stream_in;
@@ -188,7 +201,8 @@ speech_channel_t *speech_channel_create(
 						ast_mrcp_application_t *app,
 						ast_format_compat *format,
 						const char *rec_file_path,
-						struct ast_channel *chan);
+						struct ast_channel *chan,
+						mrcp_associated_session_t *session);
 
 /* Destroy the speech channel. */
 int speech_channel_destroy(speech_channel_t *schannel);

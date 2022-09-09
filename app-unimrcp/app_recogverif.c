@@ -414,8 +414,8 @@ static int mrcprecog_exit(struct ast_channel *chan, app_session_t *app_session, 
 
 			if (app_session->lifetime == APP_SESSION_LIFETIME_DYNAMIC) {
 				ast_log(LOG_NOTICE, "%s() Will stop recog on %s\n", app_recog, ast_channel_name(chan));
-				//speech_channel_destroy(app_session->recog_channel);
-				//app_session->recog_channel = NULL;
+				speech_channel_destroy(app_session->recog_channel);
+				app_session->recog_channel = NULL;
 			}
 		}
 		if (app_session->verif_channel) {
@@ -426,8 +426,6 @@ static int mrcprecog_exit(struct ast_channel *chan, app_session_t *app_session, 
 				ast_log(LOG_NOTICE, "%s() Will stop verif on %s\n", app_recog, ast_channel_name(chan));
 				speech_channel_destroy(app_session->verif_channel);
 				app_session->verif_channel = NULL;
-			} else {
-				speech_channel_set_state(app_session->recog_channel, SPEECH_CHANNEL_WAIT_CLOSED);
 			}
 		}
 	}
@@ -524,7 +522,6 @@ static int app_recog_verif_exec(struct ast_channel *chan, ast_app_data data)
 	if (!app_session) {
 		return mrcprecog_exit(chan, NULL, SPEECH_CHANNEL_STATUS_ERROR);
 	}
-	mrcprecogverif->app_session = app_session;
 
 	datastore->last_recog_entry = entry;
 	app_session->nlsml_result = NULL;
@@ -549,10 +546,12 @@ static int app_recog_verif_exec(struct ast_channel *chan, ast_app_data data)
 										mrcprecogverif,
 										app_session->nreadformat,
 										NULL,
-										chan);
+										chan,
+										app_session->synth_channel ? app_session->synth_channel->session : NULL);
 		if (!app_session->recog_channel) {
 			return mrcprecog_exit(chan, app_session, SPEECH_CHANNEL_STATUS_ERROR);
 		}
+		app_session->recog_channel->app_session = app_session;
 
 		if ((mrcprecogverif_options.flags & MRCPRECOGVERIF_PROFILE) == MRCPRECOGVERIF_PROFILE) {
 			if (!ast_strlen_zero(mrcprecogverif_options.params[OPT_ARG_PROFILE])) {
@@ -566,16 +565,6 @@ static int app_recog_verif_exec(struct ast_channel *chan, ast_app_data data)
 			ast_log(LOG_ERROR, "(%s) Can't find profile, %s\n", name, profile_name);
 			return mrcprecog_exit(chan, app_session, SPEECH_CHANNEL_STATUS_ERROR);
 		}
-
-		/*if (app_session->recog_channel) {
-			app_session->verif_channel->unimrcp_session = app_session->recog_channel->unimrcp_session;
-			if (app_session->msg_process_dispatcher) {
-				app_session->msg_process_dispatcher->verif_message_process = mrcprecogverif->message_process.verif_message_process;
-				mrcprecogverif->message_process.recog_message_process = app_session->msg_process_dispatcher->recog_message_process;
-			}
-			const char* ch_id = apt_string_buffer_get(&app_session->recog_channel->unimrcp_session->id);
-			ast_log(LOG_NOTICE, "(%s) Using CHANNEL ID, %s\n", app_recog, ch_id);
-		}*/
 
 		/* Open recognition channel. */
 		if (speech_channel_open(app_session->recog_channel, profile) != 0) {
@@ -887,13 +876,13 @@ static int app_recog_verif_exec(struct ast_channel *chan, ast_app_data data)
 			ast_log(LOG_DEBUG, "(%s) User pressed DTMF key (%d)\n", name, dtmfkey);
 			if (dtmf_enable == 2) {
 				/* Send DTMF frame to ASR engine. */
-				if (app_session->recog_channel->dtmf_generator != NULL) {
+				if (app_session->dtmf_generator != NULL) {
 					char digits[2];
 					digits[0] = (char)dtmfkey;
 					digits[1] = '\0';
 
 					ast_log(LOG_NOTICE, "(%s) DTMF digit queued (%s)\n", app_session->recog_channel->name, digits);
-					mpf_dtmf_generator_enqueue(app_session->recog_channel->dtmf_generator, digits);
+					mpf_dtmf_generator_enqueue(app_session->dtmf_generator, digits);
 				}
 			} else if (dtmf_enable == 1) {
 				/* Stop streaming if within i chars. */
@@ -970,11 +959,13 @@ static int app_recog_verif_exec(struct ast_channel *chan, ast_app_data data)
 									mrcprecogverif,
 									app_session->nreadformat,
 									NULL,
-									chan);
+									chan,
+									app_session->recog_channel ? app_session->recog_channel->session : NULL);
 	if (!app_session->verif_channel) {
 		return mrcprecog_exit(chan, app_session, SPEECH_CHANNEL_STATUS_ERROR);
 	}
-	app_session->verif_channel->unimrcp_session = app_session->recog_channel->unimrcp_session;
+
+	app_session->verif_channel->app_session = app_session;
 	if (speech_channel_open(app_session->verif_channel, profile) != 0) {
 			ast_log(LOG_ERROR, " Error on Verification processing\n");
 			return mrcprecog_exit(chan, app_session, SPEECH_CHANNEL_STATUS_ERROR);
@@ -996,7 +987,7 @@ static int app_recog_verif_exec(struct ast_channel *chan, ast_app_data data)
 
 		if (app_session->verif_channel && app_session->verif_channel->mutex) {
 			apr_thread_mutex_lock(app_session->verif_channel->mutex);
-			//ast_log(LOG_NOTICE, "(%s) Wait for end of verification: %d\n", name, app_session->verif_channel->state);
+
 			if (app_session->verif_channel->state != SPEECH_CHANNEL_PROCESSING) {
 				recog_processing = 0;
 			}
@@ -1008,13 +999,10 @@ static int app_recog_verif_exec(struct ast_channel *chan, ast_app_data data)
 			break;
 	}
 
-	speech_channel_set_state(app_session->recog_channel, SPEECH_CHANNEL_CLOSED);
-	speech_channel_set_state(app_session->verif_channel, SPEECH_CHANNEL_CLOSED);
-	ast_log(LOG_NOTICE, "It will get the RESULT\n");
 
 	apt_bool_t has_result = !(mrcprecogverif_options.flags & MRCPRECOGVERIF_BUF_HND)
 				|| !strncmp("verify", mrcprecogverif_options.params[OPT_ARG_BUF_HND], 6);
-	ast_log(LOG_WARNING, "%s has result\n", has_result ? "Yes, it" : "No, it not");
+	ast_log(LOG_NOTICE, " The result is %s\n", has_result ? "available" : "unavailable");
 
 	if (has_result) {
 
