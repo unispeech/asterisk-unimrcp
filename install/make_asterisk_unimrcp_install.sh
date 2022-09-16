@@ -198,28 +198,28 @@ done
 # Mapping the libraries versions to make symlink
 ## Server dependencies
 echo "" >${TMP_PATH}/$UNIMRCP_INSTALL_DIR/lib/lib_map
-echo "ln -s libunimrcpserver.so.$lib_uni_version \
+echo "ln -sf libunimrcpserver.so.$lib_uni_version \
         libunimrcpserver.so.$(awk -F'.' '{print $1"."$2}' <<<$lib_uni_version)" >>${TMP_PATH}/$UNIMRCP_INSTALL_DIR/lib/lib_map
-echo "ln -s libunimrcpserver.so.$(awk -F'.' '{print $1"."$2}' <<<$lib_uni_version) \
+echo "ln -sf libunimrcpserver.so.$(awk -F'.' '{print $1"."$2}' <<<$lib_uni_version) \
         libunimrcpserver.so.$(awk -F'.' '{print $1}' <<<$lib_uni_version)" >>${TMP_PATH}/$UNIMRCP_INSTALL_DIR/lib/lib_map
-echo "ln -s libsofia-sip-ua.so.$lib_sip_version \
+echo "ln -sf libsofia-sip-ua.so.$lib_sip_version \
         libsofia-sip-ua.so.$(awk -F'.' '{print $1"."$2}' <<<$lib_sip_version)" >>${TMP_PATH}/$UNIMRCP_INSTALL_DIR/lib/lib_map
-echo "ln -s libsofia-sip-ua.so.$(awk -F'.' '{print $1"."$2}' <<<$lib_sip_version) \
+echo "ln -sf libsofia-sip-ua.so.$(awk -F'.' '{print $1"."$2}' <<<$lib_sip_version) \
         libsofia-sip-ua.so.$(awk -F'.' '{print $1}' <<<$lib_sip_version)" >>${TMP_PATH}/$UNIMRCP_INSTALL_DIR/lib/lib_map
 echo "" >${TMP_PATH}/$UNIMRCP_INSTALL_DIR/../apr/lib/lib_map
-echo "ln -s libaprutil-1.so.$lib_aprutil_version \
+echo "ln -sf libaprutil-1.so.$lib_aprutil_version \
         libaprutil-1.so.$(awk -F'.' '{print $1"."$2}' <<<$lib_aprutil_version)" >>${TMP_PATH}/$UNIMRCP_INSTALL_DIR/../apr/lib/lib_map
-echo "ln -s libaprutil-1.so.$(awk -F'.' '{print $1"."$2}' <<<$lib_aprutil_version) \
+echo "ln -sf libaprutil-1.so.$(awk -F'.' '{print $1"."$2}' <<<$lib_aprutil_version) \
         libaprutil-1.so.$(awk -F'.' '{print $1}' <<<$lib_aprutil_version)" >>${TMP_PATH}/$UNIMRCP_INSTALL_DIR/../apr/lib/lib_map
-echo "ln -s libapr-1.so.$lib_apr_version \
+echo "ln -sf libapr-1.so.$lib_apr_version \
         libapr-1.so.$(awk -F'.' '{print $1"."$2}' <<<$lib_apr_version)" >>${TMP_PATH}/$UNIMRCP_INSTALL_DIR/../apr/lib/lib_map
-echo "ln -s libapr-1.so.$(awk -F'.' '{print $1"."$2}' <<<$lib_apr_version) \
+echo "ln -sf libapr-1.so.$(awk -F'.' '{print $1"."$2}' <<<$lib_apr_version) \
         libapr-1.so.$(awk -F'.' '{print $1}' <<<$lib_apr_version)" >>${TMP_PATH}/$UNIMRCP_INSTALL_DIR/../apr/lib/lib_map
 ### Tools dependencies
 echo "" >>${TMP_PATH}/$UNIMRCP_INSTALL_DIR/lib/lib_map
-echo "ln -s libunimrcpclient.so.$lib_uni_version \
+echo "ln -sf libunimrcpclient.so.$lib_uni_version \
         libunimrcpclient.so.$(awk -F'.' '{print $1"."$2}' <<<$lib_uni_version)" >>${TMP_PATH}/$UNIMRCP_INSTALL_DIR/lib/lib_map
-echo "ln -s libunimrcpclient.so.$(awk -F'.' '{print $1"."$2}' <<<$lib_uni_version) \
+echo "ln -sf libunimrcpclient.so.$(awk -F'.' '{print $1"."$2}' <<<$lib_uni_version) \
         libunimrcpclient.so.$(awk -F'.' '{print $1}' <<<$lib_uni_version)" >>${TMP_PATH}/$UNIMRCP_INSTALL_DIR/lib/lib_map
 
 # Library only needed in RHEL based Distro:
@@ -230,16 +230,16 @@ if [[ $is_rhel == "true" || $is_deb == "true" ]]; then
   if [[ -e ${LIB_APR_EXPAT} ]]; then
     echo "Installing LIB EXPAT in ${LIB_APR_EXPAT}"
     cp ${LIB_APR_EXPAT} ${TMP_PATH}/$UNIMRCP_INSTALL_DIR/../apr/lib
-    echo "ln -s libexpat.so.$lib_expat_version \
+    echo "ln -sf libexpat.so.$lib_expat_version \
           libexpat.so.$(awk -F'.' '{print $1"."$2}' <<<$lib_expat_version)" >>${TMP_PATH}/$UNIMRCP_INSTALL_DIR/../apr/lib/lib_map
-    echo "ln -s libexpat.so.$(awk -F'.' '{print $1"."$2}' <<<$lib_expat_version) \
+    echo "ln -sf libexpat.so.$(awk -F'.' '{print $1"."$2}' <<<$lib_expat_version) \
           libexpat.so.$(awk -F'.' '{print $1}' <<<$lib_expat_version)" >>${TMP_PATH}/$UNIMRCP_INSTALL_DIR/../apr/lib/lib_map
   elif [[ -e ${LIB64_EXPAT} ]]; then
     echo "Getting $LIB64_EXPAT. lib_expat: $LIB_APR_EXPAT, is missing."
     cp ${LIB64_EXPAT} ${TMP_PATH}/$UNIMRCP_INSTALL_DIR/../apr/lib
-    echo "ln -s libexpat.so.$lib_expat_system_version \
+    echo "ln -sf libexpat.so.$lib_expat_system_version \
           libexpat.so.$(awk -F'.' '{print $1"."$2}' <<<$lib_expat_system_version)" >>${TMP_PATH}/$UNIMRCP_INSTALL_DIR/../apr/lib/lib_map
-    echo "ln -s libexpat.so.$(awk -F'.' '{print $1"."$2}' <<<$lib_expat_system_version) \
+    echo "ln -sf libexpat.so.$(awk -F'.' '{print $1"."$2}' <<<$lib_expat_system_version) \
           libexpat.so.$(awk -F'.' '{print $1}' <<<$lib_expat_system_version)" >>${TMP_PATH}/$UNIMRCP_INSTALL_DIR/../apr/lib/lib_map
   else
     echo "Missing lib_expat. Exiting..."

@@ -1,0 +1,53 @@
+version: '3.9'
+
+networks:
+  default:
+    ipam:
+      config:
+      - subnet: ${ASTERISK_SUBNET}.0/24
+        gateway: ${ASTERISK_SUBNET}.1
+    name: asterisk_test
+    driver: bridge
+
+services:
+  asterisk-test:
+    profiles: ["test"]
+    container_name: ${TEST_CONTAINER}
+    image: ${TEST_IMAGE}
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - $PWD:/test
+    networks:
+      default:
+        ipv4_address: ${ASTERISK_SUBNET}.3
+    working_dir: /test
+    entrypoint: bash -c "sleep 10 && ./test-script.sh $RUN_TEST"
+    #entrypoint: sleep infinity
+    depends_on:
+      - asterisk-unimrcp
+  asterisk-unimrcp:
+    container_name: ${ASTERISK_CONTAINER}
+    profiles: ["asterisk", "test"]
+    image: ${ASTERISK_IMAGE}
+    environment:
+      LD_LIBRARY_PATH: /usr/local/unimrcp/lib:/usr/local/apr/lib:/usr/local/lib
+    volumes:
+      - ${REPO_PATH}/asterisk-unimrcp:/src
+        #depends_on:
+        #- mrcp-speak-verify
+    networks:
+      default:
+        ipv4_address: ${ASTERISK_SUBNET}.2
+    entrypoint: >
+      bash -c "
+      /src/install/install_asterisk_unimrcp.run &&
+      cp -r /src/docker/tests/res/etc / &&
+      cp -r /src/docker/tests/res/usr / &&
+      /usr/sbin/asterisk -vvvdddf -T -p"
+
+volumes:
+  log:
+  cache:
