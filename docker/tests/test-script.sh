@@ -1,13 +1,12 @@
 #!/bin/bash
 
 AUDIO_PATH="/opt/audios"
-SIP_SERVER=asterisk
+ASTERISK_CONTAINER="asterisk-runner"
+SIP_SERVER="${ASTERISK_CONTAINER}"
 RESULT_FILE="/tmp/test.txt"
 VALIDATE_FILE="/tmp/test2.txt"
-INTERFACE=br-1e8465295eaf
 CAPTURE_FILE="/tmp/cap.txt"
 FINAL_RESULT=0
-ASTERISK_CONTAINER="asterisk-runner"
 TEST_LOG="/tmp/test.log"
 
 log()
@@ -142,7 +141,6 @@ execute-test()
   log "Executing test $extension"
   docker exec ${ASTERISK_CONTAINER} bash -c ">${RESULT_FILE};echo '' >${RESULT_FILE}"
   sudo rm $CAPTURE_FILE
-  #sudo tshark -i $INTERFACE -d tcp.port==1544,mrcpv2  -Y mrcpv2 > $CAPTURE_FILE & 
   docker exec ${ASTERISK_CONTAINER} tcpdump -i any -w /tmp/cap.pcap &
   
   run-test $audio $extension

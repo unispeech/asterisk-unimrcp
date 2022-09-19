@@ -17,6 +17,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    environment:
+      ASTERISK_CONTAINER: ${ASTERISK_CONTAINER}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - $PWD:/test
@@ -24,8 +26,7 @@ services:
       default:
         ipv4_address: ${ASTERISK_SUBNET}.3
     working_dir: /test
-    entrypoint: bash -c "sleep 10 && ./test-script.sh $RUN_TEST"
-    #entrypoint: sleep infinity
+    entrypoint: bash -c "sleep 10 && $RUN_TEST"
     depends_on:
       - asterisk-unimrcp
   asterisk-unimrcp:
@@ -36,8 +37,6 @@ services:
       LD_LIBRARY_PATH: /usr/local/unimrcp/lib:/usr/local/apr/lib:/usr/local/lib
     volumes:
       - ${REPO_PATH}/asterisk-unimrcp:/src
-        #depends_on:
-        #- mrcp-speak-verify
     networks:
       default:
         ipv4_address: ${ASTERISK_SUBNET}.2

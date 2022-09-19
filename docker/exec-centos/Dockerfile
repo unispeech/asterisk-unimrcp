@@ -1,5 +1,5 @@
-ARG EXEC_IMAGE=asterisk-unimrcp-build
-FROM $EXEC_IMAGE
+ARG BASE_IMAGE=asterisk-unimrcp-build
+FROM $BASE_IMAGE
 
 RUN yum install -y \
     tcpdump

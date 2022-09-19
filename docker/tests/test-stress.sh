@@ -14,19 +14,22 @@ AUDIO2="audios/pizza_pedra_audio_16k.wav"
 #AUDIO1="audios/dois-audios.wav"
 #AUDIO2="audios/dois-audios.wav"
 
+>/tmp/err
+
 while [[ $n -lt $END ]]; do {
-  #sudo rm  /tmp/test.txt;
-  docker exec -it asterisk bash -c ">${RESULT_FILE};echo '' >${RESULT_FILE}"
+  docker exec -it ${ASTERISK_CONTAINER} bash -c ">${RESULT_FILE};echo '' >${RESULT_FILE}"
   n=$(($n+1));
   
-  python3 sample.py -f $AUDIO1 -t sip:${EXT}@172.19.0.4 -c 6002@172.19.0.4 &
-  python3 sample.py -f $AUDIO2 -t sip:${EXT}@172.19.0.4 -c 6003@172.19.0.4 &
-  python3 sample.py -f $AUDIO1 -t sip:${EXT}@172.19.0.4 -c 6004@172.19.0.4 &
-  python3 sample.py -f $AUDIO2 -t sip:${EXT}@172.19.0.4 -c 6005@172.19.0.4 &
-  python3 sample.py -f $AUDIO1 -t sip:${EXT}@172.19.0.4 -c 6002@172.19.0.4 &
-  python3 sample.py -f $AUDIO2 -t sip:${EXT}@172.19.0.4 -c 6003@172.19.0.4 &
-  python3 sample.py -f $AUDIO1 -t sip:${EXT}@172.19.0.4 -c 6004@172.19.0.4 &
-  python3 sample.py -f $AUDIO2 -t sip:${EXT}@172.19.0.4 -c 6005@172.19.0.4 && sleep 2
+  python3 sip-caller.py -f $AUDIO1 -t sip:${EXT}@${ASTERISK_CONTAINER} -c 6002@${ASTERISK_CONTAINER} &
+  python3 sip-caller.py -f $AUDIO2 -t sip:${EXT}@${ASTERISK_CONTAINER} -c 6003@${ASTERISK_CONTAINER} &
+  python3 sip-caller.py -f $AUDIO1 -t sip:${EXT}@${ASTERISK_CONTAINER} -c 6004@${ASTERISK_CONTAINER} &
+  python3 sip-caller.py -f $AUDIO2 -t sip:${EXT}@${ASTERISK_CONTAINER} -c 6005@${ASTERISK_CONTAINER} &
+  python3 sip-caller.py -f $AUDIO1 -t sip:${EXT}@${ASTERISK_CONTAINER} -c 6002@${ASTERISK_CONTAINER} &
+  python3 sip-caller.py -f $AUDIO2 -t sip:${EXT}@${ASTERISK_CONTAINER} -c 6003@${ASTERISK_CONTAINER} &
+  python3 sip-caller.py -f $AUDIO1 -t sip:${EXT}@${ASTERISK_CONTAINER} -c 6004@${ASTERISK_CONTAINER} &
+  python3 sip-caller.py -f $AUDIO2 -t sip:${EXT}@${ASTERISK_CONTAINER} -c 6005@${ASTERISK_CONTAINER} && sleep 2
+
+  docker cp ${ASTERISK_CONTAINER}:${RESULT_FILE} /tmp
 
   V=$(grep -c interpretation $RESULT_FILE);
   [[ $V == $REC_RES ]] && { echo "OK ===> $n" >> /tmp/err; } || { echo "RECOG NOK = $n" >> /tmp/err; };
