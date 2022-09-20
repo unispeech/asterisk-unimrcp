@@ -19,7 +19,7 @@ AUDIO2="audios/pizza_pedra_audio_16k.wav"
 while [[ $n -lt $END ]]; do {
   docker exec -it ${ASTERISK_CONTAINER} bash -c ">${RESULT_FILE};echo '' >${RESULT_FILE}"
   n=$(($n+1));
-  
+
   python3 sip-caller.py -f $AUDIO1 -t sip:${EXT}@${ASTERISK_CONTAINER} -c 6002@${ASTERISK_CONTAINER} &
   python3 sip-caller.py -f $AUDIO2 -t sip:${EXT}@${ASTERISK_CONTAINER} -c 6003@${ASTERISK_CONTAINER} &
   python3 sip-caller.py -f $AUDIO1 -t sip:${EXT}@${ASTERISK_CONTAINER} -c 6004@${ASTERISK_CONTAINER} &

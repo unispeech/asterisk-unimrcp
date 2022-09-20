@@ -42,7 +42,7 @@ services:
         ipv4_address: ${ASTERISK_SUBNET}.2
     entrypoint: >
       bash -c "
-      /src/install/install_asterisk_unimrcp.run &&
+      /src/install/${ASTERISK_UNIMRCP_INSTALLER}.run &&
       cp -r /src/docker/tests/res/etc / &&
       cp -r /src/docker/tests/res/usr / &&
       /usr/sbin/asterisk -vvvdddf -T -p"

@@ -93,6 +93,12 @@
 					<option name="vpid"> <para>Voiceprint identifier.</para> </option>
 					<option name="mt"> <para>Media type.</para> </option>
 					<option name="iwu"> <para>Input waveform URI.</para> </option>
+					<option name="vbu"> <para>Verify Buffer Utterance (true/false).</para> </option>
+					<option name="bufh"> <para> Control buffer handling (
+						verify: Perform a verify from audio buffer,
+						clear: Perform a buffer clear and
+						rollback: Perform a buffer rollback).</para>
+					</option>
 					<option name="uer"> <para>URI-encoded results 
 						(1: URI-encode NLMSL results, 0: do not encode).</para>
 					</option>

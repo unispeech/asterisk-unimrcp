@@ -104,10 +104,10 @@
 					<option name="cdb"> <para>Clear DTMF buffer (true/false).</para> </option>
 					<option name="enm"> <para>Early nomatch (true/false).</para> </option>
 					<option name="iwu"> <para>Input waveform URI.</para> </option>
-					<option name="vbu"> <para>Verify Buffer Utterance (true/false).</para> </option>
 					<option name="rpuri"> <para>Repository URI.</para> </option>
 					<option name="vpid"> <para>Voiceprint identifier.</para> </option>
 					<option name="mt"> <para>Media type.</para> </option>
+					<option name="vbu"> <para>Verify Buffer Utterance (true/false).</para> </option>
 					<option name="epe"> <para>Exit on play error 
 						(1: terminate recognition on file play error, 0: continue even if file play fails).</para>
 					</option>
