@@ -10,8 +10,8 @@ The objective of the test is validate scenarios for Speech Synthesis, Speech Rec
                                                     +--->| TTS Server |
                                                     |    +------------+
 +--------+        +----------+        +--------+    |    +------------+
-|  Test  |        |          |        |  MRCP  |----+--->| ASR Server |
-|        |------->| Asterisk |------->|        |    |    +------------+
+|  Test  |        |          |        |  MRCP  |<---+--->| ASR Server |
+|        |------->| Asterisk |<------>|        |    |    +------------+
 |  Orch. |        |          |        | Server |    |    +------------+
 +---+----+        +-----^----+        +--------+    +--->| BIO Server |
     |   (docker cmds)   |                                +------------+
@@ -21,6 +21,7 @@ The code presents here build the containers for Test Orchestrator and Asterisk. 
 The Test Orchestrator contains a SIP caller script based on [SIP Simple](https://sipsimpleclient.org/), and shell scripts to orchestrate the test: 
 - test-script.sh, which orchestrates test scenarios
 - test-load.sh, which orchestrates load test
+
 The following test scenarios are available:
 
  Dialplan number     | Test case
@@ -29,8 +30,7 @@ The following test scenarios are available:
 |303, 305            | Recognition follow by Clear-Buffer
 |304                 | Buffer discard (rollback)
 |306                 | Double buffer discard (rollback)
-|306                 | Double buffer discard (rollback)
-|308                 | Single Recognition
+|307                 | Single Recognition
 |308                 | Multiple Recognitions
 |309                 | Single Verification
 |310                 | Multiple Verification

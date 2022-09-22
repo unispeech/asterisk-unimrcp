@@ -116,11 +116,10 @@
 			<para>If recognition completed, the variable ${VERIFSTATUS} is set to "OK". Otherwise, if recognition couldn't be started,
 			the variable ${VERIFSTATUS} is set to "ERROR". If the caller hung up while recognition was still in-progress,
 			the variable ${VERIFSTATUS} is set to "INTERRUPTED".</para>
-			<para>The variable ${RECOG_COMPLETION_CAUSE} indicates whether recognition completed successfully with a match or
+			<para>The variable ${VERIF_COMPLETION_CAUSE} indicates whether recognition completed successfully with a match or
 			an error occurred. ("000" - success, "001" - nomatch, "002" - noinput) </para>
 			<para>If recognition completed successfully, the variable ${VERIF_RESULT} is set to an NLSML result received
-			from the MRCP server. Alternatively, the recognition result data can be retrieved by using the following dialplan
-			functions RECOG_CONFIDENCE(), RECOG_GRAMMAR(), RECOG_INPUT(), and RECOG_INSTANCE().</para>
+			from the MRCP server.</para>
 		</description>
 		<see-also>
 			<ref type="application">MRCPRecogVerif</ref>

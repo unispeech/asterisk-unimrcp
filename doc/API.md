@@ -305,13 +305,11 @@ If recognition completed, the variable ${VERIFSTATUS} is set to "OK".
 Otherwise, if recognition couldn't be started, the variable ${VERIFSTATUS} is
 set to "ERROR". If the caller hung up while recognition was still in-progress,
 the variable ${VERIFSTATUS} is set to "INTERRUPTED".
-The variable ${RECOG_COMPLETION_CAUSE} indicates whether recognition completed
+The variable ${VERIF_COMPLETION_CAUSE} indicates whether recognition completed
 successfully with a match or an error occurred. ("000" - success, "001" -
 nomatch, "002" - noinput) 
 If recognition completed successfully, the variable ${VERIF_RESULT} is set to
-an NLSML result received from the MRCP server. Alternatively, the recognition
-result data can be retrieved by using the following dialplan functions
-RECOG_CONFIDENCE(), RECOG_GRAMMAR(), RECOG_INPUT(), and RECOG_INSTANCE().
+an NLSML result received from the MRCP server.
 
 [Syntax]
 MRCPVerif([options])
@@ -503,83 +501,3 @@ options
     nif: NLSML instance format (either "xml" or "json") used by
     RECOG_INSTANCE().
 ```
-
-## Session persistence
-
-The Recognition and Verification Applications could share the audio buffer to perform a Recognition followed by Verification,
-to achieve the buffer share a single SIP session should be used to allocate an unique Channel Id for the resources add to session.
-
-The below figure shows the SIP/MRCP message to achieve it
-
-```
-       MRCP Client                         MRCP
-        (Asterisk)                        Server
-            |                               |
-            | SIP Invite (speechrecog)      |
-            |------------------------------>|
-            |                    SIP Trying |
-            |<------------------------------|
-            |                               |
-            |      SIP OK (SDP: Channel-Id) |
-            |<------------------------------|
-            | MRCP RECOGNIZE (w/ Ch.Id)     |
-            |------------------------------>|
-            |                               |
-            |                   IN PROGRESS |
-            |<------------------------------|
-            | RTP FLOW                      |
-            |------------------------------>|
-            |                               |
-            | (...)                         |
-            |                               |
-            |                               |
-            |                               |
-            |          RECOGNITION COMPLETE |
-            |<------------------------------|
-            |                               |
-            | SIP Invite (speakverify)      | Note: The speakverify resource
-            |------------------------------>|       is add to call with same
-            |                    SIP Trying |       Channel-Id
-            |<------------------------------|
-            |                               |
-            |      SIP OK (SDP: Channel-Id) |
-            |<------------------------------|
-            | MRCP START-SESSION (w/ Ch.Id) |
-            |------------------------------>|
-            |                               |
-            |<---------------------COMPLETE-|
-            | MRCP VERIFY-FROM-BUFFER       |
-            |------------------------------>|
-            |                               |
-            |                   IN PROGRESS |
-            |<------------------------------|
-            |                               |
-            |         VERIFICATION COMPLETE |
-            |<------------------------------|
-            | MRCP END-SESSION              |
-            |------------------------------>|
-            |                               |
-            |<---------------------COMPLETE-|
-
-```
-
-The Aplication *MRCPRecogVerif* already implements such sequence, but the result for Recognition and Verification is just
-available at the end of the application processing.
-
-For scenarios when a intermediate Recognition result is needed to validate a spoken password foi instance, the applications
-*MRCPRecog* and *MRCPVerif* could be called in sequence with session persistence. In order to control the persistence,
-to guarantee that Recogniton and Verification resources will use the same Channel-Id, the *plt* parameter
-must be used to keep the session between to consecutives called MRCP Applications in dialplan. Besides the parameter *vbu*
-is needed in the *MRCPRecog* call to keep the audio buffer and the parameter *bufh* should indicate a buffer use for
-verification in *MRCPVerif* call, like show below:
-
-```
-exten => 301,1,Answer
-same => n,MRCPRecog(builtin:slm/general, p=default&f=hello-world&sct=2000&vbu=true&plt=1)
-same => n,Verbose(1, ${RECOGSTATUS}, ${RECOG_COMPLETION_CAUSE}, ${RECOG_RESULT})
-same => n,MRCPVerif(vm=verify&rpuri=https://ocibio2.aquarius.cpqd.com.br:8665&vpid=johnsmith,marysmith&p=default&f=please-try-again&sct=2000&sit=1&plt=1&bufh=verify-from-buffer)
-same => n,Verbose(2, ${VERIFSTATUS}, ${VERIF_COMPLETION_CAUSE}, ${VERIF_RESULT}), ${VERIF_SID})
-same => n,Hangup
-```
-
-The session is only released when the hangup is executed.
