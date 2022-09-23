@@ -55,7 +55,7 @@ docker build -t <asterisk unimrcp build image name> --build-arg ASTERISK_VER=<as
 ```
 Example:
 ```
-docker build -t asterisk-unimrcp-build:Asterisk-13.18.1-BMT-657 --build-arg ASTERISK_VER=13.18.1 --build-arg ASTERISK_MRCP_BRANCH=feature/BMT-657 .
+docker build -t asterisk-unimrcp-build:Asterisk-13.18.1 --build-arg ASTERISK_VER=13.18.1 --build-arg ASTERISK_MRCP_BRANCH=master .
 ```
 #### Create astrerisk-unimrcp installer
 ```
@@ -63,7 +63,7 @@ docker run --rm -v <path to asterisk-unimrcp code>:/src <Image for build>  /src/
 ```
 Example:
 ```
-docker run --rm -v /tmp/asterisk-unimrcp:/src --name asterisk-build asterisk-unimrcp-build:Asterisk-13.18.1-BMT-657 /src/install/make_asterisk_unimrcp_install.sh install_asterisk_unimrcp 13.18.1
+docker run --rm -v /tmp/asterisk-unimrcp:/src --name asterisk-build asterisk-unimrcp-build:Asterisk-13.18.1 /src/install/make_asterisk_unimrcp_install.sh install_asterisk_unimrcp 13.18.1
 ```
 ### Create a image for test execution
 In folder docker/exec-centos:
@@ -72,7 +72,7 @@ docker build -t <asterisk unimrcp exec name> --build-arg BASE_IMAGE=<asterisk un
 ```
 Example:
 ```
-docker docker build -t asterisk-unimrcp-exec:Asterisk-13.18.1-BMT-657 --build-arg BASE_IMAGE=asterisk-unimrcp-build:Asterisk-13.18.1-BMT-657 .
+docker build -t asterisk-unimrcp-exec:Asterisk-13.18.1 --build-arg BASE_IMAGE=asterisk-unimrcp-build:Asterisk-13.18.1 .
 ```
 ### Build image for run test
 
@@ -102,13 +102,15 @@ sed -i s/__SERVER_IP__/192.168.25.153/g res/usr/local/unimrcp/conf/client-profil
 **Note**
 - The MRCP server must be installed and configure with ou plugins: SYNTHETIZER, RECOGNIZER, VERIFY
 - The TTS, ASR and Biometric server should be available and connected to MRCP Server
+- If the Asterisk containers (runner and test) are running in a different machine of MRCP server,
+adjust client-ext-ip and rtp-ext-ip with host machine local IP address of in res/etc/asterisk/mrcp.conf.
 ---
 
 ### Check parameters in .env
 ```
 REPO_PATH=$HOME
 ASTERISK_SUBNET="172.16.1"
-ASTERISK_IMAGE=asterisk-unimrcp-exec:Asterisk-13.18.1-BMT-657
+ASTERISK_IMAGE=asterisk-unimrcp-exec:Asterisk-13.18.1
 ASTERISK_UNIMRCP_INSTALLER="install_asterisk_unimrcp"
 TEST_IMAGE=asterisk-test:1.0
 ASTERISK_CONTAINER="asterisk-runner"
