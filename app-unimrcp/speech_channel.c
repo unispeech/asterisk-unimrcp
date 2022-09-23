@@ -38,9 +38,12 @@
 
 /* UniMRCP includes. */
 #include "ast_unimrcp_framework.h"
+#include "mrcp_client_session.h"
+#include "mrcp_resource.h"
 
 #include "audio_queue.h"
 #include "speech_channel.h"
+#include "app_datastore.h"
 
 #define MIME_TYPE_PLAIN_TEXT   "text/plain"
 #define MIME_TYPE_URI_LIST     "text/uri-list"
@@ -70,6 +73,7 @@ static const char *speech_channel_state_to_string(speech_channel_state_t state)
 		case SPEECH_CHANNEL_CLOSED: return "CLOSED";
 		case SPEECH_CHANNEL_READY: return "READY";
 		case SPEECH_CHANNEL_PROCESSING: return "PROCESSING";
+		case SPEECH_CHANNEL_TERMINATED: return "TERMINATED";
 		case SPEECH_CHANNEL_ERROR: return "ERROR";
 		default: return "UNKNOWN";
 	}
@@ -145,13 +149,13 @@ int speech_channel_bargeinoccurred(speech_channel_t *schannel)
 		ast_log(LOG_DEBUG, "(%s) Sending barge-in on %s\n", schannel->name, speech_channel_type_to_string(schannel->type));
 
 		/* Send STOP to MRCP server. */
-		mrcp_message = mrcp_application_message_create(schannel->unimrcp_session, schannel->unimrcp_channel, method);
+		mrcp_message = mrcp_application_message_create(schannel->session->unimrcp_session, schannel->unimrcp_channel, method);
 
 		if (mrcp_message == NULL) {
 			ast_log(LOG_ERROR, "(%s) Failed to create BARGE_IN_OCCURRED message\n", schannel->name);
 			status = -1;
 		} else {
-			if (!mrcp_application_message_send(schannel->unimrcp_session, schannel->unimrcp_channel, mrcp_message))
+			if (!mrcp_application_message_send(schannel->session->unimrcp_session, schannel->unimrcp_channel, mrcp_message))
 				ast_log(LOG_WARNING, "(%s) [speech_channel_bargeinoccurred] Failed to send BARGE_IN_OCCURRED message\n", schannel->name);
 			else if (schannel->cond != NULL) {
 				while (schannel->state == SPEECH_CHANNEL_PROCESSING) {
@@ -186,7 +190,8 @@ speech_channel_t *speech_channel_create(
 						ast_mrcp_application_t *app,
 						ast_format_compat *format,
 						const char *rec_file_path,
-						struct ast_channel *chan)
+						struct ast_channel *chan,
+						mrcp_associated_session_t *session)
 {
 	speech_channel_t *schan = NULL;
 	int status = 0;
@@ -210,19 +215,29 @@ speech_channel_t *speech_channel_create(
 			ast_log(LOG_WARNING, "Unable to allocate name for channel, using \"TTS\"\n");
 			schan->name = "TTS";
 		}
-
+		ast_log(LOG_NOTICE, "Create speech channel: Name=%s, Type=%s\n",
+					name, speech_channel_type_to_string(type));
 		schan->format = format;
 		schan->codec = ast_format_get_unicodec(format);
 		schan->rate = ast_format_get_sample_rate(format);
 		schan->bytes_per_sample = ast_format_get_bytes_per_sample(format);
-
+		if (!session) {
+			if ((schan->session = (mrcp_associated_session_t *)apr_palloc(pool, sizeof(mrcp_associated_session_t))) == NULL) {
+				ast_log(LOG_ERROR, "Unable to allocate session associated structure\n");
+				status = -1;
+			} else {
+				schan->session->unimrcp_session = NULL;
+				schan->session->associated_channels = 0;
+			}
+		} else {
+			schan->session = session;
+		}
+		schan->app_session = NULL;
 		schan->profile = NULL;
 		schan->type = type;
 		schan->application = app;
-		schan->unimrcp_session = NULL;
 		schan->unimrcp_channel = NULL;
 		schan->stream = NULL;
-		schan->dtmf_generator = NULL;
 		schan->session_id = NULL;
 		schan->pool = pool;
 		schan->mutex = NULL;
@@ -232,6 +247,7 @@ speech_channel_t *speech_channel_create(
 		schan->data = NULL;
 		schan->chan = chan;
 		schan->rec_file = NULL;
+		schan->has_sess = 0;
 
 		if (strstr("LPCM", schan->codec)) {
 			schan->silence = 0;
@@ -250,7 +266,8 @@ speech_channel_t *speech_channel_create(
 			ast_log(LOG_ERROR, "(%s) Unable to create audio queue for channel\n",schan->name);
 			status = -1;
 		} else {
-			ast_log(LOG_DEBUG, "Created speech channel: Name=%s, Type=%s, Codec=%s, Rate=%u on %s\n", schan->name, speech_channel_type_to_string(schan->type), schan->codec, schan->rate,
+			ast_log(LOG_DEBUG, "Created speech channel: Name=%s, Type=%s, Codec=%s, Rate=%u on %s\n",
+					schan->name, speech_channel_type_to_string(schan->type), schan->codec, schan->rate,
 				ast_channel_name(chan));
 		}
 		
@@ -311,9 +328,9 @@ static mpf_termination_t *speech_channel_create_mpf_termination(speech_channel_t
 	int sample_rate;
 
 	if (schannel->type == SPEECH_CHANNEL_SYNTHESIZER)
-		capabilities = mpf_sink_stream_capabilities_create(schannel->unimrcp_session->pool);
+		capabilities = mpf_sink_stream_capabilities_create(schannel->session->unimrcp_session->pool);
 	else
-		capabilities = mpf_source_stream_capabilities_create(schannel->unimrcp_session->pool);
+		capabilities = mpf_source_stream_capabilities_create(schannel->session->unimrcp_session->pool);
 
 	if (capabilities == NULL) {
 		ast_log(LOG_ERROR, "(%s) Unable to create capabilities\n", schannel->name);
@@ -324,7 +341,7 @@ static mpf_termination_t *speech_channel_create_mpf_termination(speech_channel_t
 	mpf_codec_capabilities_add(&capabilities->codecs, sample_rate, schannel->codec);
 
 	return mrcp_application_audio_termination_create(
-					schannel->unimrcp_session,                        /* Session, termination belongs to. */
+					schannel->session->unimrcp_session,               /* Session, termination belongs to. */
 					&schannel->application->audio_stream_vtable,      /* Virtual methods table of audio stream. */
 					capabilities,                                     /* Capabilities of audio stream. */
 					schannel);                                        /* Object to associate. */
@@ -337,8 +354,10 @@ int speech_channel_destroy(speech_channel_t *schannel)
 		ast_log(LOG_ERROR, "Speech channel structure pointer is NULL\n");
 		return -1;
 	}
-	
-	ast_log(LOG_DEBUG, "Destroy speech channel: Name=%s, Type=%s, Codec=%s, Rate=%u\n", schannel->name, speech_channel_type_to_string(schannel->type), schannel->codec, schannel->rate);
+
+	ast_log(LOG_NOTICE, "Destroy speech channel: Name=%s, Type=%s, Codec=%s, Rate=%u, State=%d \n",
+			schannel->name, speech_channel_type_to_string(schannel->type), schannel->codec,
+			schannel->rate, schannel->state);
 
 	if (schannel->mutex)
 		apr_thread_mutex_lock(schannel->mutex);
@@ -354,17 +373,24 @@ int speech_channel_destroy(speech_channel_t *schannel)
 	}
 #endif
 
+	const char *session_name = schannel->session->unimrcp_session ? schannel->session->unimrcp_session->name : "NULL";
+	mrcp_resource_id id = schannel->unimrcp_channel ? schannel->unimrcp_channel->resource->id : 0;
+
 	/* Destroy the channel and session if not already done. */
 	if (schannel->state != SPEECH_CHANNEL_CLOSED) {
 		int warned = 0;
 
-		if ((schannel->unimrcp_session != NULL) && (schannel->unimrcp_channel != NULL)) {
-			if (!mrcp_application_session_terminate(schannel->unimrcp_session))
+		ast_log(LOG_DEBUG, "(%s) Closing mrcp session: %s / channel: %ld\n", schannel->name, session_name, id);
+		if ((schannel->session->unimrcp_session != NULL) && (schannel->unimrcp_channel != NULL)
+			&& (schannel->state != SPEECH_CHANNEL_TERMINATED)) {
+			//mrcp_application_session_object_set(schannel->session->unimrcp_session, schannel);
+			if (!mrcp_application_session_terminate(schannel->session->unimrcp_session))
 				ast_log(LOG_WARNING, "(%s) Unable to terminate application session\n", schannel->name);
 		}
 
-		ast_log(LOG_DEBUG, "(%s) Waiting for MRCP session to terminate\n", schannel->name);
-		while (schannel->state != SPEECH_CHANNEL_CLOSED) {
+		ast_log(LOG_DEBUG, "(%s) Waiting for MRCP session %s termination\n", schannel->name, session_name);
+
+		while (schannel->state != SPEECH_CHANNEL_CLOSED && schannel->state != SPEECH_CHANNEL_TERMINATED) {
 			if (schannel->cond != NULL) {
 				if ((apr_thread_cond_timedwait(schannel->cond, schannel->mutex, globals.speech_channel_timeout) == APR_TIMEUP) && (!warned)) {
 					warned = 1;
@@ -372,19 +398,31 @@ int speech_channel_destroy(speech_channel_t *schannel)
 				}
 			}
 		}
+		schannel->state = SPEECH_CHANNEL_CLOSED;
 	}
-	
+
+	ast_log(LOG_DEBUG, "Speech channel %s destroyed - Type=%s, Codec=%s, Rate=%u\n",
+			schannel->name, speech_channel_type_to_string(schannel->type), schannel->codec, schannel->rate);
+	if (schannel->session->associated_channels == 1) {
+		ast_log(LOG_DEBUG, "(%s) Destroying application session: %s\n", schannel->name,
+				session_name);
+
+		if (schannel->session->unimrcp_session && !mrcp_application_session_destroy(schannel->session->unimrcp_session))
+			ast_log(LOG_WARNING, "(%s) Unable to destroy application session: %s\n", schannel->name, session_name);
+		else
+			schannel->session->unimrcp_session = NULL;
+	} else {
+		--schannel->session->associated_channels;
+		ast_log(LOG_NOTICE, "(%s) Number of associated channels to session %s: %d\n", schannel->name,
+				session_name,
+				schannel->session->associated_channels);
+	}
 	if (schannel->state != SPEECH_CHANNEL_CLOSED) {
 		ast_log(LOG_ERROR, "(%s) Failed to destroy channel.  Continuing\n", schannel->name);
 	}
 
 	if (schannel->rec_file) {
 		fclose(schannel->rec_file);
-	}
-
-	if (schannel->dtmf_generator != NULL) {
-		mpf_dtmf_generator_destroy(schannel->dtmf_generator);
-		ast_log(LOG_DEBUG, "(%s) DTMF generator destroyed\n", schannel->name);
 	}
 
 	if (schannel->audio_queue != NULL) {
@@ -405,13 +443,12 @@ int speech_channel_destroy(speech_channel_t *schannel)
 			ast_log(LOG_WARNING, "(%s) Unable to destroy channel condition variable\n", schannel->name);
 	}
 
+	schannel->app_session = NULL;
 	schannel->name = NULL;
 	schannel->profile = NULL;
 	schannel->application = NULL;
-	schannel->unimrcp_session = NULL;
 	schannel->unimrcp_channel = NULL;
 	schannel->stream = NULL;
-	schannel->dtmf_generator = NULL;
 	schannel->session_id = NULL;
 	schannel->pool = NULL;
 	schannel->mutex = NULL;
@@ -421,6 +458,7 @@ int speech_channel_destroy(speech_channel_t *schannel)
 	schannel->data = NULL;
 	schannel->chan = NULL;
 	schannel->rec_file = NULL;
+	schannel->state = SPEECH_CHANNEL_CLOSED;
 
 	return 0;
 }
@@ -442,7 +480,7 @@ int speech_channel_open(speech_channel_t *schannel, ast_mrcp_profile_t *profile)
 	schannel->profile = profile;
 
 	/* Create MRCP session. */
-	if (!schannel->unimrcp_session) {
+	if (!schannel->session->unimrcp_session) {
 		/* Make sure we can open channel. */
 		if (schannel->state != SPEECH_CHANNEL_CLOSED) {
 			ast_log(LOG_ERROR, "Invalid Speech channel state\n");
@@ -450,26 +488,28 @@ int speech_channel_open(speech_channel_t *schannel, ast_mrcp_profile_t *profile)
 			return -1;
 		}
 
-		if ((schannel->unimrcp_session = mrcp_application_session_create(schannel->application->app, profile->name, schannel)) == NULL) {
+		if ((schannel->session->unimrcp_session = mrcp_application_session_create(schannel->application->app, profile->name, schannel)) == NULL) {
 			/* Profile doesn't exist? */
 			ast_log(LOG_ERROR, "(%s) Unable to create session with %s\n", schannel->name, profile->name);
 
 			apr_thread_mutex_unlock(schannel->mutex);
 			return 2;
 		}
+		schannel->session->associated_channels = 1;
 
 		/* Set session name for logging purposes. */
-		mrcp_application_session_name_set(schannel->unimrcp_session, schannel->name);
+		mrcp_application_session_name_set(schannel->session->unimrcp_session, schannel->name);
 	} else {
 		schannel->state = SPEECH_CHANNEL_CLOSED;
-		mrcp_application_session_object_set(schannel->unimrcp_session, schannel);
+		schannel->session->associated_channels++;
+		mrcp_application_session_object_set(schannel->session->unimrcp_session, schannel);
 	}
 
 	/* Create audio termination and add to channel. */
 	if ((termination = speech_channel_create_mpf_termination(schannel)) == NULL) {
 		ast_log(LOG_ERROR, "(%s) Unable to create termination with %s\n", schannel->name, profile->name);
 
-		if (!mrcp_application_session_destroy(schannel->unimrcp_session))
+		if (!mrcp_application_session_destroy(schannel->session->unimrcp_session))
 			ast_log(LOG_WARNING, "(%s) Unable to destroy application session for %s\n", schannel->name, profile->name);
 
 		apr_thread_mutex_unlock(schannel->mutex);
@@ -483,10 +523,10 @@ int speech_channel_open(speech_channel_t *schannel, ast_mrcp_profile_t *profile)
 	else
 		resource_type = MRCP_VERIFIER_RESOURCE;
 
-	if ((schannel->unimrcp_channel = mrcp_application_channel_create(schannel->unimrcp_session, resource_type, termination, NULL, schannel)) == NULL) {
+	if ((schannel->unimrcp_channel = mrcp_application_channel_create(schannel->session->unimrcp_session, resource_type, termination, NULL, schannel)) == NULL) {
 		ast_log(LOG_ERROR, "(%s) Unable to create channel with %s\n", schannel->name, profile->name);
 
-		if (!mrcp_application_session_destroy(schannel->unimrcp_session))
+		if (!mrcp_application_session_destroy(schannel->session->unimrcp_session))
 			ast_log(LOG_WARNING, "(%s) Unable to destroy application session for %s\n", schannel->name, profile->name);
 
 		apr_thread_mutex_unlock(schannel->mutex);
@@ -494,10 +534,10 @@ int speech_channel_open(speech_channel_t *schannel, ast_mrcp_profile_t *profile)
 	}
 	ast_log(LOG_NOTICE, "Channel created\n");
 	/* Add channel to session. This establishes the connection to the MRCP server. */
-	if (mrcp_application_channel_add(schannel->unimrcp_session, schannel->unimrcp_channel) != TRUE) {
+	if (mrcp_application_channel_add(schannel->session->unimrcp_session, schannel->unimrcp_channel) != TRUE) {
 		ast_log(LOG_ERROR, "(%s) Unable to add channel to session with %s\n", schannel->name, profile->name);
 
-		if (!mrcp_application_session_destroy(schannel->unimrcp_session))
+		if (!mrcp_application_session_destroy(schannel->session->unimrcp_session))
 			ast_log(LOG_WARNING, "(%s) Unable to destroy application session for %s\n", schannel->name, profile->name);
 
 		apr_thread_mutex_unlock(schannel->mutex);
@@ -507,9 +547,8 @@ int speech_channel_open(speech_channel_t *schannel, ast_mrcp_profile_t *profile)
 	/* Wait for channel to be ready. */
 	while (schannel->state == SPEECH_CHANNEL_CLOSED) {
 		apr_thread_cond_timedwait(schannel->cond, schannel->mutex, globals.speech_channel_timeout);
-		ast_log(LOG_NOTICE, "Channel waiting...\n");
 	}
-	ast_log(LOG_NOTICE, "Channel ready\n");
+
 	if (schannel->state == SPEECH_CHANNEL_READY) {
 		ast_log(LOG_DEBUG, "(%s) channel is ready\n", schannel->name);
 	} else if (schannel->state == SPEECH_CHANNEL_CLOSED) {
@@ -518,7 +557,7 @@ int speech_channel_open(speech_channel_t *schannel, ast_mrcp_profile_t *profile)
 		status = -1;
 	} else if (schannel->state == SPEECH_CHANNEL_ERROR) {
 		ast_log(LOG_DEBUG, "(%s) Terminating MRCP session\n", schannel->name);
-		if (!mrcp_application_session_terminate(schannel->unimrcp_session))
+		if (!mrcp_application_session_terminate(schannel->session->unimrcp_session))
 			ast_log(LOG_WARNING, "(%s) Unable to terminate application session\n", schannel->name);
 
 		/* Wait for session to be cleaned up. */
@@ -577,13 +616,13 @@ int speech_channel_stop(speech_channel_t *schannel)
 		ast_log(LOG_DEBUG, "(%s) Stopping %s\n", schannel->name, speech_channel_type_to_string(schannel->type));
 
 		/* Send STOP to MRCP server. */
-		mrcp_message = mrcp_application_message_create(schannel->unimrcp_session, schannel->unimrcp_channel, method);
+		mrcp_message = mrcp_application_message_create(schannel->session->unimrcp_session, schannel->unimrcp_channel, method);
 
 		if (mrcp_message == NULL) {
 			ast_log(LOG_ERROR, "(%s) Failed to create STOP message\n", schannel->name);
 			status = -1;
 		} else {
-			if (!mrcp_application_message_send(schannel->unimrcp_session, schannel->unimrcp_channel, mrcp_message))
+			if (!mrcp_application_message_send(schannel->session->unimrcp_session, schannel->unimrcp_channel, mrcp_message))
 				ast_log(LOG_WARNING, "(%s) Failed to send STOP message\n", schannel->name);
 			else if (schannel->cond != NULL) {
 				while (schannel->state == SPEECH_CHANNEL_PROCESSING) {
@@ -611,8 +650,48 @@ int speech_channel_stop(speech_channel_t *schannel)
 	return status;
 }
 
+int MrcpAddVendorSpecificParam(mrcp_message_t* mrcp_message, const char* param_name, const char* param_value)
+{
+	if (!mrcp_message || !param_name || !param_value) {
+		return -1;
+	}
+
+	if (mrcp_message->start_line.method_id != RECOGNIZER_RECOGNIZE &&
+		mrcp_message->start_line.method_id != RECOGNIZER_SET_PARAMS &&
+		mrcp_message->start_line.method_id != RECOGNIZER_GET_PARAMS &&
+		mrcp_message->start_line.method_id != VERIFIER_VERIFY &&
+		mrcp_message->start_line.method_id != VERIFIER_SET_PARAMS &&
+		mrcp_message->start_line.method_id != VERIFIER_GET_PARAMS) {
+		return -1;
+	}
+
+	mrcp_generic_header_t* generic_header = mrcp_generic_header_get(mrcp_message);
+
+	if (!generic_header) {
+		/* get/allocate generic header */
+		generic_header = mrcp_generic_header_prepare(mrcp_message);
+		if (!generic_header) {
+			return -1;
+		}
+	}
+
+	if (!generic_header->vendor_specific_params) {
+		generic_header->vendor_specific_params =
+		apt_pair_array_create(1, mrcp_message->pool);
+	}
+
+	apt_str_t param_name_;
+	apt_str_t param_value_;
+	apt_string_set(&param_name_, param_name);
+	apt_string_set(&param_value_, param_value);
+	apt_pair_array_append(generic_header->vendor_specific_params, &param_name_, &param_value_,
+				mrcp_message->pool);
+
+	return 0;
+}
+
 /* Set parameters in an MRCP header. */
-int speech_channel_set_params(speech_channel_t *schannel, mrcp_message_t *msg, apr_hash_t *header_fields)
+int speech_channel_set_params(speech_channel_t *schannel, mrcp_message_t *msg, apr_hash_t *header_fields, apr_hash_t *vendor_specific_fields)
 {
 	if (schannel && msg && header_fields) {
 		/* Loop through each param and add to the message. */
@@ -638,6 +717,28 @@ int speech_channel_set_params(speech_channel_t *schannel, mrcp_message_t *msg, a
 					}
 				}
 			}
+		}
+		if (vendor_specific_fields) {
+			for (hi = apr_hash_first(NULL, vendor_specific_fields); hi; hi = apr_hash_next(hi)) {
+				char *param_name = NULL;
+				char *param_val = NULL;
+				const void *key;
+				void *val;
+
+				apr_hash_this(hi, &key, NULL, &val);
+				param_name = (char *)key;
+				param_val = (char *)val;
+
+				if (param_name && (strlen(param_name) > 0) && param_val && (strlen(param_val) > 0)) {
+				ast_log(LOG_DEBUG, "(%s) Vendor Specific Parameter %s: %s\n", schannel->name, param_name, param_val);
+					if (MrcpAddVendorSpecificParam(msg, param_name, param_val) < 0) {
+						ast_log(LOG_WARNING, "Error setting MRCP header %s=%s\n", param_name, param_val);
+					}
+				}
+			}
+			mrcp_generic_header_t* generic_header = mrcp_generic_header_get(msg);
+			if (generic_header && generic_header->vendor_specific_params)
+				mrcp_generic_header_property_add(msg, GENERIC_HEADER_VENDOR_SPECIFIC_PARAMS);
 		}
 	}
 

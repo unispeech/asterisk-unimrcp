@@ -50,6 +50,17 @@
 
 typedef int (*app_exec_f)(struct ast_channel *chan, ast_app_data data);
 
+/* MRCP application message dispatcher interface */
+struct mrcp_app_message_process_dispatcher_t {
+	/* Process response message for recognize */
+	apt_bool_t (*recog_message_process)(mrcp_application_t *application, mrcp_session_t *session, mrcp_channel_t *channel, mrcp_message_t *message);
+	/* Process response message for verify */
+	apt_bool_t (*verif_message_process)(mrcp_application_t *application, mrcp_session_t *session, mrcp_channel_t *channel, mrcp_message_t *message);
+	/* Process response message for synthesi */
+	apt_bool_t (*synth_message_process)(mrcp_application_t *application, mrcp_session_t *session, mrcp_channel_t *channel, mrcp_message_t *message);
+};
+typedef struct mrcp_app_message_process_dispatcher_t mrcp_app_message_process_dispatcher_t;
+
 /* MRCP application. */
 struct ast_mrcp_application_t {
 	/* Application name. */
@@ -66,6 +77,8 @@ struct ast_mrcp_application_t {
 	mrcp_application_t *app;
 	/* MRCP callbacks from UniMRCP to this module's application. */
 	mrcp_app_message_dispatcher_t dispatcher;
+	/* Message process callbacks to this module's application. */
+	mrcp_app_message_process_dispatcher_t message_process;
 	/* Audio callbacks from UniMRCP to this module's application. */
 	mpf_audio_stream_vtable_t audio_stream_vtable;
 };

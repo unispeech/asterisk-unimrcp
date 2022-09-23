@@ -1,0 +1,32 @@
+Accounts:
+    6003@asterisk-runner:
+        enabled = true
+        auth:
+            password = unsecurepassword
+
+        sip:
+            outbound_proxy = "asterisk-runner.asterisk_test:5060;transport=udp"
+
+
+    6005@asterisk-runner:
+        enabled = true
+        auth:
+            password = unsecurepassword
+
+        sip:
+            outbound_proxy = "asterisk-runner.asterisk_test:5060;transport=udp"
+
+
+
+SIPSimpleSettings:
+    default_account = 6003@asterisk-runner
+    instance_id = "urn:uuid:7076537c-5ff3-4c8b-80a6-34797c2fb407"
+    audio:
+        alert_device =
+        input_device =
+        output_device =
+
+    video:
+        device =
+
+

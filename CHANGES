@@ -1,4 +1,4 @@
-Changes for Asterisk UniMRCP Modules Unreleased
+Changes for Asterisk UniMRCP Modules 1.9.1
 
 1. Generic Speech Recognition API (res_speech_unimrcp.so)
 
@@ -7,6 +7,13 @@ Changes for Asterisk UniMRCP Modules Unreleased
 2. Dialplan Applications (app_unimrcp.so)
 
     * Added MRCPVerif and MRCPRecogVerif (with Verify from buffer)
+    * Channel-Id is reused when the applications persist (MRCPRecog and MRCPVerif)
+    * Refactor for common code reuse between applications
+    * Unimrcp session and DTMF Generator belong to APP session
+
+3. Miscellaneous
+
+    * Test automation
 
 Changes for Asterisk UniMRCP Modules 1.9.0
 
