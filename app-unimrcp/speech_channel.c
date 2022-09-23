@@ -74,6 +74,7 @@ static const char *speech_channel_state_to_string(speech_channel_state_t state)
 		case SPEECH_CHANNEL_READY: return "READY";
 		case SPEECH_CHANNEL_PROCESSING: return "PROCESSING";
 		case SPEECH_CHANNEL_TERMINATED: return "TERMINATED";
+		case SPEECH_CHANNEL_ERROR: return "ERROR";
 		default: return "UNKNOWN";
 	}
 }
