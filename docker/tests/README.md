@@ -103,7 +103,7 @@ sed -i s/__SERVER_IP__/192.168.25.153/g res/usr/local/unimrcp/conf/client-profil
 - The MRCP server must be installed and configure with ou plugins: SYNTHETIZER, RECOGNIZER, VERIFY
 - The TTS, ASR and Biometric server should be available and connected to MRCP Server
 - If the Asterisk containers (runner and test) are running in a different machine of MRCP server,
-adjust client-ext-ip and rtp-ext-ip with host machine local IP address of in res/etc/asterisk/mrcp.conf.
+adjust *client-ext-ip* and *rtp-ext-ip* with host machine local IP address of in res/etc/asterisk/mrcp.conf.
 ---
 
 ### Check parameters in .env
