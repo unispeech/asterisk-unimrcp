@@ -349,7 +349,7 @@ static int synthandrecog_option_apply(mrcprecogverif_options_t *options, const c
 	} else if (strcasecmp(key, "mt") == 0) {
 		apr_hash_set(options->recog_hfs, "Media-Type", APR_HASH_KEY_STRING, value);
 	} else if (strcasecmp(key, "vbu") == 0) {
-		apr_hash_set(options->recog_hfs, "Verify-Buffer-Utterance", APR_HASH_KEY_STRING, value);
+		apr_hash_set(options->recog_hfs, "Ver-Buffer-Utterance", APR_HASH_KEY_STRING, value);
 	} else if (strcasecmp(key, "pv") == 0) {
 		apr_hash_set(options->synth_hfs, "Prosody-Volume", APR_HASH_KEY_STRING, value);
 	} else if (strcasecmp(key, "pr") == 0) {
