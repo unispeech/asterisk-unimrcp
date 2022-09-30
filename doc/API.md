@@ -327,7 +327,7 @@ options
 
     b: Bargein value (0: no barge-in, 1: enable barge-in).
 
-    vc: Verificarion score (-1.0 - 1.0).
+    vc: Verification score (-1.0 - 1.0).
 
     minph: Minimum verification phrases.
 
@@ -420,7 +420,7 @@ options
 
     b: Bargein value (0: no barge-in, 1: enable barge-in).
 
-    vc: Verificarion score (-1.0 - 1.0).
+    vc: Verification score (-1.0 - 1.0).
 
     minph: Minimum verification phrases.
 

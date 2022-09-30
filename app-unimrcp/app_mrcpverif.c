@@ -77,7 +77,7 @@
 					</option>
 					<option name="f"> <para>Filename to play (if empty or not specified, no file is played).</para> </option>
 					<option name="b"> <para>Bargein value (0: no barge-in, 1: enable barge-in).</para> </option>
-					<option name="vc"> <para>Verificarion score (-1.0 - 1.0).</para> </option>
+					<option name="vc"> <para>Verification score (-1.0 - 1.0).</para> </option>
 					<option name="minph"> <para>Minimum verification phrases.</para> </option>
 					<option name="maxph"> <para>Maximum verification phrases.</para> </option>
 					<option name="nit"> <para>No input timeout (msec).</para> </option>

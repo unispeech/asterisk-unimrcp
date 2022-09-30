@@ -1,3 +1,10 @@
+Changes for Asterisk UniMRCP Modules 1.9.2
+
+1. Dialplan Applications (app_unimrcp.so)
+
+    * Fix Verify from buffer parameter name
+
+
 Changes for Asterisk UniMRCP Modules 1.9.1
 
 1. Generic Speech Recognition API (res_speech_unimrcp.so)
