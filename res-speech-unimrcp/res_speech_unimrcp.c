@@ -264,11 +264,10 @@ static int uni_recog_create_internal(struct ast_speech *speech, ast_format_compa
 	if(descriptor) {
 		mpf_frame_buffer_t *media_buffer;
 #if UNI_VERSION_AT_LEAST(1,8,0)
-		apr_uint16_t frame_duration = descriptor->frame_duration;
+		apr_size_t frame_size = mpf_codec_linear_frame_size_calculate(descriptor->sampling_rate,descriptor->frame_duration,descriptor->channel_count);
 #else
-		apr_uint16_t frame_duration = CODEC_FRAME_TIME_BASE;
+		apr_size_t frame_size = mpf_codec_linear_frame_size_calculate(descriptor->sampling_rate,descriptor->channel_count);
 #endif
-		apr_size_t frame_size = mpf_codec_linear_frame_size_calculate(descriptor->sampling_rate,frame_duration,descriptor->channel_count);
 		/* Create media buffer */
 		ast_log(LOG_DEBUG, "(%s) Create media buffer frame_size:%"APR_SIZE_T_FMT"\n",uni_speech->name,frame_size);
 		media_buffer = mpf_frame_buffer_create(frame_size,20,pool);
