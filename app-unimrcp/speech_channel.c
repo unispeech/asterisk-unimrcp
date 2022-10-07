@@ -213,7 +213,7 @@ speech_channel_t *speech_channel_create(
 		schan->format = format;
 		schan->codec = ast_format_get_unicodec(format);
 		schan->rate = ast_format_get_sample_rate(format);
-		schan->bytes_per_sample = ast_format_get_bytes_per_sample(format);
+		schan->bits_per_sample = ast_format_get_bits_per_sample(format);
 
 		schan->profile = NULL;
 		schan->type = type;
@@ -715,7 +715,7 @@ static APR_INLINE void ast_frame_fill(speech_channel_t *schannel, struct ast_fra
 	fr->frametype = AST_FRAME_VOICE;
 	ast_frame_set_format(fr, schannel->format);
 	fr->datalen = size;
-	fr->samples = size / schannel->bytes_per_sample;
+	fr->samples = 8 * size / schannel->bits_per_sample;
 	ast_frame_set_data(fr, data);
 	fr->mallocd = 0;
 	fr->offset = AST_FRIENDLY_OFFSET;

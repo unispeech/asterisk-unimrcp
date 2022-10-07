@@ -138,13 +138,13 @@ static APR_INLINE const char* ast_format_get_unicodec(const ast_format_compat *f
 	/*! Use Raw 16-bit Signed Linear PCM for the rest */
 	return "LPCM";
 }
-static APR_INLINE int ast_format_get_bytes_per_sample(const ast_format_compat *format)
+static APR_INLINE int ast_format_get_bits_per_sample(const ast_format_compat *format)
 {
 	/*! Raw mu-law and A-law data (G.711) */
 	if(format == ast_format_ulaw || format == ast_format_alaw)
-		return 1;
+		return 8;
 	/*! Use Raw 16-bit Signed Linear PCM for the rest */
-	return 2 * ast_format_get_sample_rate(format) / 8000;
+	return 16 * ast_format_get_sample_rate(format) / 8000;
 }
 #else
 static APR_INLINE ast_format_compat* ast_get_speechformat(ast_format_compat *raw_format, apr_pool_t *pool)
@@ -177,13 +177,13 @@ static APR_INLINE const char* ast_format_get_unicodec(const ast_format_compat *f
 	/*! Use Raw 16-bit Signed Linear PCM for the rest */
 	return "LPCM";
 }
-static APR_INLINE int ast_format_get_bytes_per_sample(const ast_format_compat *format)
+static APR_INLINE int ast_format_get_bits_per_sample(const ast_format_compat *format)
 {
 	/*! Raw mu-law and A-law data (G.711) */
 	if(format->id == AST_FORMAT_ULAW || format->id == AST_FORMAT_ALAW)
-		return 1;
+		return 8;
 	/*! Use Raw 16-bit Signed Linear PCM for the rest */
-	return 2 * ast_format_get_sample_rate(format) / 8000;
+	return 16 * ast_format_get_sample_rate(format) / 8000;
 }
 #endif
 
