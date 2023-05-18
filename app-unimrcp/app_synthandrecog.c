@@ -1530,7 +1530,7 @@ static int app_synthandrecog_exec(struct ast_channel *chan, ast_app_data data)
 	if ((sar_options.flags & SAR_GRAMMAR_DELIMITERS) == SAR_GRAMMAR_DELIMITERS) {
 		if (!ast_strlen_zero(sar_options.params[OPT_ARG_GRAMMAR_DELIMITERS])) {
 			grammar_delimiters = sar_options.params[OPT_ARG_GRAMMAR_DELIMITERS];
-			ast_log(LOG_DEBUG, "(%s) Grammar delimiters: %s\n", grammar_delimiters, recog_name);
+			ast_log(LOG_DEBUG, "(%s) Grammar delimiters: %s\n", recog_name, grammar_delimiters);
 		}
 	}
 	/* Parse the grammar argument into a sequence of grammars. */
