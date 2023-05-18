@@ -266,6 +266,7 @@ app_session_t* app_datastore_session_add(app_datastore_t* app_datastore, const c
 		session->nlsml_result = NULL;
 		session->stop_barged_synth = FALSE;
 		session->instance_format = NLSML_INSTANCE_FORMAT_XML;
+		session->replace_new_lines = 0;
 		ast_log(LOG_DEBUG, "Add entry %s to datastore on %s\n", entry, ast_channel_name(app_datastore->chan));
 		apr_hash_set(app_datastore->session_table, entry, APR_HASH_KEY_STRING, session);
 	}
@@ -553,6 +554,17 @@ static const apr_xml_elem* recog_instance_find_elem(const apr_xml_elem *elem, co
 	return NULL;
 }
 
+static int recog_instance_replace_char(char *str, char find_char, char replace_char)
+{
+	char *ptr = str;
+	int n = 0;
+	while ((ptr = strchr(ptr, find_char)) != NULL) {
+		*ptr++ = replace_char;
+		n++;
+	}
+	return n;
+}
+
 /* Helper function used to process XML data in NLSML instance */
 static int recog_instance_process_xml(app_session_t *app_session, nlsml_instance_t *instance, const char *path, const char **text)
 {
@@ -700,6 +712,9 @@ static int recog_instance(struct ast_channel *chan, const char *cmd, char *data,
 		return -1;
 
 	ast_copy_string(buf, text, len);
+	if (app_session->replace_new_lines) {
+		recog_instance_replace_char(buf, '\n', app_session->replace_new_lines);
+	}
 	return 0;
 }
 

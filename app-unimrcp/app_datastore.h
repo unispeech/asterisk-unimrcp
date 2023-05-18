@@ -64,6 +64,7 @@ struct app_session_t {
 	nlsml_result_t             *nlsml_result;       /* parsed NLSML result */
 	apt_bool_t                  stop_barged_synth;  /* whether or not to always stop barged synthesis request */
 	enum nlsml_instance_format  instance_format;    /* NLSML instance format */
+	char                        replace_new_lines;  /* replace new lines in NLSML instance */
 };
 
 typedef struct app_session_t app_session_t;

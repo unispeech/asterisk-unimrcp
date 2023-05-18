@@ -115,6 +115,7 @@
 					<option name="dse"> <para>Datastore entry.</para></option>
 					<option name="vsp"> <para>Vendor-specific parameters.</para></option>
 					<option name="nif"> <para>NLSML instance format (either "xml" or "json") used by RECOG_INSTANCE().</para></option>
+					<option name="rnl"> <para>Replace new lines (0: disabled, otherwise: the character to replace new lines with) used by RECOG_INSTANCE().</para></option>
 				</optionlist>
 			</parameter>
 		</syntax>
@@ -160,7 +161,8 @@ enum mrcprecog_option_flags {
 	MRCPRECOG_INPUT_TIMERS        = (1 << 8),
 	MRCPRECOG_PERSISTENT_LIFETIME = (1 << 9),
 	MRCPRECOG_DATASTORE_ENTRY     = (1 << 10),
-	MRCPRECOG_INSTANCE_FORMAT     = (1 << 11)
+	MRCPRECOG_INSTANCE_FORMAT     = (1 << 11),
+	MRCPRECOG_REPLACE_NEW_LINES   = (1 << 12)
 };
 
 /* The enumeration of option arguments. */
@@ -177,9 +179,10 @@ enum mrcprecog_option_args {
 	OPT_ARG_PERSISTENT_LIFETIME  = 9,
 	OPT_ARG_DATASTORE_ENTRY      = 10,
 	OPT_ARG_INSTANCE_FORMAT      = 11,
+	OPT_ARG_REPLACE_NEW_LINES    = 12,
 
 	/* This MUST be the last value in this enum! */
-	OPT_ARG_ARRAY_SIZE           = 12
+	OPT_ARG_ARRAY_SIZE           = 13
 };
 
 /* The enumeration of plocies for the use of input timers. */
@@ -951,6 +954,9 @@ static int mrcprecog_option_apply(mrcprecog_options_t *options, const char *key,
 	} else if (strcasecmp(key, "nif") == 0) {
 		options->flags |= MRCPRECOG_INSTANCE_FORMAT;
 		options->params[OPT_ARG_INSTANCE_FORMAT] = value;
+	} else if (strcasecmp(key, "rnl") == 0) {
+		options->flags |= MRCPRECOG_REPLACE_NEW_LINES;
+		options->params[OPT_ARG_REPLACE_NEW_LINES] = value;
 	} else {
 		ast_log(LOG_WARNING, "Unknown option: %s\n", key);
 	}
@@ -1232,6 +1238,15 @@ static int app_recog_exec(struct ast_channel *chan, ast_app_data data)
 				app_session->instance_format = NLSML_INSTANCE_FORMAT_XML;
 			else if (strcasecmp(format, "json") == 0)
 				app_session->instance_format = NLSML_INSTANCE_FORMAT_JSON;
+		}
+	}
+
+	/* Check whether new lines shall be replaced */
+	if ((mrcprecog_options.flags & MRCPRECOG_REPLACE_NEW_LINES) == MRCPRECOG_REPLACE_NEW_LINES) {
+		if (!ast_strlen_zero(mrcprecog_options.params[OPT_ARG_REPLACE_NEW_LINES])) {
+			char ch = *mrcprecog_options.params[OPT_ARG_REPLACE_NEW_LINES];
+			ast_log(LOG_DEBUG, "(%s) Replace new lines: %c\n", name, ch);
+			app_session->replace_new_lines = ch;
 		}
 	}
 
