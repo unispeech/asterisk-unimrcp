@@ -417,7 +417,7 @@ static int recog_channel_get_results(speech_channel_t *schannel, const char **co
 
 	if (r == NULL) {
 		ast_log(LOG_ERROR, "(%s) Recognizer data struct is NULL\n", schannel->name);
-		
+
 		apr_thread_mutex_unlock(schannel->mutex);
 		return -1;
 	}
@@ -497,7 +497,7 @@ static int recog_channel_start(speech_channel_t *schannel, const char *name, int
 		ast_log(LOG_ERROR, "recog_channel_start: unknown channel error!\n");
 		return -1;
 	}
-	
+
 	apr_thread_mutex_lock(schannel->mutex);
 
 	if (schannel->state != SPEECH_CHANNEL_READY) {
@@ -837,7 +837,7 @@ static apt_bool_t recog_stream_read(mpf_audio_stream_t *stream, mpf_frame_t *fra
 {
 	speech_channel_t *schannel;
 
-	if (stream != NULL)
+	if (stream)
 		schannel = (speech_channel_t *)stream->obj;
 	else
 		schannel = NULL;

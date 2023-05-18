@@ -208,7 +208,7 @@ static apt_bool_t speech_on_session_terminate(mrcp_application_t *application, m
 	}
 
 	ast_log(LOG_DEBUG, "(%s) speech_on_session_terminate\n", schannel->name);
-	
+
 	if (schannel->dtmf_generator != NULL) {
 		ast_log(LOG_DEBUG, "(%s) DTMF generator destroyed\n", schannel->name);
 		mpf_dtmf_generator_destroy(schannel->dtmf_generator);
@@ -1177,7 +1177,7 @@ static int synthandrecog_options_parse(char *str, sar_options_t *options, apr_po
 	char *s;
 	char *name, *value;
 
-	if (!str) 
+	if (!str)
 		return 0;
 
 	if ((options->recog_hfs = apr_hash_make(pool)) == NULL) {
