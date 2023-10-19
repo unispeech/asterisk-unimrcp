@@ -659,6 +659,7 @@ int MrcpAddVendorSpecificParam(mrcp_message_t* mrcp_message, const char* param_n
 	if (mrcp_message->start_line.method_id != RECOGNIZER_RECOGNIZE &&
 		mrcp_message->start_line.method_id != RECOGNIZER_SET_PARAMS &&
 		mrcp_message->start_line.method_id != RECOGNIZER_GET_PARAMS &&
+		mrcp_message->start_line.method_id != VERIFIER_START_SESSION &&
 		mrcp_message->start_line.method_id != VERIFIER_VERIFY &&
 		mrcp_message->start_line.method_id != VERIFIER_SET_PARAMS &&
 		mrcp_message->start_line.method_id != VERIFIER_GET_PARAMS) {
@@ -910,10 +911,10 @@ char *normalize_input_string(char *str)
 		end--;
 
 	/* Unquote the string, if quoted */
-	if (end > str && *str == '"' && *end == '"') {
+	/*if (end > str && *str == '"' && *end == '"') {
 		str++;
 		end--;
-	}
+	}*/
 
 	/* Set null terminator. */
 	*(end+1) = '\0';

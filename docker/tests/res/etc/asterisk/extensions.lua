@@ -53,7 +53,7 @@ extensions = {
           saveValue("RECOGSTATUS=", channel.RECOGSTATUS:get())
           saveValue("RECOG_COMPLETION_CAUSE=", channel.RECOG_COMPLETION_CAUSE:get())
           saveValue("RECOG_RESULT", channel.RECOG_RESULT:get())
-          par= "vm=verify&rpuri=https://ocibio2.aquarius.cpqd.com.br:8665&vpid=johnsmith,marysmith&p=default&f=please-try-again&sct=2000&sit=1&plt=1&bufh=verify-from-buffer"
+          par= "vm=enroll&rpuri=ocibio2.aquarius.cpqd.com.br:9092&p=default&f=please-try-again&sct=2000&sit=1&plt=1&bufh=verify-from-buffer"
           app.MRCPVerif(par)
           saveValue("VERIFSTATUS=", channel.VERIFSTATUS:get())
           saveValue("VERIF_COMPLETION_CAUSE=", channel.VERIF_COMPLETION_CAUSE:get())

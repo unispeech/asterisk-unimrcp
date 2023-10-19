@@ -44,7 +44,7 @@ validate-result()
   [[ $V == $recogs ]] || { error=1; log "Interpretation error: $V"; }
   V=$(grep -c VERIF_RESULT ${VALIDATE_FILE});
   [[ $V == $results ]] || { error=1; log "Verify reasult error: $V"; }
-  V=$(grep -c johnsmith ${VALIDATE_FILE});
+  V=$(grep -cP 'id="\d{18}"' ${VALIDATE_FILE});
   [[ $V == $results ]] || { error=1; log "Verify result content error: $V"; }
   V=$(grep -c SYNTHSTATUS=OK ${VALIDATE_FILE});
   [[ $V == $synths ]] || { error=1; log "Speak error"; }
@@ -163,26 +163,26 @@ execute-test()
 
 tests=(
 # dial                     Results                        Message capture
-#                       __________________     ______________________________________________
-# ext#  audio        recogs verifies synth recog rec-res ver ver-res buf rollback clear start speak same_chid
-  301 dois-audios.wav  1       1       0     1      1     0     1     1      0      0     1     0     1  
-  302 dois-audios.wav  2       1       0     2      2     0     1     1      0      0     1     0     1
-  303 dois-audios.wav  2       1       0     2      2     0     1     1      0      1     1     0     1
-  304 dois-audios.wav  2       1       0     2      2     0     1     1      1      0     1     0     1
-  305 dois-audios.wav  2       1       0     2      2     1     1     0      0      1     1     0     1
-  306 tres-audios.wav  3       1       0     3      3     0     1     1      2      0     1     0     1
-  307 um-audio.wav     1       0       0     1      1     0     0     0      0      0     0     0     1
-  308 dois-audios.wav  2       0       0     2      2     0     0     0      0      0     0     0     1
-  309 um-audio.wav     0       1       0     0      0     1     1     0      0      0     1     0     1
-  310 dois-audios.wav  0       2       0     0      0     2     2     0      0      0     1     0     1
-  311 um-audio.wav     1       1       0     1      1     0     1     1      0      0     1     0     1
-  312 um-audio.wav     0       0       1     0      0     0     0     0      0      0     0     1     1
-  313 um-audio.wav     1       0       1     1      1     0     0     0      0      0     0     1     1
-  314 um-audio.wav     1       0       1     1      1     0     0     0      0      0     0     1     1
-  315 um-audio.wav     1       1       1     1      1     0     1     1      0      0     1     1     1 
-  316 um-audio.wav     1       1       1     1      1     1     1     0      0      0     1     1     0
-  317 dois-audios.wav  1       1       0     1      1     1     1     0      0      0     1     0     0  
-  318 dois-audios.wav  0       2       0     0      0     2     2     0      0      0     2     0     0
+#                         __________________     ______________________________________________
+# ext#  audio          recogs verifies synth recog rec-res ver ver-res buf rollback clear start speak same_chid
+  301 dois-audios.wav    1       1       0     1      1     0     1     1      0      0     1     0     1
+  302 dois-audios.wav    2       1       0     2      2     0     1     1      0      0     1     0     1
+  303 dois-audios-2.wav  2       1       0     2      2     0     1     1      0      1     1     0     1
+  304 dois-audios.wav    2       1       0     2      2     0     1     1      1      0     1     0     1
+  305 dois-audios.wav    2       1       0     2      2     1     1     0      0      1     1     0     1
+  306 tres-audios.wav    3       1       0     3      3     0     1     1      2      0     1     0     1
+  307 um-audio.wav       1       0       0     1      1     0     0     0      0      0     0     0     1
+  308 dois-audios.wav    2       0       0     2      2     0     0     0      0      0     0     0     1
+  309 um-audio.wav       0       1       0     0      0     1     1     0      0      0     1     0     1
+  310 dois-audios.wav    0       2       0     0      0     2     2     0      0      0     1     0     1
+  311 um-audio.wav       1       1       0     1      1     0     1     1      0      0     1     0     1
+  312 um-audio.wav       0       0       1     0      0     0     0     0      0      0     0     1     1
+  313 um-audio.wav       1       0       1     1      1     0     0     0      0      0     0     1     1
+  314 um-audio.wav       1       0       1     1      1     0     0     0      0      0     0     1     1
+  315 um-audio.wav       1       1       1     1      1     0     1     1      0      0     1     1     1
+  316 um-audio.wav       1       1       1     1      1     1     1     0      0      0     1     1     0
+  317 dois-audios.wav    1       1       0     1      1     1     1     0      0      0     1     0     0
+  318 dois-audios.wav    0       2       0     0      0     2     2     0      0      0     2     0     0
 )
 test_count=${#tests[*]}
 i=0

@@ -1,15 +1,16 @@
 MAINTAINERCLEANFILES   = Makefile.in
 
 AM_CPPFLAGS            = -I$(top_srcdir)/include $(UNIMRCP_INCLUDES) $(ASTERISK_INCLUDES)
-AM_CFLAGS              = -DAST_MODULE_SELF_SYM="__internal_app_unimrcp"
+AM_CFLAGS              = -DAST_MODULE_SELF_SYM="__internal_app_unimrcp" -I/usr/include/libxml2
 
 mod_LTLIBRARIES        = app_unimrcp.la
 
 app_unimrcp_la_SOURCES = audio_queue.c \
+                         result_parser.c \
                          speech_channel.c \
                          ast_unimrcp_framework.c \
                          app_msg_process_dispatcher.c \
-												 app_channel_methods.c \
+                         app_channel_methods.c \
                          app_datastore.c \
                          app_mrcpsynth.c \
                          app_mrcprecog.c \
@@ -18,7 +19,7 @@ app_unimrcp_la_SOURCES = audio_queue.c \
                          app_recogverif.c \
                          app_unimrcp.c
 app_unimrcp_la_LDFLAGS = -avoid-version -no-undefined -module
-app_unimrcp_la_LIBADD  = $(UNIMRCP_LIBS)
+app_unimrcp_la_LIBADD  = $(UNIMRCP_LIBS) -lxml2
 
 XMLDOC_FILES           = app_mrcpsynth.c \
                          app_mrcprecog.c \

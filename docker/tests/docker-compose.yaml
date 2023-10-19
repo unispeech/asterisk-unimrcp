@@ -35,6 +35,8 @@ services:
     image: ${ASTERISK_IMAGE}
     environment:
       LD_LIBRARY_PATH: /usr/local/unimrcp/lib:/usr/local/apr/lib:/usr/local/lib
+      REPO_URI: ${REPO_URI}
+      SCENARIO: ${SCENARIO}
     volumes:
       - ${REPO_PATH}/asterisk-unimrcp:/src
     networks:

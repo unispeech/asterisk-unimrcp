@@ -3,6 +3,7 @@ FROM centos:7.8.2003
 RUN yum groupinstall -y "Development Tools" && \
     yum install -y \
         sudo \
+        libxml2-dev \
         cmake
 
 ARG UNIMRCP_DEPS=1.6.0

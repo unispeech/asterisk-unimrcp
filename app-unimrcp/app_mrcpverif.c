@@ -127,6 +127,7 @@
 	</application>
  ***/
 
+char * result_parser_get_attr(apr_pool_t *pool, const unsigned char *xml, const char* node_name, const char* attr_name);
 /* The name of the application. */
 static const char *app_verif = "MRCPVerif";
 
@@ -230,7 +231,7 @@ static int mrcpverif_option_apply(mrcprecogverif_options_t *options, const char 
 static int mrcpverif_options_parse(char *str, mrcprecogverif_options_t *options, apr_pool_t *pool)
 {
 	char *s;
-	char *name, *value;
+	char *name, *value, *v_mode;
 
 	if (!str)
 		return 0;
@@ -274,14 +275,17 @@ static int mrcpverif_options_parse(char *str, mrcprecogverif_options_t *options,
 	}
 	while (str);
 
-	if (!apr_hash_get(options->verif_session_hfs, "Verification-Mode", APR_HASH_KEY_STRING))
+	if (!(v_mode = apr_hash_get(options->verif_session_hfs, "Verification-Mode", APR_HASH_KEY_STRING)))
 		return -1;
 
 	if (!apr_hash_get(options->verif_session_hfs, "Repository-URI", APR_HASH_KEY_STRING))
 		return -1;
 
-	if (!apr_hash_get(options->verif_session_hfs, "Voiceprint-Identifier", APR_HASH_KEY_STRING))
-		return -1;
+	if (!apr_hash_get(options->verif_session_hfs, "Voiceprint-Identifier", APR_HASH_KEY_STRING)) {
+		ast_log(LOG_DEBUG, "v_mode: %s\n", v_mode);
+		if (strcmp(v_mode, "enroll"))
+			return -1;
+	}
 
 	return 0;
 }
@@ -728,6 +732,7 @@ static int app_verif_exec(struct ast_channel *chan, ast_app_data data)
 	const char *completion_cause = NULL;
 	const char *result = NULL;
 	const char *waveform_uri = NULL;
+	char *vp_id = NULL;
 
 	apt_bool_t has_result = !(mrcpverif_options.flags & MRCPRECOGVERIF_BUF_HND)
 				|| !strncmp("verify", mrcpverif_options.params[OPT_ARG_BUF_HND], 6);
@@ -742,12 +747,11 @@ static int app_verif_exec(struct ast_channel *chan, ast_app_data data)
 			}
 		}
 
-		/* Get recognition result. */
+		/* Get Verification result. */
 		if (channel_get_results(app_session->verif_channel, &completion_cause, &result, &waveform_uri) != 0) {
 			ast_log(LOG_WARNING, "(%s) Unable to retrieve result\n", name);
 			return mrcpverif_exit(chan, app_session, SPEECH_CHANNEL_STATUS_ERROR);
 		}
-
 		if (result) {
 			/* Store the results for further reference from the dialplan. */
 			apr_size_t result_len = strlen(result);
@@ -758,6 +762,10 @@ static int app_verif_exec(struct ast_channel *chan, ast_app_data data)
 				char *buf = apr_palloc(app_session->pool, len);
 				result = ast_uri_encode_http(result, buf, len);
 			}
+			vp_id = result_parser_get_attr(app_session->pool, result, "voiceprint", "id");
+			ast_log(LOG_NOTICE, "Result voiceprint id: %s\n", vp_id ? vp_id : "(null)");
+		} else {
+			ast_log(LOG_WARNING, "(%s) Unable to retrieve result\n", name);
 		}
 	} else {
 		if (channel_get_completion_cause(app_session->verif_channel, &completion_cause) != 0) {
@@ -772,6 +780,7 @@ static int app_verif_exec(struct ast_channel *chan, ast_app_data data)
 
 	/* Result may not be available if recognition completed with nomatch, noinput, or other error cause. */
 	pbx_builtin_setvar_helper(chan, "VERIF_RESULT", result ? result : "");
+	pbx_builtin_setvar_helper(chan, "VP_ID", vp_id ? vp_id : "");
 
 	/* If Waveform URI is available, pass it further to dialplan. */
 	if (waveform_uri)
