@@ -1,4 +1,4 @@
-#/bin/bash
+#!/bin/bash
 
 UNIMRCP_PATH="/usr/local/unimrcp"
 LIB_APR_PATH="/usr/local/apr"

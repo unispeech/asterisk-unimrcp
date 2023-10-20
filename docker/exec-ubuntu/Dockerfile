@@ -17,6 +17,8 @@ RUN apt-get update && \
     build-essential \
     libjansson-dev \
     libxml2-dev \
+    rsync \
+    tcpdump \
     uuid-dev && \
     apt-get autoremove -y
 
@@ -56,4 +58,4 @@ ENTRYPOINT ["/opt/start.sh"]
 
 CMD ["asterisk", "-vvvdddf", "-T", "-p"]
 
-LABEL modules="ubuntu:18.04,asterisk:${ASTERISK_VER}
+LABEL modules="ubuntu:18.04,asterisk:${ASTERISK_VER}"
